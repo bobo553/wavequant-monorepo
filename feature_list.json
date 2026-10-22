@@ -18,32 +18,26 @@
                 "加载、更新、切股及隐藏成交量时标识同步；缩放时锚定成交量柱顶。",
                 "提交阶段执行相关最小充分验证，浏览器验收须当次明确授权。"
             ],
-            "verification": [
-                {
-                    "command": "Node24.16.0/pnpm10.26.2 node --test volume-expansion,candle-details,candle-clipboard,chart-market-preparation; node --check four changed public modules; prettier; git diff --check",
-                    "status": "passed",
-                    "summary": "2026-10-21提交阶段：四个相关测试文件111项通过，四个生产JS模块语法通过；新增模块、提示模块及两测试格式已整理，差异空白检查通过。public JS被现有ESLint/tsconfig排除，因此不以无关Web lint/typecheck充当验证；无依赖、TS或打包配置改动，未运行生产构建。"
-                },
-                {
-                    "command": "pnpm exec node --test apps/webs/wavequant-web/tests/chart-series-lifecycle.test.mjs; same command on untouched main c552319",
-                    "status": "failed",
-                    "summary": "候选和未修改main均13通过/5失败，失败位置126、151、172、189、341：视窗null、13.139333对13.25、首快照不可见、右边界null、N目标2对4。均为相同既有失败，未修改源码行为或放宽断言。2026-10-21用户在获知上述5项既有失败后明确要求继续合并，授权本次豁免；保留failed记录，不作为通过。"
-                },
-                {
-                    "command": "browser/Playwright E2E; production build",
-                    "status": "not-run",
-                    "summary": "用户未授权浏览器E2E，密集柱顶标记实际视觉待验收。未重启服务、推送或合并。"
-                }
-            ]
+            "verification": [{
+                "command": "Node24.16.0/pnpm10.26.2 node --test volume-expansion,candle-details,candle-clipboard,chart-market-preparation; node --check four changed public modules; prettier; git diff --check",
+                "status": "passed",
+                "summary": "2026-10-21提交阶段：四个相关测试文件111项通过，四个生产JS模块语法通过；新增模块、提示模块及两测试格式已整理，差异空白检查通过。public JS被现有ESLint/tsconfig排除，因此不以无关Web lint/typecheck充当验证；无依赖、TS或打包配置改动，未运行生产构建。"
+            }, {
+                "command": "pnpm exec node --test apps/webs/wavequant-web/tests/chart-series-lifecycle.test.mjs; same command on untouched main c552319",
+                "status": "failed",
+                "summary": "候选和未修改main均13通过/5失败，失败位置126、151、172、189、341：视窗null、13.139333对13.25、首快照不可见、右边界null、N目标2对4。均为相同既有失败，未修改源码行为或放宽断言。2026-10-21用户在获知上述5项既有失败后明确要求继续合并，授权本次豁免；保留failed记录，不作为通过。"
+            }, {
+                "command": "browser/Playwright E2E; production build",
+                "status": "not-run",
+                "summary": "用户未授权浏览器E2E，密集柱顶标记实际视觉待验收。未重启服务、推送或合并。"
+            }]
         },
         {
             "id": "MONOREPO-334",
             "name": "market-navigation-and-watchlist-favorites",
             "title": "行情跳转与自选收藏滚动修复",
             "status": "done",
-            "dependencies": [
-                "MONOREPO-298"
-            ],
+            "dependencies": ["MONOREPO-298"],
             "description": "修复市场股票链接被默认自选覆盖，涨停卡片添加服务器收藏星标，自选成员原子保存并取消股票数量配额。",
             "scope": "Web行情链接、涨停卡片星标、自选滚动和成员保存；API成员事务与共享契约。交易、趋势、自动回测规则不在本次范围。",
             "acceptanceCriteria": [
@@ -202,11 +196,7 @@
                 "2026-10-19 外围消费者增量化：来源、候选、许可轻量投影传递不可变版本/父令牌/最早变化位置；分组、来源认证、几何标注、结构腿共享持久前缀；许可来源/候选查找索引只更新后缀；共享层级历史在交易区间内外只更新投影后缀。旧关键位/整波起点只读引用，不删除证据，不以结构冻结代替逐日资格核验；追加、修订、截短、同坐标事实、延迟可知、跨请求失效及公开独立列表导出待提交时验证。"
             ],
             "verification": [
-                {
-                    "command": "2026-10-21 isolated frozen 2132-day sh.601086 sampling; pytest tests/test_combined_a_replay.py; final minimal-fix comparison pending",
-                    "status": "not-run",
-                    "summary": "定位并修复 CombinedAReplay 容量拒绝后冷重放重新建档；该局部用例已验证，修复版完整对照仍在运行。合并版339.06秒/合并前393.72秒完整研究与账户哈希相同，未复现国芳核心计算变慢，不能宣称现场问题完全解决。3003 main API 已异常退出并等待源码变化；根因堆栈缺失。仅独立分支局部修复，未恢复其他已撤回优化，未提交合并推送。"
-                },
+                {"command": "2026-10-21 isolated frozen 2132-day sh.601086 sampling; pytest tests/test_combined_a_replay.py; final minimal-fix comparison pending", "status": "not-run", "summary": "定位并修复 CombinedAReplay 容量拒绝后冷重放重新建档；该局部用例已验证，修复版完整对照仍在运行。合并版339.06秒/合并前393.72秒完整研究与账户哈希相同，未复现国芳核心计算变慢，不能宣称现场问题完全解决。3003 main API 已异常退出并等待源码变化；根因堆栈缺失。仅独立分支局部修复，未恢复其他已撤回优化，未提交合并推送。"},
                 {
                     "command": "pytest tests/test_double_volume_fade_exit.py tests/test_breakout_shadow_exit.py tests/test_breakout_limit_open_exit.py tests/test_breakout_gap_clear.py tests/test_breakout_bearish_child_exit.py -q; mypy --follow-imports=skip src/wavequant/domain/strategies/double_volume_fade_exit.py src/wavequant/domain/strategies/breakout_shadow_exit.py src/wavequant/domain/strategies/trend_flip_exit.py src/wavequant/domain/strategies/strategy_profiles.py src/wavequant/application/analytics/backtest.py tests/test_double_volume_fade_exit.py; git diff --check",
                     "status": "passed",
@@ -277,61 +267,17 @@
                     "status": "not-run",
                     "summary": "本轮仅开发：EligiblePolylineN相邻三点来源补接已有正倒N包络，限制结构期限、未变化来源不重算；测幅、日线与次日分钟继承共享来源，profile v141隔离旧结果。新增真实fixture引用与三级镜像、边界、修订/重开、逐前缀回归源码；1/09 N、1/13轧空与买点断言待执行。未运行测试、类型、lint、格式、构建、Git状态差异、浏览器或运行探针；未提交合并推送或重启服务。分支feat-正N轧空识别修复，原记录保留。"
                 },
-                {
-                    "command": "pytest five volume/limit modules; mypy --follow-imports=skip six changed Python files; git diff --check; final source review",
-                    "status": "failed",
-                    "summary": "2026-10-21 v140提交验证：五文件pytest为68 passed/2 failed，新增与迁移用例通过；两失败仍是此前已在main复现且用户明确“合并”授权保留的test_limit_up_distribution_exit.py账户True/False用例第112行StopIteration，没有新增失败，不修改旧断言或记为通过。六修改Python文件mypy --follow-imports=skip通过，git diff --check及最终生产/回归差异复核完成。最终行为为严格十倍量当日全清，仅开收同涨停价豁免；豁免后次日仅收低15:00全清，不存在低开09:30清仓分支。main b23c537未前进且主目录当前干净；按当前合并请求和同两项既有失败持续授权本地提交/no-ff合并，不推送。完整套件、构建、浏览器与真实完整行情回放未验证。"
-                },
-                {
-                    "command": "待提交：pytest test_extreme_volume_limit_hold.py及十倍量相关回归；修改文件mypy",
-                    "status": "not-run",
-                    "summary": "仅按用户最新口径修改代码和测试源码，未运行任何开发验证；v139开盘清仓方案被本次收低清仓取代。未提交合并推送。"
-                },
-                {
-                    "command": "待提交：pytest test_extreme_volume_reduce.py、test_extreme_volume_limit_hold.py、test_double_volume_bearish_shadow.py及相关账户/量价回归；修改文件mypy",
-                    "status": "not-run",
-                    "summary": "开发阶段仅代码阅读、修改和回归迁移，未运行测试/类型/构建/浏览器/Git状态差异；开始前按会话流程快进同步main b23c537。旧九成断言按本次用户新规则改为全清；补次日低开开盘与等开收低收盘、开盘观察不依赖当天未来数据、后封板不豁免、同价开收涨停允许盘中开板、20%板及不可卖用例。此前v138验证不代表v139；未提交合并推送。"
-                },
-                {
-                    "command": "user-approved local merge with two documented main baseline failures; unchanged candidate and main",
-                    "status": "not-run",
-                    "summary": "2026-10-21用户明确回复“合并”，本次豁免已在main 0655d08复现的limit_up_distribution账户用例True/False两项既有StopIteration失败，保留失败事实，不记为通过。候选源码未变化，沿用本轮61 passed/2 failed及五文件局部mypy通过，不重复验证。main无新增提交；主目录config/contracts/design-system未暂存删除与本任务路径不重叠，保留原状不纳入提交。按授权提交v138十倍量封板豁免和次日收低全清，再本地no-ff合并，不推送。完整实股回放/全套/浏览器/构建仍未验证。"
-                },
-                {
-                    "command": "pytest five volume/limit modules; main two failed parametrized nodes; mypy five changed Python files; git diff --check; production review",
-                    "status": "failed",
-                    "summary": "2026-10-21 v138合并准备：五文件pytest为61 passed/2 failed，封板豁免及次日收低新用例通过；五修改Python文件mypy --follow-imports=skip通过，git diff --check和生产差异复核完成。两失败为test_limit_up_distribution_exit.py::test_signal_and_held_position_paths_clear_at_same_close_and_keep_evidence[True/False]第112行无filled SELL导致StopIteration；在main 0655d08同节点独立复现相同失败，未改旧断言或无关逻辑。这是不同于此前wave原因断言的新基线失败，按AGENTS等待本次明确合并例外，未提交合并推送。main存在config/contracts/design-system未提交删除，未触碰或暂存；任务分支无落后main。完整套件、浏览器、构建和完整实股回放未验证。"
-                },
-                {
-                    "command": "待提交：pytest test_extreme_volume_limit_hold.py、test_extreme_volume_reduce.py及相邻量价退出；修改文件mypy",
-                    "status": "not-run",
-                    "summary": "开发阶段未运行测试、类型、构建、浏览器、Git状态/差异或运行探针；仅按同会话流程将已合并分支快进至main 0655d08。新回归覆盖当日保留、次日阳线收低也清仓、等值/更高不清、第三日不延续、恰好10倍/零量拒绝、开板、复权变化、一字及20%板、不可卖、账户完整清仓和前缀一致。此前v137的79通过/1既有失败不作为v138证据；未提交合并推送。"
-                },
-                {
-                    "command": "pytest seven volume exit test modules; mypy --follow-imports=skip six changed Python files; git diff --check; source review",
-                    "status": "failed",
-                    "summary": "2026-10-21用户在获知既有失败阻碍后再次明确要求合并到main，按本次继续合并授权处理同一已知失败。v137七文件pytest为79 passed/1 failed，三项新规则用例全部通过；唯一失败仍为test_massive_gap_reversal_exit.py:52的wave_gap_reversal_reduce与wave_two_t_volume_bearish_reduce原因断言，同一未修改main 33df64e此前已单独复现，未修改旧断言，不记作通过。六修改Python文件mypy --follow-imports=skip通过，git diff --check与生产/回归源码复核完成；仅随后手动换行导入列表，无行为变化。main未前进、主目录干净；范围为巨量次日低开破低清仓、十倍量累计九成、倍量长上影阴线累计七成及缓存v137。不运行浏览器、完整套件或构建，完整实股结构行情回放待验证。按授权本地提交及no-ff合并，不推送。"
-                },
-                {
-                    "command": "待提交：pytest test_double_volume_bearish_shadow.py、test_extreme_volume_reduce.py、test_previous_triple_volume_gap_clear.py及相邻量价/账户回归；修改Python文件mypy",
-                    "status": "not-run",
-                    "summary": "本轮仅开发及编写测试，未执行测试/类型/构建/浏览器/Git检查。覆盖2倍等值、低于2倍、阴阳/十字、半振幅边界、九成/全清优先、账户七成与未来隔离。此前v135检查不作为v137验证；完整同源实股历史待核实，既有main失败合并例外仍未确认。"
-                },
-                {
-                    "command": "待提交：pytest test_extreme_volume_reduce.py、test_previous_triple_volume_gap_clear.py及受影响退出/账户用例；修改文件mypy",
-                    "status": "not-run",
-                    "summary": "新增十倍量规则后只开发代码和编写回归，未运行任何验证。此前57 passed/1 failed和三个文件类型通过仅属于v135，不能证明本次v136；main既有wave退出原因用例失败的豁免仍未获确认，未提交合并推送。"
-                },
-                {
-                    "command": "pytest five volume exit modules; unchanged main failed node; mypy three modified files; git diff --check",
-                    "status": "failed",
-                    "summary": "2026-10-21合并准备：五文件pytest为57 passed/1 failed，新增17项全部通过；失败为test_massive_gap_reversal_exit.py::test_guofang_massive_gap_reversal_clears_instead_of_partial_wave_exit第52行，期望wave_gap_reversal_reduce但实际wave_two_t_volume_bearish_reduce。在未修改main 33df64e单独复现相同失败，未改旧断言或无关规则。三个修改Python文件mypy --follow-imports=skip通过，git diff --check和生产差异复核完成。分支无落后main，主工作区干净。按AGENTS检查失败不得合并，等待用户本次明确豁免该既有失败；未提交合并推送。完整实股历史、浏览器、全量套件及构建未验证。"
-                },
-                {
-                    "command": "待提交时：pytest test_previous_triple_volume_gap_clear.py及相邻量价退出回归；修改文件mypy",
-                    "status": "not-run",
-                    "summary": "本轮仅代码阅读、修改和回归源码编写；未运行测试、lint、类型、构建、浏览器、Git状态差异或运行探针。覆盖严格3倍/低开/破低/放量边界、5%实体、前序量基准、未来隔离及账户可卖约束；真实完整行情与页面结果待验证。"
-                },
+                {"command": "pytest five volume/limit modules; mypy --follow-imports=skip six changed Python files; git diff --check; final source review", "status": "failed", "summary": "2026-10-21 v140提交验证：五文件pytest为68 passed/2 failed，新增与迁移用例通过；两失败仍是此前已在main复现且用户明确“合并”授权保留的test_limit_up_distribution_exit.py账户True/False用例第112行StopIteration，没有新增失败，不修改旧断言或记为通过。六修改Python文件mypy --follow-imports=skip通过，git diff --check及最终生产/回归差异复核完成。最终行为为严格十倍量当日全清，仅开收同涨停价豁免；豁免后次日仅收低15:00全清，不存在低开09:30清仓分支。main b23c537未前进且主目录当前干净；按当前合并请求和同两项既有失败持续授权本地提交/no-ff合并，不推送。完整套件、构建、浏览器与真实完整行情回放未验证。"},
+                {"command": "待提交：pytest test_extreme_volume_limit_hold.py及十倍量相关回归；修改文件mypy", "status": "not-run", "summary": "仅按用户最新口径修改代码和测试源码，未运行任何开发验证；v139开盘清仓方案被本次收低清仓取代。未提交合并推送。"},
+                {"command": "待提交：pytest test_extreme_volume_reduce.py、test_extreme_volume_limit_hold.py、test_double_volume_bearish_shadow.py及相关账户/量价回归；修改文件mypy", "status": "not-run", "summary": "开发阶段仅代码阅读、修改和回归迁移，未运行测试/类型/构建/浏览器/Git状态差异；开始前按会话流程快进同步main b23c537。旧九成断言按本次用户新规则改为全清；补次日低开开盘与等开收低收盘、开盘观察不依赖当天未来数据、后封板不豁免、同价开收涨停允许盘中开板、20%板及不可卖用例。此前v138验证不代表v139；未提交合并推送。"},
+                {"command": "user-approved local merge with two documented main baseline failures; unchanged candidate and main", "status": "not-run", "summary": "2026-10-21用户明确回复“合并”，本次豁免已在main 0655d08复现的limit_up_distribution账户用例True/False两项既有StopIteration失败，保留失败事实，不记为通过。候选源码未变化，沿用本轮61 passed/2 failed及五文件局部mypy通过，不重复验证。main无新增提交；主目录config/contracts/design-system未暂存删除与本任务路径不重叠，保留原状不纳入提交。按授权提交v138十倍量封板豁免和次日收低全清，再本地no-ff合并，不推送。完整实股回放/全套/浏览器/构建仍未验证。"},
+                {"command": "pytest five volume/limit modules; main two failed parametrized nodes; mypy five changed Python files; git diff --check; production review", "status": "failed", "summary": "2026-10-21 v138合并准备：五文件pytest为61 passed/2 failed，封板豁免及次日收低新用例通过；五修改Python文件mypy --follow-imports=skip通过，git diff --check和生产差异复核完成。两失败为test_limit_up_distribution_exit.py::test_signal_and_held_position_paths_clear_at_same_close_and_keep_evidence[True/False]第112行无filled SELL导致StopIteration；在main 0655d08同节点独立复现相同失败，未改旧断言或无关逻辑。这是不同于此前wave原因断言的新基线失败，按AGENTS等待本次明确合并例外，未提交合并推送。main存在config/contracts/design-system未提交删除，未触碰或暂存；任务分支无落后main。完整套件、浏览器、构建和完整实股回放未验证。"},
+                {"command": "待提交：pytest test_extreme_volume_limit_hold.py、test_extreme_volume_reduce.py及相邻量价退出；修改文件mypy", "status": "not-run", "summary": "开发阶段未运行测试、类型、构建、浏览器、Git状态/差异或运行探针；仅按同会话流程将已合并分支快进至main 0655d08。新回归覆盖当日保留、次日阳线收低也清仓、等值/更高不清、第三日不延续、恰好10倍/零量拒绝、开板、复权变化、一字及20%板、不可卖、账户完整清仓和前缀一致。此前v137的79通过/1既有失败不作为v138证据；未提交合并推送。"},
+                {"command": "pytest seven volume exit test modules; mypy --follow-imports=skip six changed Python files; git diff --check; source review", "status": "failed", "summary": "2026-10-21用户在获知既有失败阻碍后再次明确要求合并到main，按本次继续合并授权处理同一已知失败。v137七文件pytest为79 passed/1 failed，三项新规则用例全部通过；唯一失败仍为test_massive_gap_reversal_exit.py:52的wave_gap_reversal_reduce与wave_two_t_volume_bearish_reduce原因断言，同一未修改main 33df64e此前已单独复现，未修改旧断言，不记作通过。六修改Python文件mypy --follow-imports=skip通过，git diff --check与生产/回归源码复核完成；仅随后手动换行导入列表，无行为变化。main未前进、主目录干净；范围为巨量次日低开破低清仓、十倍量累计九成、倍量长上影阴线累计七成及缓存v137。不运行浏览器、完整套件或构建，完整实股结构行情回放待验证。按授权本地提交及no-ff合并，不推送。"},
+                {"command": "待提交：pytest test_double_volume_bearish_shadow.py、test_extreme_volume_reduce.py、test_previous_triple_volume_gap_clear.py及相邻量价/账户回归；修改Python文件mypy", "status": "not-run", "summary": "本轮仅开发及编写测试，未执行测试/类型/构建/浏览器/Git检查。覆盖2倍等值、低于2倍、阴阳/十字、半振幅边界、九成/全清优先、账户七成与未来隔离。此前v135检查不作为v137验证；完整同源实股历史待核实，既有main失败合并例外仍未确认。"},
+                {"command": "待提交：pytest test_extreme_volume_reduce.py、test_previous_triple_volume_gap_clear.py及受影响退出/账户用例；修改文件mypy", "status": "not-run", "summary": "新增十倍量规则后只开发代码和编写回归，未运行任何验证。此前57 passed/1 failed和三个文件类型通过仅属于v135，不能证明本次v136；main既有wave退出原因用例失败的豁免仍未获确认，未提交合并推送。"},
+                {"command": "pytest five volume exit modules; unchanged main failed node; mypy three modified files; git diff --check", "status": "failed", "summary": "2026-10-21合并准备：五文件pytest为57 passed/1 failed，新增17项全部通过；失败为test_massive_gap_reversal_exit.py::test_guofang_massive_gap_reversal_clears_instead_of_partial_wave_exit第52行，期望wave_gap_reversal_reduce但实际wave_two_t_volume_bearish_reduce。在未修改main 33df64e单独复现相同失败，未改旧断言或无关规则。三个修改Python文件mypy --follow-imports=skip通过，git diff --check和生产差异复核完成。分支无落后main，主工作区干净。按AGENTS检查失败不得合并，等待用户本次明确豁免该既有失败；未提交合并推送。完整实股历史、浏览器、全量套件及构建未验证。"},
+                {"command": "待提交时：pytest test_previous_triple_volume_gap_clear.py及相邻量价退出回归；修改文件mypy", "status": "not-run", "summary": "本轮仅代码阅读、修改和回归源码编写；未运行测试、lint、类型、构建、浏览器、Git状态差异或运行探针。覆盖严格3倍/低开/破低/放量边界、5%实体、前序量基准、未来隔离及账户可卖约束；真实完整行情与页面结果待验证。"},
                 {
                     "command": "2026-10-21 user-approved local merge exception for nine unchanged main failures",
                     "status": "failed",
@@ -387,21 +333,9 @@
                     "status": "not-run",
                     "summary": "本轮仅代码阅读、编辑和记录，未运行测试、类型、构建、浏览器、Git状态/差异检查或回测探针。完整同源sz.300163历史、2022-03-18前收与实际高点首次可知日待核验，不沿用旧测试证据。"
                 },
-                {
-                    "command": "GET /api/backtest-job?job=b693a261-789c-4ef2-8299-4caf0591f74d; inspect complete result orders, markers and entry_conditions",
-                    "status": "passed",
-                    "summary": "2026-10-21在线验收完成：代码81f1094已通过e46bdd1本地no-ff合并main，未推送。3303自动启动同参数国芳任务b693a261-789c-4ef2-8299-4caf0591f74d，完整2018-01-02至2026-10-20共2132个交易日已completed，策略configurable_n_target_trend_confirmation_v129_lecture_v3。2026-08-28 15:00 BUY filled，原因qualified_double_volume_breakout_close，原始8.34元/200股、复权11.618168141671974；目标17.078985781402686。返回图表markers包含同日成交买点，账本资格、收盘量价、时刻及止损/目标条件均为true，费用后盈亏比过滤关闭项为null。沿用原nonflat_limit_close_without_queue_verification模拟假设，不代表真实排队成交或早盘分钟验证。最终服务结果保存在本worktree .codex-runtime/gap-20260828/live-updated-result.json及live-summary.json。本次缺买点问题已完成；MONOREPO-330其他未完成事项和旧失败记录保留。此次仅补录证据，不更改产品代码，不重复运行测试或浏览器。"
-                },
-                {
-                    "command": "3303 existing job evidence; offline full 2101-bar streaming replay; targeted pytest and mypy; source review and main sync",
-                    "status": "passed",
-                    "summary": "2026-10-21续修真实国芳8/28：用户明确门槛为最后技术折线2026-06-24高10.239033074495085，不要求一级趋势末跌高。3303任务a66932c9已是v128；实盘式审计实际仍被旧冻结index1989高12.282936拒绝。修复PolylineBuyGate在新一轮确认下降关键位形成时替换旧轮待放行门槛，局部反弹仍不降门槛，三级几何不变。第二阻挡为资格翻多高11.024346被误作盈利目标，产生target_exhausted_at_close；独立资格买点不再携带该伪目标，账户沿用已有take_profit_r=2风险倍数且继续检查净盈亏比、仓位及涨停权限。普通结构信号缺目标校验不变。账本修正独立收盘量价证据和分钟守缺口文案，profile v129。 用户本轮明确授权定向诊断和回放；页面同源2101棒2018-01-02至2026-08-28完整streaming_stock_result，实际设置、止损、涨停权限和冻结分钟，407.581秒，回放源码哈希e4c9d489ab75745c02bdbc30652f9aaf47f640309612fccc120cffa13fc08279前后相同。最终8/28 15:00 BUY filled，原始8.34元/200股，复权11.618168141671974，量比2.21073837952044，账户风险限制有效，目标17.078985781402686；使用原已启用nonflat_limit_close_without_queue_verification假设。分钟量少111600股未通过覆盖校验，不能宣称早盘实测成交。证据保存在本worktree .codex-runtime/gap-20260828/live-result.json、gate-trace.json、full-research.json、full-account.json、full-summary.json。 续修提交检查：8个直接相关pytest文件119通过/3个旧证据期望失败；按最后技术折线口径，4/03证据改为当时已确认新下降3/27高，同时仍断言4/03越过1/09高，2/27与3/14旧拒绝保持。最终受影响4文件54项通过，合计122个不同用例无未解决失败，不重复计数。9个修改文件mypy通过（临时沿用项目3.11配置，只隔离宿主NumPy不兼容存根）；初次账户旧局部变量类型串用等60项错误以变量重命名、可空判断及内部字段收窄解决，无交易行为改变。完整回放后的最终生产变化仅这些类型表达和账本说明，受影响定向回归已重验。新增完整同源fixture与真实门槛、账户权限、盈亏比以及普通结构信号校验用例。git diff --check和最终源码复核通过，同步main无冲突。未运行浏览器/E2E、Python格式/lint、完整套件或包构建；不推送。MONOREPO-330其他未完成项保留，在线页面新版本重算状态另报。"
-                },
-                {
-                    "command": "pytest 6 related files and affected reruns; mypy 4 modified files; git diff --check; main synchronization and source review",
-                    "status": "passed",
-                    "summary": "2026-10-21提交合并验证：6个直接相关pytest文件首次109通过/1失败；旧华瓷缺分钟用例预期开盘模拟，与本轮倍量收盘优先行为冲突，改为严格断言收盘reason、价格、15:00时刻和same_day_close后该项通过。新用例以真实BacktestAnalysis替换SimpleNamespace后15项重验通过；覆盖110个不同用例，不把重跑重复合计。4个修改文件mypy通过，临时配置保留项目3.11/check_untyped_defs等设置，仅跳过宿主NumPy不兼容存根；初次环境错误及测试类型错误已解决，未改依赖。git diff --check、feature JSON读取及唯一活动330检查通过；同步main已最新且无冲突，最终源码差异复核完成。未运行完整套件、包构建、浏览器/E2E或真实国芳全历史分钟回放，实际涨停成交待验证。按用户要求提交并本地no-ff合并，不推送。"
-                },
+                {"command":"GET /api/backtest-job?job=b693a261-789c-4ef2-8299-4caf0591f74d; inspect complete result orders, markers and entry_conditions","status":"passed","summary":"2026-10-21在线验收完成：代码81f1094已通过e46bdd1本地no-ff合并main，未推送。3303自动启动同参数国芳任务b693a261-789c-4ef2-8299-4caf0591f74d，完整2018-01-02至2026-10-20共2132个交易日已completed，策略configurable_n_target_trend_confirmation_v129_lecture_v3。2026-08-28 15:00 BUY filled，原因qualified_double_volume_breakout_close，原始8.34元/200股、复权11.618168141671974；目标17.078985781402686。返回图表markers包含同日成交买点，账本资格、收盘量价、时刻及止损/目标条件均为true，费用后盈亏比过滤关闭项为null。沿用原nonflat_limit_close_without_queue_verification模拟假设，不代表真实排队成交或早盘分钟验证。最终服务结果保存在本worktree .codex-runtime/gap-20260828/live-updated-result.json及live-summary.json。本次缺买点问题已完成；MONOREPO-330其他未完成事项和旧失败记录保留。此次仅补录证据，不更改产品代码，不重复运行测试或浏览器。"},
+                {"command":"3303 existing job evidence; offline full 2101-bar streaming replay; targeted pytest and mypy; source review and main sync","status":"passed","summary":"2026-10-21续修真实国芳8/28：用户明确门槛为最后技术折线2026-06-24高10.239033074495085，不要求一级趋势末跌高。3303任务a66932c9已是v128；实盘式审计实际仍被旧冻结index1989高12.282936拒绝。修复PolylineBuyGate在新一轮确认下降关键位形成时替换旧轮待放行门槛，局部反弹仍不降门槛，三级几何不变。第二阻挡为资格翻多高11.024346被误作盈利目标，产生target_exhausted_at_close；独立资格买点不再携带该伪目标，账户沿用已有take_profit_r=2风险倍数且继续检查净盈亏比、仓位及涨停权限。普通结构信号缺目标校验不变。账本修正独立收盘量价证据和分钟守缺口文案，profile v129。 用户本轮明确授权定向诊断和回放；页面同源2101棒2018-01-02至2026-08-28完整streaming_stock_result，实际设置、止损、涨停权限和冻结分钟，407.581秒，回放源码哈希e4c9d489ab75745c02bdbc30652f9aaf47f640309612fccc120cffa13fc08279前后相同。最终8/28 15:00 BUY filled，原始8.34元/200股，复权11.618168141671974，量比2.21073837952044，账户风险限制有效，目标17.078985781402686；使用原已启用nonflat_limit_close_without_queue_verification假设。分钟量少111600股未通过覆盖校验，不能宣称早盘实测成交。证据保存在本worktree .codex-runtime/gap-20260828/live-result.json、gate-trace.json、full-research.json、full-account.json、full-summary.json。 续修提交检查：8个直接相关pytest文件119通过/3个旧证据期望失败；按最后技术折线口径，4/03证据改为当时已确认新下降3/27高，同时仍断言4/03越过1/09高，2/27与3/14旧拒绝保持。最终受影响4文件54项通过，合计122个不同用例无未解决失败，不重复计数。9个修改文件mypy通过（临时沿用项目3.11配置，只隔离宿主NumPy不兼容存根）；初次账户旧局部变量类型串用等60项错误以变量重命名、可空判断及内部字段收窄解决，无交易行为改变。完整回放后的最终生产变化仅这些类型表达和账本说明，受影响定向回归已重验。新增完整同源fixture与真实门槛、账户权限、盈亏比以及普通结构信号校验用例。git diff --check和最终源码复核通过，同步main无冲突。未运行浏览器/E2E、Python格式/lint、完整套件或包构建；不推送。MONOREPO-330其他未完成项保留，在线页面新版本重算状态另报。"},
+                {"command":"pytest 6 related files and affected reruns; mypy 4 modified files; git diff --check; main synchronization and source review","status":"passed","summary":"2026-10-21提交合并验证：6个直接相关pytest文件首次109通过/1失败；旧华瓷缺分钟用例预期开盘模拟，与本轮倍量收盘优先行为冲突，改为严格断言收盘reason、价格、15:00时刻和same_day_close后该项通过。新用例以真实BacktestAnalysis替换SimpleNamespace后15项重验通过；覆盖110个不同用例，不把重跑重复合计。4个修改文件mypy通过，临时配置保留项目3.11/check_untyped_defs等设置，仅跳过宿主NumPy不兼容存根；初次环境错误及测试类型错误已解决，未改依赖。git diff --check、feature JSON读取及唯一活动330检查通过；同步main已最新且无冲突，最终源码差异复核完成。未运行完整套件、包构建、浏览器/E2E或真实国芳全历史分钟回放，实际涨停成交待验证。按用户要求提交并本地no-ff合并，不推送。"},
                 {
                     "command": "开发阶段源码阅读、编辑及回归源码编写；pytest/mypy/build/真实回测待提交时验证",
                     "status": "not-run",
@@ -14531,16 +14465,8 @@
                 "按job、股票、数据源、版本及参数匹配，旧记录缺少耗时不伪造计时。"
             ],
             "verification": [
-                {
-                    "command": "tsc --ignoreConfig --noEmit --strict --skipLibCheck --jsx react-jsx --module esnext --moduleResolution bundler --target es2022 chart-viewport.tsx stock-browser.tsx; eslint same two components; git diff --check",
-                    "status": "passed",
-                    "summary": "2026-10-21定位纠正：此前误放侧栏copy-eligibility-ranges-summary旁，本次移至图表下方进度条图例copy-eligibility-ranges按钮右侧；移除侧栏专用布局，计时链路不变。两个组件局部类型、lint及差异检查通过，未运行浏览器，旧记录缺耗时仍不伪造。"
-                },
-                {
-                    "command": "node --test backtest-job-status.test.mjs; node --check app.js; tsc --ignoreConfig --noEmit --strict --skipLibCheck --jsx react-jsx --module esnext --moduleResolution bundler --target es2022 stock-browser.tsx; eslint stock-browser.tsx; git diff --check",
-                    "status": "passed",
-                    "summary": "2026-10-21最终耗时独立显示在复制资格区间按钮右侧，窄屏换行；19项状态测试、JS语法、局部TSX类型及lint通过。补齐既有共享ESLint构建产物并修正目标文件格式后lint通过。未运行浏览器、全量类型或Web构建；以下为先前版本证据。"
-                },
+                {"command": "tsc --ignoreConfig --noEmit --strict --skipLibCheck --jsx react-jsx --module esnext --moduleResolution bundler --target es2022 chart-viewport.tsx stock-browser.tsx; eslint same two components; git diff --check", "status": "passed", "summary": "2026-10-21定位纠正：此前误放侧栏copy-eligibility-ranges-summary旁，本次移至图表下方进度条图例copy-eligibility-ranges按钮右侧；移除侧栏专用布局，计时链路不变。两个组件局部类型、lint及差异检查通过，未运行浏览器，旧记录缺耗时仍不伪造。"},
+                {"command": "node --test backtest-job-status.test.mjs; node --check app.js; tsc --ignoreConfig --noEmit --strict --skipLibCheck --jsx react-jsx --module esnext --moduleResolution bundler --target es2022 stock-browser.tsx; eslint stock-browser.tsx; git diff --check", "status": "passed", "summary": "2026-10-21最终耗时独立显示在复制资格区间按钮右侧，窄屏换行；19项状态测试、JS语法、局部TSX类型及lint通过。补齐既有共享ESLint构建产物并修正目标文件格式后lint通过。未运行浏览器、全量类型或Web构建；以下为先前版本证据。"},
                 {
                     "command": "node --test apps/webs/wavequant-web/tests/backtest-job-status.test.mjs; node --check apps/webs/wavequant-web/public/app.js",
                     "status": "passed",
