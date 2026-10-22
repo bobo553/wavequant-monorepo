@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { avoidLabelCollisions, buildAnnotations, markerGroups } from "../public/annotations.js";
+import { buildAnnotations, markerGroups } from "../public/annotations.js";
 import { isBottomNTargetSource } from "../public/bottom-n-targets.js";
 import { buyNTargetLevels } from "../public/buy-n-targets.js";
 import { NStructureOverlay, nStructureBounds } from "../public/n-structure-overlay.js";
@@ -12,14 +12,11 @@ const fixture = JSON.parse(readFileSync(new URL("./fixtures/xiangyang_2024_refor
 const { view, theory } = fixture;
 const items = buildAnnotations(view, theory);
 
-test("same-candle positive Ns have separate marker colors stable across order, future events and invalidation", () => {
+test("same-candle positive Ns keep stable target colors without producing circles", () => {
     const options = { rules: true };
     const groups = markerGroups(items, options, 1400);
-    assert.equal(groups.length, 2);
-    assert.equal(new Set(groups.map(({ marker }) => marker.color)).size, 2);
-    assert.ok(groups.every(({ items, marker }) => items.length === 1 && marker.text.includes("正 N")));
-    avoidLabelCollisions(groups, () => 100);
-    assert.ok(groups.every(({ marker }) => marker.text.includes("正 N")));
+    assert.deepEqual(groups, []);
+    assert.equal(new Set(items.map((item) => item.color)).size, 2);
     const original = new Map(items.map((item) => [item.id, item.color]));
     assert.ok(items.every((item) => item.color));
     const reordered = buildAnnotations(view, { ...theory, events: [...theory.events].reverse() });
@@ -53,10 +50,10 @@ test("same-candle positive Ns have separate marker colors stable across order, f
         ],
         options,
     );
-    assert.equal(withRegime.find((group) => group.id === oneFailed[0].id).marker.color, oneFailed[0].color);
+    assert.deepEqual(withRegime, []);
 });
 
-test("actual failed July31/August15 Ns disappear while August20 retains two independent markers", () => {
+test("actual failed July31/August15 Ns disappear while August20 retains two independent target carriers", () => {
     assert.equal(items.length, 2);
     assert.equal(new Set(items.map((item) => item.id)).size, 2);
     assert.ok(items.every((item) => item.time === "2024-08-20"));
@@ -91,6 +88,13 @@ test("actual failed July31/August15 Ns disappear while August20 retains two inde
 test("hovering either August20 N shows both target groups without deduplication by price", () => {
     const observations = nTargetObservations(items, view.bars, view.asof);
     assert.equal(observations.length, 2);
+    const candleFocus = nTargetAt(observations, view.asof);
+    const candleTargets = nTargetGroup(observations, candleFocus, view.asof);
+    assert.equal(candleTargets.length, 2);
+    assert.deepEqual(
+        candleTargets.flatMap((item) => nTargetLevels(item, view.asof).map((level) => level.price)).sort(),
+        [4.63, 4.83, 5.12, 5.52],
+    );
     for (const item of items) {
         const focus = nTargetAt(observations, view.asof, item.id);
         assert.equal(focus, item);

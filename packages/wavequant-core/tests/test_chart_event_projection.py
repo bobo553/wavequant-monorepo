@@ -30,3 +30,32 @@ def test_chart_events_skip_internal_audit_before_marker_field_conversion() -> No
     assert len(target['shape']) == 4
     assert {row['stage'] for row in target['levels'] if 'stage' in row} == {'one_p', 'two_t'}
     assert audit == before
+
+
+def test_purple_rule_projection_is_removed_without_losing_n_targets_or_audit() -> None:
+    bars = market()
+    observations = [dict(event=event, bar_index=2, trend_level=0, timestamp=None) for event in (
+        'squeeze_alternation_confirmed', 'squeeze_alternation_breakout', 'squeeze_alternation_invalidated',
+        'hierarchy_alternation_ready', 'hierarchy_bull_matured', 'hierarchy_context_invalidated',
+        'shallow_alternation_candidate', 'bear_to_bull_flip', 'bear_bull_alternation',
+        'bullish_entry_permission_confirmed', 'regime_confirmation', 'squeeze_resumption_observed',
+        'washout_reattack', 'turn_confirmed', 'turn_observation', 'bull_permission_revoked',
+        'bearish_context_frozen')]
+    n = positive_n(bars)
+    audit = [*observations, n]
+    before = deepcopy(audit)
+    config = SystemStrategy(buy_point_definition='whole_flip_wave_v3')
+
+    # 无圆点消费者的事实在日期/价格转换前退出展示通道，原始审计仍完整保留。
+    theory = ChartRepository.render_theory(
+        None, bars, config, SystemResult([], audit, {}),
+        bars[-1].timestamp.date().isoformat(), geometry={'tertiary_trends': {}},
+    )
+
+    assert [row['event'] for row in theory['events']] == ['n_completed']
+    target = theory['events'][0]
+    assert target['id'] == f"n:{n['n_id']}"
+    assert len(target['shape']) == 4
+    assert {row['stage'] for row in target['levels'] if 'stage' in row} == {'one_p', 'two_t'}
+    assert theory['shapes'][0]['n_id'] == n['n_id']
+    assert audit == before

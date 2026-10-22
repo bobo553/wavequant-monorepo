@@ -74,17 +74,12 @@ VARIANTS.update(
 )
 SCENARIOS = {"base": "原费用", "cost_2x": "2 倍成本", "cost_3x": "3 倍成本", "capacity_half": "半容量"}
 
-# 图表只发布有展示消费者的事件。六态及资格原始证据仍由 audit 提供，
-# 不再为它们重复构造日期、价格层级和通用规则圆点。
-CHART_EVENT_POLICY = 'explicit_chart_events_v1'
+# 图表只发布有展示消费者的事件；普通规则紫点不再独立投影。
+# N、资格和波段的原始事实仍供策略使用，N 展示事件同时承载结构与目标线。
+CHART_EVENT_POLICY = 'explicit_chart_events_without_purple_rules_v2'
 _CHART_EVENT_TYPES = frozenset((
-    'squeeze_alternation_confirmed', 'squeeze_alternation_breakout', 'squeeze_alternation_invalidated',
     'tertiary_c_candidate', 'tertiary_c_breakout', 'tertiary_c_invalidated',
-    'hierarchy_alternation_ready', 'hierarchy_bull_matured', 'hierarchy_context_invalidated',
-    'shallow_alternation_candidate', 'n_completed', 'bear_to_bull_flip', 'bear_bull_alternation',
-    'bullish_entry_permission_confirmed', 'regime_confirmation', 'squeeze_resumption_observed',
-    'washout_reattack', 'turn_confirmed', 'turn_observation', 'bull_permission_revoked',
-    'bearish_context_frozen', 'strict_structure_interrupted', 'entry_rejected',
+    'n_completed', 'strict_structure_interrupted', 'entry_rejected',
     'entry_preflight_rejected', 'n_geometry_rejected', 'long_signal', 'exit_signal',
     'long_transition_evidence',
     # 这些事件只驱动目标线、A/B/C 波及旧版资格识别，不生成独立圆点。
@@ -871,7 +866,8 @@ class ChartRepository:
         # 结构与交易事实保持独立；只在展示适配层复用 N 的绘图契约。
         structural_types = {'n_structure_completed': 'n_completed', 'n_structure_invalidated': 'n_invalidated'}
         chart_audit = [dict(row, event=structural_types[row['event']])
-                       if row['event'] in structural_types else row for row in result.audit]
+                       if row['event'] in structural_types else row for row in result.audit
+                       if row['event'] in structural_types or row['event'] in _CHART_EVENT_TYPES]
         def structure_key(row):
             return tuple(row.get(key) for key in ('origin', 'neckline', 'pullback', 'bar_index',
                                                   'qualification_window_start', 'source_path'))
@@ -981,8 +977,6 @@ class ChartRepository:
             elif stage in levels and row['state'] in ('pullback', 'invalidated'):
                 levels[stage]['status'] = '回调暂停' if row['state'] == 'pullback' else '已失效'
         for r in chart_audit:
-            if r['event'] not in _CHART_EVENT_TYPES:
-                continue
             available = max(r["bar_index"], r.get("known_at", r["bar_index"]))
             if available > i:
                 continue
