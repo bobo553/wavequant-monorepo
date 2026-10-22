@@ -1,3 +1,11 @@
+## 2026-10-22 按用户要求直接合并国芳整波资格修复
+
+本轮用户先要求合并main，提交准备已将分支快进到b5073ec，保留二吐禁买规则，版本冲突协调为profile v151_frozen_flip_origin、chart history v163。八个任务文件范围和源码/回归差异已复核，git diff HEAD --check通过，feature_list读取确认MONOREPO-330为唯一in-progress。
+
+已完成五个修改Python文件局部mypy（--config-file packages/wavequant-core/pyproject.toml --follow-imports=skip --no-incremental）：Success: no issues found in 5 source files。已启动三文件pytest -q -p no:cacheprovider --tb=short：test_same_level_recovery.py、test_squeeze_low_open_confirmation.py、test_lifecycle_impulse_defense.py；用户随后明确“直接合并”，按指令停止运行，不追加验证。停止回收输出已有失败标记且进程exit 1，没有完整失败报告或最终统计，不能把本轮回归记为通过，也不能断言这些失败属于基线。待后续明确验证安排排查，保留失败事实。
+
+按最新直接合并指令提交本轮整波防守点修复并本地no-ff合并，禁用提交钩子，不推送、不重启服务。冻结结构与完整行情回归验收仍未完成，不标记功能done；原记录、stash及分支保留。
+
 2026-10-22 · 二吐禁买交付范围与待验证项
 
 MONOREPO-355：用户确认使用已观察高点而非涨停价预测，并要求合并main。正N主策略、独立放量收盘和跳空、账户新买/加仓共用two_t_entry_gate；首次到二吐当日禁买（含等值），后续独立C浪仍遵守原门禁。账户目标事实经独立entry_target_events传递，不改变退出事件契约。分钟只用已观察高点及成交开盘，后续高点不倒改早盘；首次可知目标只用收盘。桂林冻结OHLCV+显式N/资格回归完成；完整在线趋势来源与账户重算仍未执行，禁止把显式资格测试称为全链路验收。相关pytest与8文件局部mypy证据见feature_list.json，未运行浏览器/完整构建或重启服务。
@@ -5,6 +13,18 @@ MONOREPO-355：用户确认使用已观察高点而非涨停价预测，并要�
 专属worktree C:/Users/zb/.codex/worktrees/target-entry-guard/wavequant-monorepo，分支feat-二吐目标禁买。已同步最新本地main 6ecced6并保留轧空资格修复与双方记录，profile协调为v150_two_t_entry；同步后8模块112通过，8个修改文件局部类型及最终差异复核通过，按用户要求本地no-ff合并，不推送。355完成后330恢复唯一in-progress；其他历史待办不在本任务继续开发。尚未执行的完整在线桂林回测与其他任务实股验证继续保留为待验证。
 
 ## 2026-10-22 按用户要求直接合并轧空同日资格与买入
+
+## 2026-10-22 国芳长期空翻多资格防守点修复（待提交验证）
+
+用户指出国芳集团2020-08-14末跌高、2021-02-08至2023-08-01空翻多及2024-02-08交替低点后的资格遗漏。恢复本会话已归档工作树，复用feat-趋势破位资格恢复并快进至本地main 6ecced6。只读取代码与既有冻结证据，不沿用其他会话的诊断执行授权。
+
+静态证据：same_level_recovery._keys原先总取最新H左侧紧邻L；guofang_2024_impulse_defense.json的正式翻多观察明确以2020-08-14 H为key、2021-02-08 L为confirmed_low、2023-08-01 H为攻击，但紧邻L是2022-10-31。此前其他任务的冻结行情诊断已记录2024-02-06误以该局部L触发恢复门槛，旧集成测试随后将这一阻断写成了预期。该历史诊断不是本轮运行结果。
+
+本轮恢复门槛复用六态的_point_facts解析普通/升级正式翻多证据；只在关键位和起点均属于当前同级路径、价格严格突破、知识时钟有效且起点一致时，用正式整波起点替换紧邻低点。缺失、未来、跨路径、价格修订或未严格突破的证明不放宽门槛。真实跌破整波起点继续冻结对应末跌高；乐心旧高未破的三段错误区间仍由原门槛约束。三个级别共用，不加股票/日期特判、不重判几何。
+
+补充合成边界（内部低点破位、整波起点触及/严格破位、无效证据）、既有国芳完整日线+冻结结构的三级回放、事件重放和策略上下文衔接；冻结结构用例沿用原有2024-03-15确认预期，不能将2024-02-08结构低点当成资格确认日。原完整行情集成用例改为要求2021起点/2023高点/2024低点对应确认与实际资格开窗一致，并明确不得在2/6产生旧局部低点门槛；这是本次用户要求的行为修复，旧阻断预期被取代，不代表已执行验证或保证11月某日买入。profile v150、chart history v163隔离旧资格缓存。
+
+开发阶段未运行测试、类型、格式、lint、构建、Git状态/差异检查或运行探针；新代码与回归均待提交时验证，未提交、合并、推送或重启。后续实际提交按风险运行test_same_level_recovery.py、test_squeeze_low_open_confirmation.py、test_lifecycle_impulse_defense.py及修改文件局部mypy；必要时诊断完整行情中首次确认日及独立退出原因。MONOREPO-330保持唯一in-progress，历史未通过证据保留，不标记done。
 
 用户重新要求合并main，并在提交检查运行期间明确要求“直接合并”。本次按最新指令停止正在运行的pytest，不追加回归、类型、格式、lint、构建或运行探针；停止时日志无完整结果，不能宣称新国芳用例或本轮海洋王复测通过。已完成的10个修改Python文件局部mypy（--config-file packages/wavequant-core/pyproject.toml --follow-imports=skip --no-incremental）结果为Success: no issues found in 10 source files；JSON读取、唯一活动功能与Git空白/冲突及范围复核已完成。原失败和后续诊断记录保留，不记作被测试消除。
 

@@ -10,8 +10,10 @@ from typing import cast
 
 import pytest
 
+from wavequant.domain.market_structure.trend_lifecycle import TrendLifecycle
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.market_calculations import market_calculations
+from wavequant.domain.strategies.recovery_entry_history import merge_recovery_entry_history
 from wavequant.domain.strategies.same_level_recovery import RECOVERY_CLEARED, RECOVERY_REQUIRED
 from wavequant.domain.strategies.trading_intervals import (
     TradingEligibility, confirmed_trading_intervals, interval_days,
@@ -221,3 +223,128 @@ def test_malformed_recovery_event_cannot_unlock_a_blocked_path(change: str) -> N
     assert gate.observe(event) is None
     assert gate.observe(alternation(3, 2)) is None
     assert not gate.active
+
+
+
+def whole_flip_sample(level: int) -> tuple[list[Bar], dict[str, object]]:
+    # 仅四个命名日沿用用户报价；中间行情、结构及确认时钟显式缩减。
+    values = [
+        ('2020-08-14', 8.97, 8.97, 7.34, 7.34),
+        ('2021-02-08', 3.85, 3.89, 3.81, 3.85),
+        ('2022-10-10', 6.0, 6.33, 5.8, 6.1),
+        ('2022-10-31', 4.5, 4.6, 4.44, 4.5),
+        ('2023-08-01', 10.58, 11.02, 10.04, 10.10),
+        ('2024-02-06', 4.5, 4.6, 4.3, 4.4),
+        ('2024-02-08', 4.32, 4.75, 4.22, 4.73),
+        ('2024-03-15', 5.9, 6.44, 5.9, 6.44),
+    ]
+    bars = [Bar(datetime.fromisoformat(day), 'TEST', op, high, low, close, 100)
+            for day, op, high, low, close in values]
+    key, origin = point(0, 'H', 8.97, 0), point(1, 'L', 3.81, 1)
+    high = point(4, 'H', 11.02, 5)
+    high['observations'] = [dict(title='翻空为多', available_at=5,
+                                  key=dict(key), confirmed_low=dict(origin))]
+    points = [key, origin, point(2, 'H', 6.33, 2), point(3, 'L', 4.44, 3),
+              high, point(6, 'L', 4.22, 7)]
+    return bars, dict(trend_level=level, strokes=[dict(id='p', points=points)])
+
+
+@pytest.mark.parametrize('level', (1, 2, 3))
+@pytest.mark.parametrize('owned', (False, True))
+@pytest.mark.parametrize('low', (4.3, 3.81, 3.80))
+def test_formal_whole_flip_defends_its_frozen_origin_instead_of_internal_low(
+    level: int, owned: bool, low: float,
+) -> None:
+    bars, row = whole_flip_sample(level)
+    bars[5] = replace(bars[5], low=low)
+    gate = TradingEligibility(level)
+    events: list[Mapping[str, object]] = []
+    before = deepcopy(row)
+    dates: dict[str, int] = {}
+    for now in range(len(bars)):
+        events.extend(gate.advance_recovery(row, bars, now, dates, owned=owned))
+    confirmation = dict(alternation(7, level, flip=4), flip_known_index=5,
+                        counter_index=6, counter_price=4.22)
+    changed = gate.observe(confirmation)
+    if low < 3.81:
+        required = next(event for event in events if event['event'] == RECOVERY_REQUIRED)
+        assert required['bar_index'] == 5
+        assert cast(Mapping[str, object], required['broken_low'])['index'] == 1
+        assert changed is None and not gate.active
+    else:
+        assert not events
+        assert changed is True
+        assert gate.intervals[0].start_index == 7
+        assert gate.intervals[0].start_low_index == 6
+    assert confirmed_trading_intervals([*events, confirmation], len(bars), level) == gate.intervals
+    assert row == before
+
+
+@pytest.mark.parametrize('invalid', ('absent', 'future', 'foreign_origin', 'changed_origin', 'missing_key', 'unbroken_key'))
+def test_only_current_path_causal_strict_flip_proof_can_replace_adjacent_low(invalid: str) -> None:
+    bars, row = whole_flip_sample(2)
+    points = cast(list[dict[str, object]], cast(list[dict[str, object]], row['strokes'])[0]['points'])
+    high = points[4]
+    observation = cast(list[dict[str, object]], high['observations'])[0]
+    if invalid == 'absent':
+        high.pop('observations')
+    elif invalid == 'future':
+        observation['available_at'] = 7
+    elif invalid == 'foreign_origin':
+        points.pop(1)
+    elif invalid == 'changed_origin':
+        observation['confirmed_low'] = dict(points[1], value=3.5)
+    elif invalid == 'missing_key':
+        observation.pop('key')
+    else:
+        points[0]['value'] = 11.02
+        observation['key'] = dict(points[0])
+    gate = TradingEligibility(2)
+    events = [event for now in range(6) for event in gate.advance_recovery(row, bars, now, {})]
+    required = next(event for event in events if event['event'] == RECOVERY_REQUIRED)
+    assert required['bar_index'] == 5
+    assert cast(Mapping[str, object], required['broken_low'])['index'] == 3
+    assert gate.observe(alternation(5, 2, flip=4)) is None
+    assert not gate.active
+
+
+@pytest.mark.parametrize('level', (1, 2, 3))
+@pytest.mark.parametrize('owned', (False, True))
+def test_guofang_published_whole_flip_opens_february_counter_after_real_confirmation(
+    level: int, owned: bool,
+) -> None:
+    # 已保存的本级结构与完整日线，验证六态/恢复门槛/资格/上下文衔接；
+    # 这是冻结结构回放，三级完整几何重建由实股全链路用例另行覆盖。
+    raw = json.loads((Path(__file__).parent / 'fixtures/guofang_2024_impulse_defense.json').read_text('utf-8'))
+    bars = [Bar(datetime.fromisoformat(day), raw['symbol'], *values)
+            for day, *values in raw['bars'] if day <= '2024-03-15']
+    dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
+    row = dict(trend_level=level, strokes=[dict(id='p', points=raw['points'])])
+    engine, gate = TrendLifecycle(), TradingEligibility(level)
+    events: list[Mapping[str, object]] = []
+    days = []
+    for now in range(len(bars)):
+        events.extend(gate.advance_recovery(row, bars, now, dates, owned=owned))
+        polyline = [dict(point, available_at=dates[point['available_at']]) for point in raw['polyline']
+                    if point['available_at'] in dates and dates[point['available_at']] <= now]
+        today = engine.advance([row], bars, now, dates, polyline=polyline)
+        for event in today:
+            gate.observe(event)
+        events.extend(today)
+        days.append(gate.active)
+    low, confirmed = dates['2024-02-08'], dates['2024-03-15']
+    flip = dates['2023-08-01']
+    window = next(window for window in gate.intervals if window.start_low_index == low)
+    assert window.start_flip_index == flip
+    assert window.start_index == confirmed
+    assert not any(days[low:confirmed]) and days[confirmed]
+    assert not any(event['event'] == RECOVERY_REQUIRED and event['bar_index'] == dates['2024-02-06']
+                   for event in events)
+    assert confirmed_trading_intervals(events, len(bars), level) == gate.intervals
+    assert confirmed_trading_intervals(events, confirmed, level) == ()
+    contexts = merge_recovery_entry_history(bars, {}, events)
+    context = next(context for context in contexts[confirmed] if context.trend_level == level)
+    assert context.origin_index == dates['2021-02-08']
+    assert context.flip_high_index == flip
+    assert context.alternation_low_index == low
+    assert contexts[confirmed - 1] == ()

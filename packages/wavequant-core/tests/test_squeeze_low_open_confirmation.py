@@ -15,7 +15,7 @@ from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.attack_quality import squeeze_buy_rejection
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
 from wavequant.domain.strategies.lecture_strategy import lecture_pivot_history
-from wavequant.domain.strategies.same_level_recovery import RECOVERY_CLEARED, RECOVERY_REQUIRED
+from wavequant.domain.strategies.same_level_recovery import RECOVERY_REQUIRED
 
 
 def frozen_input() -> tuple[list[Bar], SystemStrategy]:
@@ -81,28 +81,28 @@ def test_actual_polyline_n_and_low_open_squeeze_remain_valid_structure() -> None
     assert squeeze_buy_rejection(bars[-1], bars[-2], bars[attack - 1]) is None
 
 
-def test_full_history_recovery_barrier_blocks_otherwise_valid_squeeze() -> None:
-    # 同级末升低破位后的恢复规则优先于局部轧空，不能沿用新增规则前的买入预期。
+def test_full_history_keeps_whole_flip_origin_and_opens_february_alternation() -> None:
+    # 最新规则修复防守点来源：2022局部低点不替换2021正式翻多起点。
+    # 完整2018前缀重建几何，不能只注入六态或取消门槛来制造开窗。
     bars, strategy = frozen_input()
     result = generate_system_signals(bars, strategy)
     dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
-    blocked_at = dates['2024-02-06']
-    recovery_high = dates['2023-08-01']
-    broken_low = dates['2022-10-31']
-    barrier = next(row for row in result.audit if row['event'] == RECOVERY_REQUIRED
-                   and row['trend_level'] == 2 and row['bar_index'] == blocked_at)
-    assert barrier['recovery_high']['index'] == recovery_high
-    assert barrier['recovery_high']['value'] == bars[recovery_high].high
-    assert barrier['broken_low']['index'] == broken_low
-    assert barrier['broken_low']['value'] == bars[broken_low].low
-    assert bars[blocked_at].low < bars[broken_low].low
-    assert max(bar.high for bar in bars[blocked_at:]) < bars[recovery_high].high
-    path = barrier['source_path']
-    assert not any(row['event'] == RECOVERY_CLEARED and row['trend_level'] == 2
-                   and row['source_path'] == path and row['bar_index'] >= blocked_at for row in result.audit)
+    origin, flip, counter = (dates['2021-02-08'], dates['2023-08-01'], dates['2024-02-08'])
+    assert bars[dates['2020-08-14']].high == pytest.approx(8.97, abs=.005)
+    assert bars[origin].low == pytest.approx(3.81, abs=.005)
+    assert bars[flip].high == pytest.approx(11.02, abs=.005)
+    assert bars[counter].low == pytest.approx(4.22, abs=.005)
+    assert not any(row['event'] == RECOVERY_REQUIRED and row['trend_level'] == 2
+                   and row['bar_index'] == dates['2024-02-06'] for row in result.audit)
+    confirmation = next(row for row in result.audit if row['event'] == 'trend_lifecycle_state'
+                        and row['trend_level'] == 2 and row.get('state') == '空多交替'
+                        and row.get('origin_index') == origin and row.get('flip_index') == flip
+                        and row.get('counter_index') == counter)
+    assert confirmation['confirmation_evidence']['key_index'] == dates['2020-08-14']
+    opened = next(row for row in result.audit if row['event'] == 'trading_interval_opened'
+                  and row['trend_level'] == 2 and row['start_low_index'] == counter)
+    assert opened['flip_index'] == flip
+    assert opened['bar_index'] == confirmation['bar_index'] > counter
     assert not any(row['event'] == 'trading_interval_opened' and row['trend_level'] == 2
-                   and row['bar_index'] >= blocked_at for row in result.audit)
-    assert not any(signal.side == 'LONG' and signal.bar_index >= blocked_at for signal in result.signals)
-    # 无资格期间不运行交易N扫描；独立结构证据由上一个用例保留。
-    assert not any(row['event'] == 'n_completed' and row.get('direction') == 'up'
-                   and row['bar_index'] == dates['2024-11-27'] for row in result.audit)
+                   and row['start_low_index'] == counter and row['bar_index'] < confirmation['bar_index']
+                   for row in result.audit)
