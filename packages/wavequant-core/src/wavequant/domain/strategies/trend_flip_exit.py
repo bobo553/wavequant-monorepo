@@ -2,12 +2,20 @@
 
 from collections.abc import Iterator, Sequence
 from copy import deepcopy
+from typing import NotRequired, TypedDict
 
 from ..models.model import Bar
 from ..market_structure.observation_window import observation_window_end
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 from .history_cursor import HistoryCursor
 from .breakout_shadow_exit import BREAKOUT_SHADOW_CLEAR, breakout_shadow_days
+
+
+class _SecondaryWaveState(TypedDict):
+    identity: tuple[tuple[int, float], ...] | None
+    attack: int
+    resistance: list[int]
+    indecision: NotRequired[int]
 
 
 def _secondary_wave_setup(levels, known_by):
@@ -43,8 +51,8 @@ def _both_long_shadows(bar):
 
 def _secondary_wave_exhaustion_days(bars, history, *, start_index=0, end_index=None):
     """Close a resisted level-two C wave only after a known equal-leg target fails."""
-    risks = {}
-    state = None
+    risks: dict[int, dict] = {}
+    state: _SecondaryWaveState | None = None
     shadow_policy = ShadowPolicy(0.25)
     end = observation_window_end(len(bars), start_index, end_index)
     for i in range(max(1, start_index), end + 1):
@@ -110,7 +118,7 @@ def _secondary_wave_exhaustion_days(bars, history, *, start_index=0, end_index=N
 
 
 def _last_fall_high_shadow_days(bars, history, reduction_fraction, level, *, start_index=0, end_index=None):
-    risks = {}
+    risks: dict[int, dict] = {}
     state = None
     attempted = set()
     end = observation_window_end(len(bars), start_index, end_index)
@@ -179,7 +187,7 @@ def _last_fall_high_shadow_days(bars, history, reduction_fraction, level, *, sta
 
 
 def _trend_flip_resistance_days(bars, history, *, start_index=0, end_index=None):
-    risks = {}
+    risks: dict[int, dict] = {}
     level = 3
     state = None
     attempted = set()

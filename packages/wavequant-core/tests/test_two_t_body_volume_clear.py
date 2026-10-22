@@ -64,9 +64,9 @@ def test_a_later_bearish_candle_replaces_the_old_bearish_volume_reference():
 
 @pytest.mark.parametrize("opened,closed,qualifies", [
     (5.60, 5.49, True), (5.61, 5.50, True),
-    (5.60, 5.50, False), (5.59, 5.49, False), (5.61, 5.51, False),
+    (5.60, 5.50, True), (5.59, 5.49, False), (5.61, 5.51, False),
 ])
-def test_body_coverage_allows_one_equal_edge_but_requires_an_expanding_body(opened, closed, qualifies):
+def test_body_coverage_includes_both_equal_edges(opened, closed, qualifies):
     bars, event = sample()
     bars[5] = replace(bars[5], open=opened, close=closed)
     assert (two_t_resistance_history(bars, [event]).get(5, {}).get("reason") == REASON) is qualifies

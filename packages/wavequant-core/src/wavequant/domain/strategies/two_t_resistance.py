@@ -21,16 +21,23 @@ TWO_T_VOLUME_BEARISH_REDUCE = "wave_two_t_volume_bearish_reduce"
 def _body_volume_reversal(
     bars: Sequence[Bar], index: int, bearish_index: int | None,
 ) -> dict[str, object] | None:
-    """A bearish body covers yesterday; either prior-session volume benchmark suffices."""
+    """实体反包非十字星，或覆盖十字星实体且收盘严格破低；两种量基准共用。"""
     if index < 1:
         return None
     bar, previous = bars[index], bars[index - 1]
     bearish = bars[bearish_index] if bearish_index is not None and 0 <= bearish_index < index else None
     above_previous = previous.volume > 0 and bar.volume > previous.volume
     above_bearish = bearish is not None and bearish.volume > 0 and bar.volume > bearish.volume
-    if not is_volume_bearish(bar, previous, bearish) or not bearish_body_engulfs(bar, previous):
+    doji_low_break = (previous.open == previous.close and bar.symbol == previous.symbol
+                      and previous.timestamp < bar.timestamp and bar.open >= previous.close
+                      and bar.close < previous.low)
+    if (not is_volume_bearish(bar, previous, bearish)
+            or not (bearish_body_engulfs(bar, previous) or doji_low_break)):
         return None
     return dict(
+        body_reversal_pattern='doji_body_cover_close_below_low' if doji_low_break else 'bearish_body_engulf',
+        previous_is_doji=previous.open == previous.close,
+        close_below_previous_low=bar.close < previous.low,
         observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,
         observed_close=bar.close, observed_volume=bar.volume,
         previous_open=previous.open, previous_high=previous.high,
@@ -159,7 +166,9 @@ class TwoTResistanceHistory(EventHistoryStream):
                 body_source = source
                 body_risk = dict(target_evidence, **reversal, reason=TWO_T_BODY_VOLUME_CLEAR,
                     exit_fraction=1.0,
-                    target_trigger='post_two_t_bearish_body_engulf_volume_gt_last_bearish_or_previous')
+                    target_trigger=('post_two_t_doji_body_cover_close_below_low_volume_clear'
+                                    if reversal['previous_is_doji'] else
+                                    'post_two_t_bearish_body_engulf_volume_gt_last_bearish_or_previous'))
             if index == reached + 1 and _upper_shadow_over_forty_percent(bars[reached]):
                 confirmation = observe_resistance(bars[reached], bar,
                     attack_direction=Direction.UP, shadow_policy=ShadowPolicy(.5))
@@ -276,7 +285,9 @@ class HoldingResistanceHistory(TwoTResistanceHistory):
         if reversal is not None and self.history.get(index, {}).get('exit_fraction') != 1.0:
             self.history[index] = dict(reversal, reason=BODY_VOLUME_CLEAR, exit_fraction=1.0,
                 execution_model='same_day_close',
-                target_trigger='bearish_body_engulf_volume_gt_previous_or_last_bearish')
+                target_trigger=('doji_body_cover_close_below_low_volume_gt_previous_or_last_bearish'
+                                if reversal['previous_is_doji'] else
+                                'bearish_body_engulf_volume_gt_previous_or_last_bearish'))
         if shadow is not None and self.history.get(index, {}).get('exit_fraction') != 1.0:
             self.history[index] = shadow
 

@@ -2,11 +2,13 @@
 
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_HALF_UP
 from fractions import Fraction
 from math import isfinite
 
 from ..market_state.volume_candle import is_bearish_inside_child, is_volume_bearish
 from ..market_structure.observation_window import observation_window_end
+from ..models.a_share_security import a_share_security_spec
 from ..models.model import Bar
 
 
@@ -14,6 +16,7 @@ BREAKOUT_SHADOW_REDUCE = 'breakout_volume_bearish_shadow_reduce_90'
 BREAKOUT_SHADOW_CLEAR = 'breakout_volume_bearish_shadow_next_lower_open_clear'
 BREAKOUT_GAP_BEARISH_CLEAR = 'breakout_gap_volume_large_bearish_clear'
 BREAKOUT_CHILD_CLEAR = 'breakout_volume_bearish_inside_child_clear'
+BREAKOUT_LIMIT_OPEN_REDUCE = 'breakout_double_volume_bearish_limit_open_reduce_90'
 
 
 @dataclass(frozen=True)
@@ -39,6 +42,42 @@ def _latest_highs(levels: Mapping[int, Sequence[Mapping[str, object]]], index: i
     return result
 
 
+def _limit_open_evidence(
+    bar: Bar, previous: Bar, key: Bar, bearish: Bar | None,
+) -> dict[str, object] | None:
+    """倍量开板阴线独立于上影与实体占比；涨停只使用同复权前收。"""
+    if (bar.close >= bar.open or bar.raw_is_st is True or bar.raw_trading_active is False
+            or bar.symbol != previous.symbol or bar.timestamp <= previous.timestamp
+            or bar.adjustment_factor != previous.adjustment_factor
+            or not all(isfinite(value) and value > 0 for value in
+                       (bar.adjustment_factor, previous.close, bar.high, bar.close, bar.volume))):
+        return None
+    try:
+        rate = a_share_security_spec(bar.symbol, bar.timestamp.date()).price_limit_rate
+    except ValueError:
+        return None
+    factor = Decimal(str(bar.adjustment_factor))
+    cent = Decimal('.01')
+    previous_raw = (Decimal(str(previous.close)) / factor).quantize(cent, rounding=ROUND_HALF_UP)
+    high_raw = (Decimal(str(bar.high)) / factor).quantize(cent, rounding=ROUND_HALF_UP)
+    close_raw = (Decimal(str(bar.close)) / factor).quantize(cent, rounding=ROUND_HALF_UP)
+    upper = (previous_raw * (1 + rate)).quantize(cent, rounding=ROUND_HALF_UP)
+    if high_raw != upper or close_raw >= upper:
+        return None
+    for source, reference in (('breakout_key', key), ('previous', previous), ('last_bearish', bearish)):
+        if (reference is None or reference.symbol != bar.symbol or reference.timestamp >= bar.timestamp
+                or not isfinite(reference.volume) or reference.volume <= 0
+                or Fraction(str(bar.volume)) < 2 * Fraction(str(reference.volume))):
+            continue
+        return dict(breakout_limit_up_raw=float(upper), breakout_limit_high_raw=float(high_raw),
+                    breakout_limit_close_raw=float(close_raw), breakout_limit_rate=float(rate),
+                    breakout_double_volume_source=source,
+                    breakout_double_volume_date=reference.timestamp.date().isoformat(),
+                    breakout_double_volume_reference=reference.volume,
+                    breakout_double_volume_ratio=bar.volume / reference.volume)
+    return None
+
+
 def breakout_shadow_days(
     bars: Sequence[Bar], history: Mapping[int, Mapping[int, Sequence[Mapping[str, object]]]],
     *, start_index: int = 0, end_index: int | None = None,
@@ -47,7 +86,7 @@ def breakout_shadow_days(
 
     历史只提供前一日已知的折线／三级前高，不自行从未来K线确认高点。
     每次突破只保留当笔与次笔，跳空放量大阴线或放量阴线子线在当日收盘全清；
-    其余长上影仍先减九成。已发布警告不因随后结构重命名撤销。
+    倍量开板阴线不要求长上影，至少减九成；其余长上影仍先减九成。已发布警告不因随后结构重命名撤销。
     """
     end = observation_window_end(len(bars), start_index, end_index)
     risks: dict[int, dict[str, object]] = {}
@@ -68,11 +107,11 @@ def breakout_shadow_days(
         if previous is None:
             continue
         if warning is not None:
-            warned, proof = warning
+            warned, warning_proof = warning
             warning = None
             if index == warned + 1 and bar.open < bars[warned].close:
                 # 仅携带昨日完整证据和今日开盘，不能附加今日收盘／成交量。
-                clear = {key: value for key, value in proof.items()
+                clear = {key: value for key, value in warning_proof.items()
                          if key not in ('exit_target_fraction', 'observed_open', 'observed_high',
                                         'observed_low', 'observed_close', 'observed_volume')}
                 clear.update(reason=BREAKOUT_SHADOW_CLEAR, exit_fraction=1.0,
@@ -99,16 +138,18 @@ def breakout_shadow_days(
             child_candidate = candidate
         child_clear = (child_candidate is not None and volume_bearish
                        and is_bearish_inside_child(previous, bar))
-        if not volume_bearish or candidate is None and not child_clear:
+        if bar.close >= bar.open or candidate is None and not child_clear:
             continue
         high_price, opened, closed = (Fraction(str(value)) for value in (bar.high, bar.open, bar.close))
         upper, body = high_price - max(opened, closed), abs(opened - closed)
         # 突破次笔也可能向下跳空；开盘严格离开昨日价格区间即可，不要求此前连板。
         gap_direction = ('up' if bar.open > previous.high else
                          'down' if bar.open < previous.low else None)
-        gap_clear = (gap_direction is not None and body >= opened / 20
+        gap_clear = (volume_bearish and gap_direction is not None and body >= opened / 20
                      and body * 2 >= high_price - Fraction(str(bar.low)))
-        if not gap_clear and not child_clear and upper <= body:
+        limit_open = (_limit_open_evidence(bar, previous, bars[candidate[1].index], bearish)
+                      if candidate is not None else None)
+        if not gap_clear and not child_clear and limit_open is None and (not volume_bearish or upper <= body):
             continue
         episode = child_candidate if child_clear else candidate
         assert episode is not None
@@ -140,6 +181,9 @@ def breakout_shadow_days(
                          breakout_gap_direction=gap_direction,
                          previous_high=previous.high, previous_low=previous.low,
                          previous_close=previous.close)
+        elif limit_open is not None:
+            proof.update(limit_open)
+            proof.update(reason=BREAKOUT_LIMIT_OPEN_REDUCE)
         risks[index] = proof
         warning = None if gap_clear or child_clear else (index, proof)
         candidate = None

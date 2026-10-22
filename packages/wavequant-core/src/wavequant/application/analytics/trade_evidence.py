@@ -2,6 +2,11 @@
 from collections import Counter
 from typing import Any
 
+from wavequant.domain.market_state.candle_strength import (
+    QUALIFIED_CLOSE_ENTRY_REASONS, QUALIFIED_FOLLOW_THROUGH_CLOSE, QUALIFIED_VOLUME_BREAKOUT_CLOSE,
+    double_volume_bullish_breakout, volume_gap_follow_through, volume_high_open_rising,
+)
+
 
 def enrich_ledger(bars, result, generated, strategy):
     by_time={b.timestamp.date().isoformat(): b for b in bars}
@@ -165,11 +170,27 @@ def enrich_ledger(bars, result, generated, strategy):
                         proof['qualification_index'] <= signal.bar_index),
                     check('开盘跳空', proof['gap_open'], f"> {proof['previous_high']}（昨天最高）",
                         proof['gap_open'] > proof['previous_high']),
-                    check('分钟高开高走', proof.get('observed_close'), '有分钟守开盘走高；缺分钟按开盘成交',
+                    check('分钟跳空突破', proof.get('observed_close'), '分钟未回补前高缺口且收盘站上开盘；缺分钟按标注模型执行',
                         proof.get('minute_fallback') is True or
-                        proof['observed_close'] > proof['gap_open'] <= proof['observed_low']),
-                    check('结构止损与目标', dict(stop=signal.invalidation_price, target=signal.target_price),
-                        '沿用资格低点和翻多高点；实际成交继续校验账户风险', True)]
+                        proof['observed_close'] > proof['gap_open']
+                        and proof['observed_low'] > proof['previous_high']),
+                    check('结构止损与目标', dict(stop=signal.invalidation_price, target=order.get('target_price')),
+                        '沿用资格低点止损；独立买点按账户风险倍数定目标，翻多高点只作资格证据', True)]
+            elif proof and signal.reason in QUALIFIED_CLOSE_ENTRY_REASONS:
+                previous = bars[signal.bar_index - 1] if signal.bar_index else None
+                quality = (double_volume_bullish_breakout if signal.reason == QUALIFIED_VOLUME_BREAKOUT_CLOSE
+                    else volume_gap_follow_through if signal.reason == QUALIFIED_FOLLOW_THROUGH_CLOSE
+                    else volume_high_open_rising)
+                order['entry_conditions'][:4] = [
+                    check('交易资格区间', proof['qualification_index'], '所选级别资格已确认',
+                        proof['qualification_index'] <= signal.bar_index),
+                    check('收盘量价确认', dict(close=bar.close, volume_multiple=proof.get('volume_multiple')),
+                        signal.regime, previous is not None and quality(bar, previous)),
+                    check('决策时刻', proof.get('decision_timestamp'), '当日收盘确认并执行',
+                        proof.get('execution_model') == 'same_day_close' and signal.trigger_timestamp.hour == 15),
+                    check('止损与账户目标', dict(stop=signal.invalidation_price, target=order.get('target_price')),
+                        '资格低点止损；盈利目标按账户风险倍数计算，不使用已突破的资格高点',
+                        signal.invalidation_price < bar.close)]
             order['trigger_timestamp']=signal.trigger_timestamp.isoformat()
         if order['status']=='filled':
             if order['side']=='BUY' and bar.symbol not in active:

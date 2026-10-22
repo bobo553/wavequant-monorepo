@@ -41,6 +41,7 @@ from .hierarchical_entry import EntryContext
 from .buy_intervals import confirmed_buy_interval_days
 from .backtest_history_reuse import BacktestHistoryReuse, MinuteTradingScope
 from .signal_clock import SignalClock
+from .squeeze_n_round import SqueezeN, SqueezeNRound
 from .strategy_history_cache import StrategyHistoryCache, StrategyHistoryView, first_positive_n_invalidation
 from .shallow_base_breakout import ShallowAlternationCandidate
 from .combined_a_entry import CombinedAContext, combined_a_entry_history
@@ -266,6 +267,7 @@ class DailySignalState:
     signal_counts: Counter[str] = field(default_factory=Counter)
     rejection_counts: Counter[str] = field(default_factory=Counter)
     emitted_attacks: set[int] = field(default_factory=set)
+    squeeze_round: SqueezeNRound = field(default_factory=SqueezeNRound)
     emitted_nested: set[tuple[int, int]] = field(default_factory=set)
     emitted_waves: dict[tuple[int, int, int], tuple[str, float]] = field(default_factory=dict)
     emitted_secondary_reclaims: set[int] = field(default_factory=set)
@@ -348,11 +350,11 @@ def _handoff_n_owners(state: DailySignalState, owners: Mapping[int, str],
     for key in list(state.emitted_waves):
         if key[0] in departed:
             del state.emitted_waves[key]
-    for key, identities in list(state.emitted_nested_owners.items()):
+    for nested_key, identities in list(state.emitted_nested_owners.items()):
         identities.difference_update(departed_ids)
         if not identities:
-            state.emitted_nested.discard(key)
-            del state.emitted_nested_owners[key]
+            state.emitted_nested.discard(nested_key)
+            del state.emitted_nested_owners[nested_key]
     state.c_equal_events[:] = [row for row in state.c_equal_events if row.get('n_id') not in departed_ids]
     state.canonical_n_owners = dict(owners)
 
@@ -460,12 +462,13 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
     consolidation_events, consolidation_proofs = defaultdict(list), {}
     reversal_proofs = {}
     reconfirmation_proofs = {}
-    event_sources = {}
+    event_sources: dict[int, dict[str, object]] = {}
     def log(i, kind, **fields):
         if (kind.startswith(('n_', 'wave_')) or kind in ('regime_confirmation',
                 'volume_reversal_squeeze_confirmed', 'squeeze_resumption_observed',
                 'nested_alternation_breakout_confirmed', 'multilevel_squeeze_confirmed')):
-            fields = {**event_sources.get(fields.get('attack'), {}), **fields}
+            event_attack = fields.get('attack')
+            fields = {**(event_sources.get(event_attack, {}) if event_attack is not None else {}), **fields}
         audit.append(dict(timestamp=bars[i].timestamp.isoformat(), symbol=bars[i].symbol,
                           bar_index=i, event=kind, **fields))
     def n_identity(origin, neckline, pullback, attack, owner):
@@ -771,7 +774,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             **({'inside_pullback_confirmed': True} if inside_pullback else {}),
             **({'outside_close_confirmed': True} if whole_wave and setup.allow_outside_close and setup.pullback.index == t else {}))
     bottom_targets = None
-    measurement_candidates = {}
+    measurement_candidates: dict[int, dict] = {}
     target_retired_at = {}
     a_confirmations = {}
     if whole_wave and secondary_levels is not None:
@@ -814,7 +817,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 canonical_candidates.append(candidate)
                 canonical_attacks.add(key)
         candidates = canonical_candidates
-        source_fields_by_attack = {candidate['attack']: {name: candidate[name]
+        source_fields_by_attack: dict[int, dict[str, object]] = {candidate['attack']: {name: candidate[name]
             for name in ('window_start', 'source_path', 'qualification_window_start') if name in candidate}
             for candidate in candidates if candidate['setup'].direction == Direction.UP}
         counts['completed_up_n'] = sum(c['setup'].direction == Direction.UP for c in candidates)
@@ -874,14 +877,14 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         bottom_targets = (_daily.reformed_target_history.advance(len(bars) - 1, declines, reformed_completions)
                           if _daily is not None and _daily.reformed_target_history is not None else
                           bottom_n_target_history(bars, declines, reformed_completions))
-        for measured in [*candidates, *reformed_measurements]:
-            if measured['setup'].direction != Direction.UP:
+        for measured_candidate in [*candidates, *reformed_measurements]:
+            if measured_candidate['setup'].direction != Direction.UP:
                 continue
-            chosen = bottom_targets.completions[measured['attack']]
-            if (bottom_targets.qualifications[measured['attack']].eligible
-                    and measured['setup'].origin.index == chosen.origin
-                    and max(measured['attack'], measured['known_at']) == chosen.known_at):
-                measurement_candidates.setdefault(measured['attack'], measured)
+            chosen = bottom_targets.completions[measured_candidate['attack']]
+            if (bottom_targets.qualifications[measured_candidate['attack']].eligible
+                    and measured_candidate['setup'].origin.index == chosen.origin
+                    and max(measured_candidate['attack'], measured_candidate['known_at']) == chosen.known_at):
+                measurement_candidates.setdefault(measured_candidate['attack'], measured_candidate)
         for row in audit:
             if row['event'] != 'n_completed' or row['direction'] != 'up':
                 continue
@@ -974,7 +977,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         ) for row in positive_events if row['target_eligible']]
         turns = { (point.index, point.known_at) for highs in confirmed_declines.values() for point in highs }
         known_turns = [AWaveTurn(*turn) for turn in sorted(turns)]
-        fields_by_identity = {row['n_id']: {name: row[name]
+        fields_by_identity: dict[str, dict[str, object]] = {row['n_id']: {name: row[name]
             for name in ('window_start', 'source_path', 'qualification_window_start') if name in row}
             for row in positive_events}
         a_history = (_daily.a_wave_stream.advance(len(bars) - 1, seeds, known_turns)
@@ -1281,8 +1284,8 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             projection_setup = WaveProjectionSetup(
                 candidate['setup'].origin.index, candidate['attack'], squeeze,
                 n.anchors.origin, n.targets.box_anchor, n.targets.two_t, n.completion.defense)
-            projection_source = dict(n_id=identity, **{name: candidate[name]
-                for name in ('window_start', 'source_path', 'qualification_window_start') if name in candidate})
+            projection_source: dict[str, object] = {'n_id': identity, **{name: candidate[name]
+                for name in ('window_start', 'source_path', 'qualification_window_start') if name in candidate}}
             log(max(squeeze, candidate['known_at']), 'wave_continuation_ready', wave_epoch=candidate['epoch'],
                 **asdict(projection_setup), **projection_source)
             prepared_projection = (_analysis.projections.get((projection_setup, retirement))
@@ -1509,6 +1512,18 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         return select_entry(hierarchy_permissions.get(i,()),hierarchy_permissions.get(c['attack'],()),
                             buy_interval_level=config.buy_interval_level, **params)
     emitted_attacks = _daily.emitted_attacks if _daily is not None else set()
+    squeeze_round = _daily.squeeze_round if _daily is not None else SqueezeNRound()
+    squeeze_window_start = _daily.window_start if _daily is not None else 0
+    squeeze_sources = {c['n_id']: SqueezeN(
+        c['setup'].origin.index, c['setup'].neckline.index, c['setup'].pullback.index,
+        c['attack'], max(c['attack'], c['known_at']), c['n'].completion.defense)
+        for c in candidates if whole_wave and c['setup'].direction == Direction.UP}
+    squeeze_candidates = [(c, squeeze_sources[c['n_id']]) for c in candidates
+        if whole_wave and c['setup'].direction == Direction.UP
+        and c['attack'] >= c.get('qualification_window_start',
+            _daily.window_start if _daily is not None else 0)]
+    squeeze_invalidations = {row['n_id']: max(row['bar_index'], row['known_at'])
+        for row in audit if row['event'] == 'n_invalidated'}
     emitted_nested = _daily.emitted_nested if _daily is not None else set()
     daily_risks = (_daily.risk_histories.advance(len(bars) - 1, audit)
                    if whole_wave and _daily is not None and _daily.risk_histories is not None else None)
@@ -1697,6 +1712,13 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             # entry below; ordinary local N candidates remain epoch-scoped.
             if c['setup'].direction != Direction.UP or (c['attack'] in emitted_attacks and consolidation is None and wave is None) or (epochs[i] != c['epoch'] and wave is None):
                 continue
+            # 独立 A/B/C 推进保留自己的冻结防守；各条 N 轧空入口共用首 N 轮次。
+            if whole_wave and wave is None:
+                owner_rejection = squeeze_round.rejection(squeeze_sources[c['n_id']])
+                if owner_rejection is not None:
+                    log(i, 'entry_rejected', reason=owner_rejection, attack=c['attack'],
+                        **squeeze_round.state.evidence())
+                    continue
             counts['entry_candidate_evaluations'] += 1
             if candle_rejection_for(c['attack']) is not None:
                 continue
@@ -1818,7 +1840,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             stages: tuple[str, ...] = ('equal_wave', 'one_p', 'two_t')
             if bottom_targets is not None:
                 source = live_target_source
-                measurement = bottom_candidates.get(source, c)
+                measurement = bottom_candidates.get(source, c) if source is not None else c
                 if source is None:
                     stages = ('equal_wave',)
             measured_n = measurement['n']
@@ -1884,6 +1906,8 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 'system_'+tag, bars[c['attack']].timestamp, hierarchy_proof['counter_ratio'] if whole_wave and hierarchy_proof else c['force'].ratio, rvol,
                 entry_regime.value if entry_regime else 'n_only_ablation', targets[0], config.minimum_reward_risk))
             emitted_attacks.add(c['attack'])
+            if whole_wave and wave is None:
+                log(i, 'squeeze_round_changed', **squeeze_round.consume(squeeze_sources[c['n_id']], i))
             if nested_key is not None:
                 emitted_nested.add(nested_key)
                 if _daily is not None:
@@ -1891,6 +1915,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             if wave is not None and wave_key is not None:
                 emitted_waves[wave_key] = wave_confirmation_state(wave)
             log(i, 'long_signal', channel=tag, attack=c['attack'], stop=stop, target=targets[0], rvol=rvol,
+                **(squeeze_round.state.evidence() if whole_wave and wave is None else {}),
                 **(dict(target_source_attack=live_target_source,
                         target_source_id=(n_identity(
                             bottom_candidates[live_target_source]['setup'].origin.index,
@@ -2026,6 +2051,10 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         if (reclaim is not None and cast(int, reclaim['secondary_attack_index']) not in emitted_secondary_reclaims
                 and not any(s.side == 'LONG' for s in signals[context.signal_start:])):
             reclaim_rejection = target_risk or five_top_entry_risk
+            # 抵抗收复是同轮轧空的补充入口，不能在首 N 已买后绕过轮次去重。
+            if whole_wave and squeeze_round.state.emitted_at is not None:
+                reclaim_rejection = dict(reason='first_n_squeeze_already_emitted',
+                    **squeeze_round.state.evidence())
             pressure = secondary_resistance.get(i)
             if (reclaim_rejection is None and pressure is not None
                     and not pressure.get('secondary_resistance_resolved')
@@ -2112,9 +2141,29 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         return live_target_source
 
     def consume_signal_day(i: int) -> None:
-        nonlocal last_progress, has_buy_signal
+        nonlocal last_progress, has_buy_signal, squeeze_window_start
         live_target_source = observe_target_day(i)
         bar = bars[i]
+        if whole_wave:
+            if (_minute_scope is not None and i == _minute_scope.index
+                    and _minute_scope.squeeze_checkpoint is not None):
+                squeeze_round.state = _minute_scope.squeeze_checkpoint
+            broken = squeeze_round.observe_low(i, bar.low)
+            if broken is not None:
+                log(i, 'squeeze_round_changed', **broken)
+            if _daily is None and entry_days is not None:
+                if entry_days[i] and (i == 0 or not entry_days[i - 1]):
+                    squeeze_window_start = i
+                elif not entry_days[i]:
+                    retired = squeeze_round.close_unemitted()
+                    if retired is not None:
+                        log(i, 'squeeze_round_changed', **retired)
+            selected = squeeze_round.select(i, (n for c, n in squeeze_candidates
+                if (entry_days is None or entry_days[i]) and c['epoch'] == epochs[i]
+                and n.attack >= squeeze_window_start
+                and squeeze_invalidations.get(c['n_id'], len(bars)) > i))
+            if selected is not None:
+                log(i, 'squeeze_round_changed', **selected)
         # 排序和最终入场判断在同日消费相同区间；拒绝结果也只复用到本日结束。
         current_selections.clear()
         percent = i * 100 // len(bars)

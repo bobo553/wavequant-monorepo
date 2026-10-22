@@ -88,7 +88,7 @@ def test_available_minutes_without_high_open_rise_do_not_fall_back_to_open(chang
     bars, generated, strategy = sample()
     minute = minutes(bars)
     if change == 'low':
-        minute[0] = replace(minute[0], low=10.9)
+        minute[0] = replace(minute[0], low=10.7)
     else:
         minute = [replace(row, low=11, close=11) for row in minute]
     result, executions, fallbacks = resolve(bars, generated, strategy, lambda _: minute)
@@ -127,7 +127,7 @@ def test_missing_coverage_falls_back_but_invalid_minutes_raise():
         resolve(bars, generated, strategy, invalid)
 
 
-def test_huaci_september15_existing_published_qualification_gets_open_fill():
+def test_huaci_september15_double_volume_without_minutes_gets_close_fill():
     fixtures = Path(__file__).parent / 'fixtures'
     early = json.loads((fixtures / 'huaci_2024_key_break.json').read_text(encoding='utf-8'))
     later = json.loads((fixtures / 'huaci_wave_continuation.json').read_text(encoding='utf-8'))
@@ -153,8 +153,11 @@ def test_huaci_september15_existing_published_qualification_gets_open_fill():
         StrategyConfig(entry_at_close=True, slippage_bps_per_side=0), entry_executions=executions,
         start='2026-09-15', end='2026-09-15')
     assert account.orders[0]['status'] == 'filled'
-    assert account.orders[0]['price'] == pytest.approx(16.987131249638352)
-    assert account.orders[0]['execution_timestamp'] == '2026-09-15T09:30:00'
+    assert not executions
+    assert result.signals[0].reason == 'qualified_double_volume_breakout_close'
+    assert account.orders[0]['price'] == pytest.approx(bars[-1].close)
+    assert account.orders[0]['execution_model'] == 'same_day_close'
+    assert account.orders[0]['execution_timestamp'] == '2026-09-15T15:00:00'
 
 
 @pytest.mark.parametrize('minute_enabled', [False, True])

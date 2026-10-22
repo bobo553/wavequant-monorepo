@@ -7,6 +7,8 @@ import {
     adoptServerBacktestHistory,
     expiredBacktestSnapshot,
     formatBacktestElapsed,
+    formatCompletedBacktestElapsed,
+    completedBacktestElapsed,
     formatBacktestProgress,
     formatBacktestStage,
     historicalBacktestStatuses,
@@ -296,4 +298,25 @@ test("running progress accepts only an actual server percentage", () => {
     assert.equal(formatBacktestProgress(undefined), "");
     assert.equal(formatBacktestProgress(100), "");
     assert.equal(formatBacktestProgress(42.5), "");
+});
+
+test("completed duration preserves seconds and rejects unknown values", () => {
+    assert.equal(formatCompletedBacktestElapsed(155.9), "回测耗时 2 分钟 35 秒");
+    assert.equal(formatCompletedBacktestElapsed(3661), "回测耗时 1 小时 1 分钟 1 秒");
+    assert.equal(formatCompletedBacktestElapsed(0), "回测耗时 0 秒");
+    for (const value of [undefined, null, NaN, Infinity, -1, "155"])
+        assert.equal(formatCompletedBacktestElapsed(value), "");
+});
+
+test("completed duration belongs to the exact finished request and survives history eviction", () => {
+    const task = { status: "completed", symbol: "sz.000978", version: "v1",
+        path: "/api/akshare-backtest", params: { symbol: "sz.000978", asof: "2026-10-20", backtest_job: "job1" } };
+    const record = { ...task, job: "job1", elapsed_seconds: 155 };
+    assert.equal(completedBacktestElapsed(task, [record]), "回测耗时 2 分钟 35 秒");
+    for (const change of [{ job: "other" }, { symbol: "sz.000001" }, { version: "v2" },
+        { path: "/api/tdx-backtest" }, { status: "running" }, { params: { ...task.params, asof: "2026-10-19" } }])
+        assert.equal(completedBacktestElapsed(task, [{ ...record, ...change }]), "");
+    assert.equal(completedBacktestElapsed({ ...task, status: "running" }, [record]), "");
+    assert.equal(completedBacktestElapsed(task, [{ ...record, elapsed_seconds: undefined }]), "");
+    assert.equal(completedBacktestElapsed({ ...task, elapsedSeconds: 155 }, []), "回测耗时 2 分钟 35 秒");
 });

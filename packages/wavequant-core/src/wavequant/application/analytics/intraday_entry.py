@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Callable, TypedDict
 
 from wavequant.domain.market_state.volume_candle import volume_bearish_entry_rejection
 from wavequant.domain.market_state.candle_strength import (
-    QUALIFIED_CLOSE_ENTRY_REASONS, QUALIFIED_FOLLOW_THROUGH_CLOSE, QUALIFIED_RISING_CLOSE,
+    QUALIFIED_CLOSE_ENTRY_REASONS, QUALIFIED_FOLLOW_THROUGH_CLOSE, QUALIFIED_GAP_ENTRY, QUALIFIED_RISING_CLOSE,
     QUALIFIED_VOLUME_BREAKOUT_CLOSE,
     double_volume_bullish_breakout, volume_gap_follow_through, volume_high_open_rising,
 )
@@ -23,6 +23,7 @@ from wavequant.domain.strategies.n_consolidation import consolidation_gap
 from wavequant.domain.strategies.trading_intervals import TradingInterval
 from wavequant.domain.strategies.hierarchical_entry import EntryContext
 from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse, MinuteTradingScope
+from wavequant.domain.strategies.squeeze_n_round import SqueezeRoundState
 from wavequant.domain.strategies.wave_continuation import (
     wave_confirmation_is_new,
     wave_confirmation_state,
@@ -128,7 +129,8 @@ def _qualified_gap_entries(
     for i in ([only_index] if only_index is not None else range(1, len(bars))):
         if i <= 0 or bars[i].open <= bars[i - 1].high:
             continue
-        active = [window for window in intervals if window.start_index <= i
+        active = [window for window in intervals if window.trend_level == strategy.buy_interval_level
+            and window.start_index <= i
             and (window.end_index is None or i < window.end_index)]
         window = max(active, key=lambda value: value.start_index, default=None)
         if window is None:
@@ -143,8 +145,11 @@ def _qualified_gap_entries(
         if _reject_polyline_entry(bars, i, gate, signals, audit):
             gap_days.add(i)
             continue
-        # 当日首次突破只有收盘证据；后续守稳收盘信号也不能被开盘模拟覆盖。
-        if any(row.bar_index == i and row.reason in QUALIFIED_CLOSE_ENTRY_REASONS for row in signals):
+        close_signal = next((row for row in signals if row.bar_index == i
+            and row.reason in QUALIFIED_CLOSE_ENTRY_REASONS), None)
+        # 当日结构放行及次日守稳仅有收盘证据；普通倍量候选可让真实分钟买点优先。
+        if close_signal is not None and (i in gate.breakouts
+                or close_signal.reason != QUALIFIED_VOLUME_BREAKOUT_CLOSE):
             continue
         gap_days.add(i)
         rejection = volume_bearish_entry_rejection(bars, i)
@@ -170,6 +175,8 @@ def _qualified_gap_entries(
             qualification_index=window.start_index, trend_level=strategy.buy_interval_level,
             source_path=window.source_path, gap_open=bar.open, previous_high=bars[i - 1].high)
         if not minute:
+            if close_signal is not None:
+                continue
             decision = execution_at = bar.timestamp.replace(hour=9, minute=30)
             price, buyable = bar.open, bar.buyable
             remaining_low, remaining_high = bar.low, bar.high
@@ -179,14 +186,14 @@ def _qualified_gap_entries(
                 purpose='qualified_gap_entry', reason='minute_history_missing',
                 execution_model='same_day_open', coverage=fallback))
         else:
-            # 高开高走：至观察时未跌破开盘，完整五分钟收盘严格高于开盘。
+            # 开盘价附近的回踩不等于回补缺口；只消费已完成分钟，收盘须重新站上开盘。
             observed_low = float('inf')
             observed_high = observed_volume = 0.0
             for offset, observed in enumerate(minute[:-1]):
                 observed_low = min(observed_low, observed.low * bar.adjustment_factor)
                 observed_high = max(observed_high, observed.high * bar.adjustment_factor)
                 observed_volume += observed.volume
-                if observed_low < bar.open:
+                if observed_low <= bars[i - 1].high:
                     break
                 if observed.close * bar.adjustment_factor <= bar.open:
                     continue
@@ -205,11 +212,11 @@ def _qualified_gap_entries(
                 break
             else:
                 continue
-            if observed_low < bar.open:
+            if observed_low <= bars[i - 1].high:
                 continue
         timing.update(decision_timestamp=decision.isoformat(), execution_timestamp=execution_at.isoformat())
         signal = Signal(bar.timestamp, bar.symbol, i, 'LONG', price, window.start_low_price,
-            '资格区间跳空买入', decision, 0, None, '跳空高开', confirmation['breakout_level'],
+            QUALIFIED_GAP_ENTRY, decision, 0, None, '跳空高开', None,
             strategy.minimum_reward_risk)
         executions[bar.symbol, i] = dict(signal=signal, price=price, buyable=buyable, timing=timing,
             remaining_low=remaining_low, remaining_high=remaining_high)
@@ -218,7 +225,9 @@ def _qualified_gap_entries(
             and row['event'] in ('long_signal', 'long_transition_evidence'))]
         for event in ('long_signal', 'long_transition_evidence'):
             audit.append(dict(event=event, bar_index=i, timestamp=bar.timestamp.isoformat(), symbol=bar.symbol,
-                buy_point_type='qualified_gap_open', stop=signal.invalidation_price, target=signal.target_price, **timing))
+                buy_point_type='qualified_gap_open', stop=signal.invalidation_price, target=signal.target_price,
+                qualification_breakout_level=confirmation['breakout_level'], target_policy='account_r_multiple',
+                **timing))
     return SystemResult(sorted(signals, key=lambda row: (row.timestamp, row.side)), audit,
         dict(generated.counts, long_signals=sum(row.side == 'LONG' for row in signals))), executions, fallbacks, gap_days
 
@@ -228,7 +237,7 @@ def _qualified_rising_close_entries(
     only_index: int | None, intervals: Sequence[TradingInterval] | None,
     polyline_gate: PolylineBuyGate | None = None,
 ) -> tuple[SystemResult, set[int]]:
-    """已有资格内高开强阳或倍量突破在收盘入场；严格跳空仍沿原分钟通道。"""
+    """已有资格内高开强阳或倍量突破在收盘入场；跳空倍量保留收盘兜底。"""
     from wavequant.domain.strategies.trading_intervals import confirmed_trading_intervals
 
     days: set[int] = set()
@@ -243,9 +252,10 @@ def _qualified_rising_close_entries(
             continue
         follow_through = (i - 1 in gate.breakouts and gate.source_epochs.get(i) == gate.source_epochs.get(i - 1)
                           and volume_gap_follow_through(bars[i], bars[i - 1]))
-        if bars[i].open > bars[i - 1].high and i not in gate.breakouts and not follow_through:
-            continue
         breakout = double_volume_bullish_breakout(bars[i], bars[i - 1])
+        if (bars[i].open > bars[i - 1].high and i not in gate.breakouts
+                and not follow_through and not breakout):
+            continue
         if not breakout and not follow_through and not volume_high_open_rising(bars[i], bars[i - 1]):
             continue
         window = max((w for w in intervals if w.trend_level == strategy.buy_interval_level
@@ -271,7 +281,7 @@ def _qualified_rising_close_entries(
             reason, decision, 0, bar.volume / bars[i - 1].volume if breakout else None,
             '突破次日放量跳空守稳' if follow_through else
             '倍量中大阳高位收盘突破' if breakout else '放量高开高走',
-            confirmation['breakout_level'], strategy.minimum_reward_risk)
+            None, strategy.minimum_reward_risk)
         days.add(i)
         signals = [row for row in signals if not (row.bar_index == i and row.side == 'LONG')] + [signal]
         audit = [row for row in audit if not (row['bar_index'] == i
@@ -279,6 +289,7 @@ def _qualified_rising_close_entries(
         for event in ('long_signal', 'long_transition_evidence'):
             audit.append(dict(event=event, bar_index=i, timestamp=bar.timestamp.isoformat(), symbol=bar.symbol,
                 buy_point_type=reason, stop=signal.invalidation_price, target=signal.target_price,
+                qualification_breakout_level=confirmation['breakout_level'], target_policy='account_r_multiple',
                 execution_model='same_day_close', decision_source='daily_close',
                 decision_timestamp=decision.isoformat(), qualification_index=window.start_index,
                 trend_level=strategy.buy_interval_level, source_path=window.source_path,
@@ -337,7 +348,8 @@ def resolve_consolidation_entries(
     if prepared_analysis is not None:
         assert only_index is not None and trading_window_start is not None
         minute_scope = MinuteTradingScope.from_analysis(prepared_analysis,
-            index=only_index, window_start=trading_window_start)
+            index=only_index, window_start=trading_window_start,
+            squeeze_checkpoint=SqueezeRoundState.before(generated.audit, only_index))
         # A close-confirmed new qualification cannot authorize earlier minutes.
         if minute_scope is None:
             return generated, gap_executions, gap_fallbacks
