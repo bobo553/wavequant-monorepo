@@ -83,7 +83,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'configurable_n_target_trend_confirmation_v147_gap_bearish_' + variant
+    config['profile_version'] = 'configurable_n_target_trend_confirmation_v148_bullish_shadow_' + variant
     config['definition']['same_level_eligibility_recovery'] = (
         'broken_last_rise_low_blocks_until_strict_last_fall_high_break_confirmed_decline_can_replace_key')
     config['definition']['eligible_n_candidates'] = (
@@ -212,6 +212,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         missing_minute_policy='same_source_daily_close_with_explicit_fallback_evidence',
         inverse_n_after_reduction='cumulative_90_percent_of_initial_holding_other_full_risk_exits_take_priority',
         small_n_reduction='body_le_1pct_and_lt_previous_10_mean_inside_latest_valid_confirmed_n_candle_then_cumulative_30',
+        double_bullish_shadow_exit='latest_bullish_volume_ge_2x_previous_upper_gt_body_then_later_volume_bearish_close_strictly_below_warning_close_clear_remaining_once',
         gap_volume_bearish_exit='open_below_previous_close_medium_bearish_body_2pct_half_range_volume_gt_previous_or_last_bearish_same_close_clear_remaining',
         volume_down_exit='volume_gt_previous_bearish_close_below_previous_same_close_cumulative_70_next_session_gap_fade_or_bearish_close_below_warning_low_or_frozen_support_low_break_close_clear',
         bearish_mother_child_pattern_exit='non_doji_mother_contains_bearish_child_one_strict_edge_no_pattern_reduction_any_later_low_and_close_strict_break_volume_gt_positive_child_or_last_bearish_volume_same_close_full_clear',
