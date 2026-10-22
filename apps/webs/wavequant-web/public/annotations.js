@@ -165,6 +165,8 @@ const EXECUTION_RISK_REASONS = new Set([
     "insufficient_net_reward_risk",
 ]);
 export function reasonText(reason) {
+    if (reason === "one_p_before_last_fall_high_breakout_no_entry")
+        return "正 N 先达一饱后突破末跌高，突破当日及随后两个交易日禁买，观察空头抵抗";
     return (reason || "")
         .split("|")
         .map((r) => REASONS[r] || r)

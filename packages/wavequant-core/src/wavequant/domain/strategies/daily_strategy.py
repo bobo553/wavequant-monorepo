@@ -178,6 +178,8 @@ def daily_signals(
         result.audit[:] = [row for row in result.audit
                            if row['event'] not in ('n_structure_completed', 'n_structure_invalidated')]
         result.audit.extend(analysis.structural_n_events)
+        result.audit[:] = [row for row in result.audit if row['event'] != 'one_p_breakout_watch']
+        result.audit.extend(analysis.one_p_breakout_events)
         decision_seconds += monotonic() - started
         account_started = monotonic()
         report_phase('处理分钟成交、账户与图表快照')
