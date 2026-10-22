@@ -41,7 +41,7 @@ from .hierarchical_entry import EntryContext
 from .buy_intervals import confirmed_buy_interval_days
 from .backtest_history_reuse import BacktestHistoryReuse, MinuteTradingScope
 from .signal_clock import SignalClock
-from .squeeze_n_round import SqueezeN, SqueezeNRound, joint_squeeze_confirmations
+from .squeeze_n_round import SqueezeN, SqueezeNRound
 from .strategy_history_cache import StrategyHistoryCache, StrategyHistoryView, first_positive_n_invalidation
 from .shallow_base_breakout import ShallowAlternationCandidate
 from .combined_a_entry import CombinedAContext, combined_a_entry_history
@@ -1518,17 +1518,10 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         c['setup'].origin.index, c['setup'].neckline.index, c['setup'].pullback.index,
         c['attack'], max(c['attack'], c['known_at']), c['n'].completion.defense)
         for c in candidates if whole_wave and c['setup'].direction == Direction.UP}
-    joint_confirmations = (joint_squeeze_confirmations(hierarchy_events, config.buy_interval_level)
-                           if whole_wave and hierarchical else set())
-    # 倒 N 没有正 N 身份；共同确认只读取已进入轧空来源的正 N 候选。
-    joint_squeeze_windows = {c['n_id']: c['qualification_window_start'] for c in candidates
-        if whole_wave and c['setup'].direction == Direction.UP and c['n_id'] in squeeze_sources
-        and (c.get('source_path'), c.get('qualification_window_start'),
-             squeeze_sources[c['n_id']].identity) in joint_confirmations}
     squeeze_candidates = [(c, squeeze_sources[c['n_id']]) for c in candidates
         if whole_wave and c['setup'].direction == Direction.UP
-        and (c['attack'] >= c.get('qualification_window_start',
-            _daily.window_start if _daily is not None else 0) or c['n_id'] in joint_squeeze_windows)]
+        and c['attack'] >= c.get('qualification_window_start',
+            _daily.window_start if _daily is not None else 0)]
     squeeze_invalidations = {row['n_id']: max(row['bar_index'], row['known_at'])
         for row in audit if row['event'] == 'n_invalidated'}
     emitted_nested = _daily.emitted_nested if _daily is not None else set()
@@ -2167,8 +2160,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                         log(i, 'squeeze_round_changed', **retired)
             selected = squeeze_round.select(i, (n for c, n in squeeze_candidates
                 if (entry_days is None or entry_days[i]) and c['epoch'] == epochs[i]
-                and (n.attack >= squeeze_window_start
-                     or joint_squeeze_windows.get(c['n_id']) == squeeze_window_start)
+                and n.attack >= squeeze_window_start
                 and squeeze_invalidations.get(c['n_id'], len(bars)) > i))
             if selected is not None:
                 log(i, 'squeeze_round_changed', **selected)
