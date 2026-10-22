@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from ..models.model import Bar
 from ..market_state.volume_candle import is_bearish_inside_child, is_long_upper_shadow, is_volume_bearish
 from .double_bullish_shadow_exit import DoubleVolumeBullishShadowExit
+from .double_volume_lower_close_exit import observe_double_volume_lower_close_exit
 from .gap_bearish_exit import observe_gap_bearish_exit
 from .limit_up_distribution_exit import is_sealed_limit_up, observe_limit_up_distribution_exit
 from ..market_structure.polyline import observe_bar_relations
@@ -646,6 +647,9 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
     gap_bearish = observe_gap_bearish_exit(bars, index)
     if gap_bearish is not None:
         return gap_bearish
+    double_volume_lower_close = observe_double_volume_lower_close_exit(bars, index)
+    if double_volume_lower_close is not None:
+        return double_volume_lower_close
     bar, previous = bars[index], bars[index - 1]
     # 只看紧邻上一交易日的已收盘事实，不需要持仓曾执行减仓，也不延长观察窗。
     if index >= 2:

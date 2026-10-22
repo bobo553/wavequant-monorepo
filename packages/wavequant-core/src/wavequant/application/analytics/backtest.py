@@ -31,6 +31,7 @@ from wavequant.domain.market_state.volume_candle import (
     volume_shadow_next_open_eligible, volume_shadow_next_decline, VOLUME_SHADOW_NEXT_WEAK_CLEAR,
 )
 from wavequant.domain.strategies.double_bullish_shadow_exit import DOUBLE_VOLUME_BULLISH_SHADOW_CLEAR
+from wavequant.domain.strategies.double_volume_lower_close_exit import DOUBLE_VOLUME_NEXT_LOWER_CLOSE_CLEAR
 from wavequant.domain.strategies.gap_bearish_exit import GAP_VOLUME_BEARISH_CLEAR
 from wavequant.domain.strategies.gap_entry_gate import GapEntryGate
 from wavequant.domain.strategies.two_t_entry_gate import entry_targets_from_events, two_t_entry_rejection
@@ -1237,7 +1238,8 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                 if volume_exit is not None and volume_exit['reason'] in (
                         EXTREME_VOLUME_CLEAR, DOUBLE_VOLUME_BEARISH_SHADOW_REDUCE, EXTREME_VOLUME_LIMIT_NEXT_CLEAR,
                         DOUBLE_VOLUME_BULLISH_FADE_REDUCE, TRIPLE_VOLUME_BREAKOUT_DOUBLE_BEARISH_CLEAR,
-                        GAP_VOLUME_BEARISH_CLEAR, DOUBLE_VOLUME_BULLISH_SHADOW_CLEAR):
+                        GAP_VOLUME_BEARISH_CLEAR, DOUBLE_VOLUME_BULLISH_SHADOW_CLEAR,
+                        DOUBLE_VOLUME_NEXT_LOWER_CLOSE_CLEAR):
                     # 新量价风险只覆盖较轻减仓，已有全清和更高减仓目标保持优先。
                     if pressure is not None and pressure['exit_fraction'] < volume_exit['exit_fraction']:
                         pressure = None
