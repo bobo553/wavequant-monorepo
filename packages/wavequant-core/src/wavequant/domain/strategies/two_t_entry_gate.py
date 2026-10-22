@@ -19,10 +19,13 @@ class TwoTEntryTarget:
     source_id: str | None = None
 
 
-def entry_target_from_events(
+def entry_targets_from_events(
     events: Sequence[Mapping[str, object]], index: int, *, at_close: bool,
-) -> TwoTEntryTarget | None:
-    """补充入口只消费正式测幅来源；盘中不能使用当日收盘的新 N 或退休事实。"""
+) -> tuple[TwoTEntryTarget, ...]:
+    """保留所有未失效测幅的入场风险；新下降段只交接主测幅，不解除旧目标风险。
+
+    破位和资格关闭仍终止对应来源，盘中不能使用当日收盘才可知的事实。
+    """
     cutoff = index if at_close else index - 1
     sources: list[TwoTEntryTarget] = []
     retired_ids: set[str] = set()
@@ -35,6 +38,8 @@ def entry_target_from_events(
         kind = event.get('event')
         identity = event.get('n_id')
         if kind in ('n_target_source_retired', 'n_invalidated'):
+            if kind == 'n_target_source_retired' and event.get('reason') == 'new_confirmed_decline':
+                continue
             if isinstance(identity, str):
                 retired_ids.add(identity)
             elif type(attack := event.get('attack')) is int:
@@ -51,15 +56,26 @@ def entry_target_from_events(
             if available <= cutoff:
                 sources.append(TwoTEntryTarget(day, available, float(one_p), float(two_t),
                     identity if isinstance(identity, str) else None))
-    source = max(sources, key=lambda value: (value.known_at, value.attack), default=None)
-    # 新来源失效后不能复活更早的测幅。
-    if source is None or source.source_id in retired_ids or source.attack in retired_attacks:
-        return None
-    return source
+    return tuple(sorted((source for source in sources
+        if source.source_id not in retired_ids and source.attack not in retired_attacks),
+        key=lambda value: (value.known_at, value.attack), reverse=True))
 
 
 def two_t_entry_rejection(
-    bars: Sequence[Bar], index: int, source: TwoTEntryTarget | None, *,
+    bars: Sequence[Bar], index: int, sources: Sequence[TwoTEntryTarget], *,
+    observed_high: float, observed_close: float, at_close: bool,
+) -> dict[str, object] | None:
+    """任一仍有效的原 N 首次到二吐即拒绝，较新的未到价目标不能覆盖它。"""
+    for source in sources:
+        rejected = _target_rejection(bars, index, source,
+            observed_high=observed_high, observed_close=observed_close, at_close=at_close)
+        if rejected is not None:
+            return rejected
+    return None
+
+
+def _target_rejection(
+    bars: Sequence[Bar], index: int, source: TwoTEntryTarget, *,
     observed_high: float, observed_close: float, at_close: bool,
 ) -> dict[str, object] | None:
     """只使用决策时可见极值；首次可知日的目标只由收盘消费。
@@ -67,7 +83,7 @@ def two_t_entry_rejection(
     已在此前交易日完成二吐的来源交回原有后续波段规则，不把到价变成永久禁买。
     只有当前已触及时才读取该来源此前的前缀，避免为未到价的每日候选重复扫描。
     """
-    if source is None or not 0 <= source.attack <= source.known_at <= index < len(bars):
+    if not 0 <= source.attack <= source.known_at <= index < len(bars):
         return None
     if not all(isfinite(value) for value in (source.one_p, source.two_t, observed_high, observed_close)):
         return None

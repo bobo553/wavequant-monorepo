@@ -49,7 +49,7 @@ from .secondary_reclaim_entry import SecondaryHigh, secondary_reclaim_history
 from .secondary_pullback_entry import SecondaryPullbackCandidate, secondary_pullback_history
 from .attack_quality import squeeze_buy_rejection, squeeze_volume_pass, v3_positive_n_attack_rejection
 from .gap_entry_gate import GapEntryGate
-from .two_t_entry_gate import TwoTEntryTarget, two_t_entry_rejection
+from .two_t_entry_gate import entry_targets_from_events, two_t_entry_rejection
 from ..market_structure.polyline_lifecycle import PolylineBuyGate
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
@@ -2137,22 +2137,22 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             log(i, 'long_transition_evidence', **special)
         return any(s.side == 'LONG' for s in signals[context.signal_start:])
 
+    entry_target_events = [row for row in audit if row['event'] in (
+        'n_completed', 'n_target_source_retired', 'n_invalidated')]
+
     def observe_target_day(i: int) -> tuple[int | None, dict[str, object] | None]:
         """交易目标只在当前资格窗口内观察，首次可用日只消费收盘价。"""
         bar = bars[i]
         live_target_source = bottom_targets.source_at[i] if bottom_targets is not None else None
-        entry_risk = None
+        at_close = _minute_scope is None
+        entry_risk = two_t_entry_rejection(bars, i,
+            entry_targets_from_events(entry_target_events, i, at_close=at_close),
+            observed_high=bar.high, observed_close=bar.close, at_close=at_close)
         if live_target_source is not None:
             measured = bottom_candidates[live_target_source]
             known = max(measured['attack'], measured['known_at'])
             observed = bar.close if i == known else bar.high
             reached = bottom_hits.setdefault(live_target_source, set())
-            targets = measured['n'].targets
-            if targets.one_p is not None and targets.two_t is not None:
-                entry_risk = two_t_entry_rejection(bars, i,
-                    TwoTEntryTarget(live_target_source, known, targets.one_p, targets.two_t, measured['n_id']),
-                    observed_high=bar.high, observed_close=bar.close,
-                    at_close=_minute_scope is None)
             for target_stage in ('equal_wave', 'one_p', 'two_t'):
                 target = getattr(measured['n'].targets, target_stage)
                 if target is not None and observed >= target:

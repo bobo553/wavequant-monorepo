@@ -25,7 +25,7 @@ from wavequant.domain.strategies.hierarchical_entry import EntryContext
 from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse, MinuteTradingScope
 from wavequant.domain.strategies.squeeze_n_round import SqueezeRoundState
 from wavequant.domain.strategies.two_t_entry_gate import (
-    TwoTEntryTarget, entry_target_from_events, two_t_entry_rejection,
+    TwoTEntryTarget, entry_targets_from_events, two_t_entry_rejection,
 )
 from wavequant.domain.strategies.wave_continuation import (
     wave_confirmation_is_new,
@@ -108,7 +108,7 @@ def _reject_polyline_entry(
 
 
 def _reject_two_t_entry(
-    bars: list[Bar], index: int, target: TwoTEntryTarget | None,
+    bars: list[Bar], index: int, target: Sequence[TwoTEntryTarget],
     signals: list[Signal], audit: list[dict[str, object]], *,
     observed_high: float, observed_close: float, at_close: bool, decision_timestamp: str,
 ) -> bool:
@@ -185,7 +185,7 @@ def _qualified_gap_entries(
                 candle_filter_known_at=bar.timestamp.replace(hour=15).isoformat()))
             continue
         fallback = None
-        target = entry_target_from_events(audit, i, at_close=False)
+        target = entry_targets_from_events(audit, i, at_close=False)
         try:
             minute = minute_loader(bar) if minute_loader is not None else []
         except MinuteCoverageError as exc:
@@ -306,7 +306,7 @@ def _qualified_rising_close_entries(
             continue
         bar = bars[i]
         decision = bar.timestamp.replace(hour=15, minute=0)
-        if _reject_two_t_entry(bars, i, entry_target_from_events(audit, i, at_close=True), signals, audit,
+        if _reject_two_t_entry(bars, i, entry_targets_from_events(audit, i, at_close=True), signals, audit,
                 observed_high=bar.high, observed_close=bar.close, at_close=True,
                 decision_timestamp=decision.isoformat()):
             days.add(i)

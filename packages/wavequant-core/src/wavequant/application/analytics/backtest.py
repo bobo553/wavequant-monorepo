@@ -33,7 +33,7 @@ from wavequant.domain.market_state.volume_candle import (
 from wavequant.domain.strategies.double_bullish_shadow_exit import DOUBLE_VOLUME_BULLISH_SHADOW_CLEAR
 from wavequant.domain.strategies.gap_bearish_exit import GAP_VOLUME_BEARISH_CLEAR
 from wavequant.domain.strategies.gap_entry_gate import GapEntryGate
-from wavequant.domain.strategies.two_t_entry_gate import entry_target_from_events, two_t_entry_rejection
+from wavequant.domain.strategies.two_t_entry_gate import entry_targets_from_events, two_t_entry_rejection
 from wavequant.domain.strategies.two_t_resistance import (
     BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, VOLUME_SHADOW_MIDPOINT_CLEAR,
     HoldingResistanceHistory, holding_resistance_history,
@@ -527,7 +527,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
 
     def execute_entry(symbol, i, bar, when, signal, execution_price, *, at_close=False, intraday=None):
         nonlocal cash, total_fees, turnover
-        target_source = entry_target_from_events((entry_target_events or {}).get(symbol, []), i, at_close=at_close)
+        target_source = entry_targets_from_events((entry_target_events or {}).get(symbol, []), i, at_close=at_close)
         # 开盘只知道开盘价，分钟只知道累计高点；成交开盘跳过目标也不追买。
         target_high = bar.high if at_close else execution_price
         target_close = bar.close if at_close else execution_price
