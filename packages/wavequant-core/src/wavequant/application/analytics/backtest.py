@@ -46,7 +46,7 @@ from wavequant.domain.strategies.breakout_shadow_exit import (
     BREAKOUT_LIMIT_OPEN_REDUCE, BREAKOUT_SHADOW_CLEAR, BREAKOUT_SHADOW_REDUCE,
 )
 from wavequant.domain.strategies.double_volume_fade_exit import (
-    DOUBLE_VOLUME_BULLISH_FADE_REDUCE, observe_double_volume_fade,
+    DOUBLE_VOLUME_BULLISH_FADE_REDUCE, TRIPLE_VOLUME_BREAKOUT_DOUBLE_BEARISH_CLEAR, observe_double_volume_fade,
 )
 from wavequant.domain.strategies.mother_child_inverse_n import (
     MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break,
@@ -1088,7 +1088,8 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                                  and volume_exit['reason'].startswith('bearish_mother_child_') else 'volume_down_exit')
                 # 突破证据直接来自此前K线，不能被正式趋势高点缺失挡住。
                 fade_exit = observe_double_volume_fade(grouped[symbol], i) if config.volume_down_exit else None
-                if fade_exit is not None and (volume_exit is None or volume_exit['exit_fraction'] < .9):
+                if fade_exit is not None and (
+                        volume_exit is None or volume_exit['exit_fraction'] < fade_exit['exit_fraction']):
                     volume_exit = fade_exit
                     volume_source = 'double_volume_bullish_fade'
                 # Evaluate close-known N risk only after intraday execution. It may
@@ -1211,7 +1212,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                     wave_exit = None
                 if volume_exit is not None and volume_exit['reason'] in (
                         EXTREME_VOLUME_CLEAR, DOUBLE_VOLUME_BEARISH_SHADOW_REDUCE, EXTREME_VOLUME_LIMIT_NEXT_CLEAR,
-                        DOUBLE_VOLUME_BULLISH_FADE_REDUCE):
+                        DOUBLE_VOLUME_BULLISH_FADE_REDUCE, TRIPLE_VOLUME_BREAKOUT_DOUBLE_BEARISH_CLEAR):
                     # 新量价风险只覆盖较轻减仓，已有全清和更高减仓目标保持优先。
                     if pressure is not None and pressure['exit_fraction'] < volume_exit['exit_fraction']:
                         pressure = None

@@ -81,7 +81,11 @@
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。 统一三级六态事件、候选/确认时钟及请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。",
             "acceptanceCriteria": [
+
                 "2026-10-22乐心300562资格修复：2021-01-26破2020-12-21末升低后冻结2021-01-04末跌高，局部交替不得重开；新本级下降段结束才允许接替门槛，之后严格突破才解除禁开，一二三级、事件回放和图表策略共用。新增真实固定2018起回归及边界源码；开发阶段不执行检查，待提交验证。",
+
+                "2026-10-22海洋王次日倍量阴线全清：前日阳线且收盘上涨，成交量至少为再前日3倍，最高严格突破攻击前已知且未被突破的K线回落高点；紧邻下一交易日成交量至少为突破日2倍且close<open时收盘全清，不要求close<前收、反包、破前低或长上影。复用double_volume_fade_exit的突破来源及账户volume_down_exit入口，全清优先于较轻量价/压力/波段减仓；原次日阴线收低九成规则保持，T+1及可卖/流动性门禁保持。profile v145隔离旧结果，无股票/日期特判。2022-02-28和03-01报价来自用户，此前高点和基准量显式合成，完整实股历史与账户待提交时验证。",
+
                 "2026-10-22用户最终澄清倍量次日减九成仍须突破：10/20倍量阳线突破10/15高点，10/21阴线收低。直接从攻击前真实K线找最近未被突破的回落高点（左侧不高于它、右侧严格回落，平台取最后一根），不等待正式趋势高点。攻击最高必须严格越过高点，成交量至少前日两倍，紧邻次日阴线收盘严格低于攻击日收盘则累计减至最多一成；没有突破仍不触发。V3已有volume_down_exit直接调用，移除趋势风险流依赖，不改趋势算法；保留全清优先、交易区间、T+1、可卖/流动性门禁及整手累计取整。真实K线自行识别10/15、空趋势账户测试待提交验证。",
                 "2026-10-22首N轧空轮次：有效资格内首个新完成N冻结结构与轧空低；后续N继续识别但不能替换该轮入场依据。一次轧空信号消费后，卖出、候选修订/过期和资格重开均不能重置；仅后续最低价严格跌破原低后，等待攻击晚于破低日且回撤包含破低后低点的新N。未消费候选随资格关闭，独立A/B/C推进不套用N轧空轮次。日线与分钟使用同一状态，分钟不得借当日最终收盘状态。星网真实2018起回归要求保留1/10信号、拒绝1/20重复N买点，待提交时验证。",
                 "本轮正N识别修复：V3有效资格同时发布相邻三点与共用折叠包络候选，保留折线点、ordinal及首次可知日；内部小反弹不替换外层颈线。各级资格共用来源，正倒N镜像、关闭重开、修订及期限不越界。星网完整2018起行情目标为2020-01-09突破1/03形成N、1/13轧空并使用1/08候选本地量能；真实管线及账户待提交时验证，不按股票日期特判，不改三级趋势算法。",
@@ -197,8 +201,31 @@
                 "2026-10-19 外围消费者增量化：来源、候选、许可轻量投影传递不可变版本/父令牌/最早变化位置；分组、来源认证、几何标注、结构腿共享持久前缀；许可来源/候选查找索引只更新后缀；共享层级历史在交易区间内外只更新投影后缀。旧关键位/整波起点只读引用，不删除证据，不以结构冻结代替逐日资格核验；追加、修订、截短、同坐标事实、延迟可知、跨请求失效及公开独立列表导出待提交时验证。"
             ],
             "verification": [
+                {
+                    "command": "pytest tests/test_triple_volume_breakout_clear.py tests/test_double_volume_fade_exit.py tests/test_breakout_shadow_exit.py tests/test_breakout_limit_open_exit.py tests/test_breakout_gap_clear.py tests/test_breakout_bearish_child_exit.py -q -p no:cacheprovider",
+                    "status": "passed",
+                    "summary": "2026-10-22用户要求合并main后，先同步最新本地main 994554c，保留双方新增记录与资格恢复定义，profile从冲突的v145升v146。六文件178项通过（2.84秒），含本次39项：上涨但收阴全清、3倍/2倍精确阈值、缺失突破拒绝、因果前缀、旧九成规则、账户全清/剩余仓位/不可卖和部分退出优先级。用户两日报价前的三根K线显式合成，不是完整实股回放。"
+                },
+                {
+                    "command": "mypy --config-file pyproject.toml --follow-imports=skip --no-incremental --cache-dir <task-writable-cache> src/wavequant/domain/strategies/double_volume_fade_exit.py src/wavequant/domain/strategies/strategy_profiles.py src/wavequant/application/analytics/backtest.py tests/test_triple_volume_breakout_clear.py; git diff --check",
+                    "status": "passed",
+                    "summary": "四个修改Python文件局部类型通过；首次NUL缓存路径触发mypy 2.3.1内部错误，改为本任务可写缓存并禁用增量后通过，未升级工具或放宽类型规则。冲突解决后差异空白检查通过，保留main已合入的资格恢复代码与历史失败记录，本次仅卖出规则及其直接回归。"
+                },
+                {
+                    "command": "full sz.002724 source/history/account replay; full suite; browser/Playwright; package build",
+                    "status": "not-run",
+                    "summary": "本次仅执行与修改直接相关的最小验证；没有完整海洋王历史高点与基准成交量输入，不宣称完整实股资格/账户或页面验收。无打包依赖改动，未构建；未运行浏览器，未推送或重启服务。用户已授权提交并本地no-ff合并，330其余未完成工作保持in-progress。"
+                },
+
                 {"command": "pytest test_same_level_recovery.py test_trading_intervals.py test_market_calculations.py test_source_bear_key_break.py; unchanged-main four failed nodes; local mypy", "status": "failed", "summary": "2026-10-22提交阶段首次173通过/5失败：4项旧测试接入在未修改main同样失败；新真实样本错误要求Jan26出现当时未知的Jan4正式高点。实际Jan4高Feb19才可知，先前Sep22冻结门槛仍阻断。三段无资格断言已到达且未失败，但不据此宣称完整修复通过。类型初次17项、其中12项main既有；后续生产文件无类型报告，旧测试仍14项。失败和后续未复验分开保留。"},
                 {"command": "user: 直接合并; final corrected regression and typecheck", "status": "not-run", "summary": "用户获知失败与修正进展后明确直接合并，本次接受已报告失败和未完成验证，不再追加检查。已修正高点已结束+随后正式低点破前低即可更新门槛，避免额外等待下降腿结束；保留旧交替拒绝及真实三个区间无资格，按Feb19首次可知记录Jan4门槛，旧spy与类型表达修正。最终代码、真实恢复日、完整账户/页面未复验，不记通过；提交并本地no-ff合并，不推送或重启。"},
+
+
+                {
+                    "command": "pytest tests/test_triple_volume_breakout_clear.py tests/test_double_volume_fade_exit.py tests/test_breakout_shadow_exit.py tests/test_breakout_limit_open_exit.py tests/test_breakout_gap_clear.py tests/test_breakout_bearish_child_exit.py -q; affected Python mypy; full sz.002724 history/account replay",
+                    "status": "not-run",
+                    "summary": "2026-10-22海洋王三倍量上涨突破次日倍量阴线全清开发完成：复用既有真实K线高点观察器，阴阳由close/open判断，高开收阴但仍较前收上涨也触发，优先于部分减仓；原九成规则和账户门禁保持。profile v145。新增报价回归、精确边界/无突破/未来隔离/旧九成回退/账户全清与不可卖/优先级用例仅编写未执行。2/28、3/1来自用户，此前高点和基准量显式合成，不证明完整实股资格或已在页面成交。开发阶段未测试、类型、格式、构建、Git状态差异、探针或浏览器；未提交合并推送/重启，待用户安排提交后验证。独立feat-突破次日倍量阴线清仓，330其他事项及旧证据保留。"
+                },
 
                 {"command": "2026-10-21 isolated frozen 2132-day sh.601086 sampling; pytest tests/test_combined_a_replay.py; final minimal-fix comparison pending", "status": "not-run", "summary": "定位并修复 CombinedAReplay 容量拒绝后冷重放重新建档；该局部用例已验证，修复版完整对照仍在运行。合并版339.06秒/合并前393.72秒完整研究与账户哈希相同，未复现国芳核心计算变慢，不能宣称现场问题完全解决。3003 main API 已异常退出并等待源码变化；根因堆栈缺失。仅独立分支局部修复，未恢复其他已撤回优化，未提交合并推送。"},
                 {
