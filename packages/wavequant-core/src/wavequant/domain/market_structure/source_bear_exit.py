@@ -7,10 +7,13 @@ from typing import TYPE_CHECKING, cast
 
 from ..models.model import Bar
 from .trend_market_index import _MarketRangeIndex
+from .trend_frozen_state import FrozenPrefixList
+from .trend_point_version import PointVersion
+from .owned_evidence import CertifiedSource
 from .failed_breakout_exit import FAILED_BREAKOUT_EVENT, confirmed_failed_breakout
 
 if TYPE_CHECKING:
-    from .trend_lifecycle import _Fact, _Pivot
+    from .trend_lifecycle import _Fact, _Pivot, _StructureClocks
 
 
 SOURCE_BEAR_EVENT = 'trading_source_bear_confirmed'
@@ -75,7 +78,6 @@ class _SourceMarketKey:
 
 def _prepare_source_market_key(points: object, dates: Mapping[str, int], now: int) -> _SourceMarketKey | None:
     from .trend_lifecycle import _pivot, _records
-    from .trend_levels import _completed_source_point
 
     records = _records(points)
     parsed = [(raw, point) for raw in records if (point := _pivot(raw, dates, now)) is not None]
@@ -89,6 +91,14 @@ def _prepare_source_market_key(points: object, dates: Mapping[str, int], now: in
         return None
     origin_raw, _ = parsed[high_position]
     key_raw, _ = parsed[high_position - 1]
+    return _complete_source_market_pair(origin_raw, key_raw, dates, now)
+
+
+def _complete_source_market_pair(origin_raw: Mapping[str, object], key_raw: Mapping[str, object],
+                                 dates: Mapping[str, int], now: int) -> _SourceMarketKey | None:
+    from .trend_lifecycle import _pivot
+    from .trend_levels import _completed_source_point
+
     try:
         origin = _pivot(_completed_source_point(origin_raw), dates, now)
         key = _pivot(_completed_source_point(key_raw), dates, now)
@@ -100,19 +110,68 @@ def _prepare_source_market_key(points: object, dates: Mapping[str, int], now: in
     return _SourceMarketKey(origin, key)
 
 
+@dataclass(frozen=True, slots=True)
+class _SourceKeyPrefix:
+    previous: '_Pivot | None' = None
+    previous_raw: Mapping[str, object] | None = None
+    high_raw: Mapping[str, object] | None = None
+    low_raw: Mapping[str, object] | None = None
+    ordered: bool = True
+
+
+class _SourceKeyProjection:
+    """直接来源关键位的持久前缀，不为新尾点重新解析全部历史来源。
+
+    每个输入位置保留顺序和最近高点/前驱；截短与修订恢复对应前缀。
+    这些只读引用借自当前版本，不持有祖先版本或复制嵌套证明。
+    """
+
+    def __init__(self) -> None:
+        self.points: PointVersion | None = None
+        self.dates: Mapping[str, int] | None = None
+        self.rows = FrozenPrefixList[_SourceKeyPrefix]()
+
+    def advance(self, points: PointVersion, dates: Mapping[str, int], now: int, *,
+                restart: bool) -> _SourceMarketKey | None:
+        from .trend_lifecycle import _pivot
+
+        start = (points.changed_since(self.points)
+                 if not restart and self.dates is dates else 0)
+        del self.rows[start:]
+        state = self.rows[-1] if self.rows else _SourceKeyPrefix()
+        for raw in points.iter_range(start):
+            point = _pivot(raw, dates, now)
+            if point is not None:
+                ordered = (state.ordered and (state.previous is None
+                    or (state.previous.index, state.previous.ordinal) < (point.index, point.ordinal)))
+                state = _SourceKeyPrefix(point, raw,
+                    raw if point.kind == 'H' else state.high_raw,
+                    state.previous_raw if point.kind == 'H' else state.low_raw, ordered)
+            self.rows.append(state)
+        self.rows.freeze(len(self.rows))
+        self.points, self.dates = points, dates
+        if not state.ordered or state.high_raw is None or state.low_raw is None:
+            return None
+        return _complete_source_market_pair(state.high_raw, state.low_raw, dates, now)
+
+
 class SourceMarketBreaks:
     """按直接来源版本准备关键位；价格每日推进，缓存不属于持久化领域状态。"""
 
     def __init__(self) -> None:
         self._prepared: dict[tuple[int, str], tuple[object, int | None, _SourceMarketKey | None]] = {}
+        self._clocks: dict[tuple[int, str], '_StructureClocks'] = {}
+        self._key_states: dict[tuple[int, str], _SourceKeyProjection] = {}
 
     def observe(self, levels: Sequence[Mapping[str, object]], bars: Sequence[Bar], now: int,
                 dates: Mapping[str, int], *, owned: bool = False,
                 market_index: _MarketRangeIndex | None = None) -> list[dict[str, object]]:
-        from .trend_lifecycle import _next_structure_clock, _records
+        from .trend_lifecycle import _records, _StructureClocks
 
         if not owned:
             self._prepared.clear()
+            self._clocks.clear()
+            self._key_states.clear()
         present: set[tuple[int, str]] = set()
         result: list[dict[str, object]] = []
         for row in levels:
@@ -135,16 +194,30 @@ class SourceMarketBreaks:
                 if cached is not None and cached[0] is points and (cached[1] is None or now < cached[1]):
                     candidate = cached[2]
                 else:
-                    candidate = _prepare_source_market_key(points, dates, now)
-                    standard, following = _next_structure_clock(points, dates, now) if owned else (False, None)
+                    if owned and type(points) in (PointVersion, CertifiedSource) and points._sealed:
+                        projection = self._key_states.setdefault(identity, _SourceKeyProjection())
+                        candidate = projection.advance(cast(PointVersion, points), dates, now,
+                            restart=cached is None or cached[1] is not None and now >= cached[1])
+                    else:
+                        self._key_states.pop(identity, None)
+                        candidate = _prepare_source_market_key(points, dates, now)
+                    if owned:
+                        clocks = self._clocks.setdefault(identity, _StructureClocks())
+                        standard, following = clocks.advance(points, dates, now)
+                    else:
+                        standard, following = False, None
                     if standard:
                         self._prepared[identity] = points, following, candidate
                     else:
                         self._prepared.pop(identity, None)
+                        self._key_states.pop(identity, None)
+                        self._clocks.pop(identity, None)
                 event = candidate.observe(level - 1, path, bars, now, market_index) if candidate else None
                 if event is not None:
                     result.append(event)
         self._prepared = {key: value for key, value in self._prepared.items() if key in present}
+        self._clocks = {key: value for key, value in self._clocks.items() if key in present}
+        self._key_states = {key: value for key, value in self._key_states.items() if key in present}
         return result
 
 
@@ -239,6 +312,7 @@ class _BearStructureCandidate:
 def _prepare_bearish_structure(
     stroke: Mapping[str, object], now: int, dates: Mapping[str, int],
     *, facts: Sequence['_Fact'] | None = None,
+    _parsed: Sequence[tuple[Mapping[str, object], '_Pivot']] | None = None,
 ) -> _BearStructureCandidate | None:
     """结构或知识时钟变化时准备；六态防守失效不抹掉结构事实。
 
@@ -256,7 +330,8 @@ def _prepare_bearish_structure(
     flip = next((fact for fact in reversed(known_facts) if fact.title == '翻多为空'), None)
     if flip is None or flip.origin is None or flip.broken is None:
         return None
-    points = [(raw, point) for raw in raw_points if (point := _pivot(raw, dates, now)) is not None]
+    points = (_parsed if _parsed is not None else
+              [(raw, point) for raw in raw_points if (point := _pivot(raw, dates, now)) is not None])
     own = {(p.index, p.ordinal): (raw, p) for raw, p in points}
     # 最近的正式翻空决定当前上下文；不从更早周期中挑选一个可用的标签。
     anchor = own.get((flip.origin.index, flip.origin.ordinal))

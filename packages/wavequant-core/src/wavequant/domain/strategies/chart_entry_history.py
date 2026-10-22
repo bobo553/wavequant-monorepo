@@ -441,6 +441,19 @@ def _strategy_permission_view(level: Mapping[str, object]) -> dict[str, object]:
     return result
 
 
+def _checkpoint_permission_levels(levels: Sequence[tuple[Mapping[str, object], Mapping[str, object]]]
+                                  ) -> tuple[tuple[dict[str, object], dict[str, object]], ...]:
+    """磁盘/分钟检查点只保存原业务视图，私有归档提示留在 live 内存边界。"""
+    copies: dict[int, dict[str, object]] = {}
+
+    def public(level: Mapping[str, object]) -> dict[str, object]:
+        if id(level) not in copies:
+            copies[id(level)] = {key: value for key, value in level.items() if key != '_combined_a_geometry'}
+        return copies[id(level)]
+
+    return tuple((public(left), public(right)) for left, right in levels)
+
+
 def _permission_records(value: object, field: str) -> tuple[Mapping[str, object], ...]:
     """显式解析资格视图中的记录序列，不把宽泛元数据当作可迭代路径。
 
@@ -975,7 +988,10 @@ def chart_entry_history(
             second, first = levels[0]
             third, _ = levels[1]
             if isinstance(combined_replay, CombinedAReplay):
-                combined_replay.remember(i, (drawing, first, second, third))
+                combined_replay.remember(i, (drawing, first, second, third),
+                    _fixed_day=live_owner is not None and not n_target_trend_confirmation_enabled and i < last,
+                    _drawing_epoch=(frame.epoch if live_owner is not None
+                                    and not n_target_trend_confirmation_enabled else None))
             combined_candidate_sink[i] = combined_a_contexts_from_geometry(
                 bars, cast(GeometryLevel, drawing), cast(GeometryLevel, first),
                 cast(GeometryLevel, second), cast(GeometryLevel, third), dates, i, audit,
@@ -1055,7 +1071,7 @@ def chart_entry_history(
                 if certificate is not None:
                     checkpoint_channel.state(0, i, (
                         active, first_seen, retired, closed, previous_epoch, previous_raw,
-                        signature, landmarks, invalidated, levels, shallow_candidate,
+                        signature, landmarks, invalidated, _checkpoint_permission_levels(levels), shallow_candidate,
                         resistance_key, anchors_at_attack, lifecycle.checkpoint(),
                     ), certificate)
         if (prefix_cache is not None and past_attack_certificate is not None

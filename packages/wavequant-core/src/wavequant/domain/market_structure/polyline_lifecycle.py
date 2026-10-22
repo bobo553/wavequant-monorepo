@@ -15,6 +15,7 @@ from .price_action import Direction
 from .trend_history_changes import PolylineSourceGate
 from .trend_lines import _OwnedPolylineTurns, polyline_turns
 from .trend_structure import retracement_evidence
+from .trend_point_version import PointVersion
 from .polyline import LinePoint, PointKind, ReversalPoint
 from ..market_state.candle_strength import bullish_breakout_rejection
 from ..models.model import Bar
@@ -299,6 +300,7 @@ class PolylineLifecycleSource:
         self.row: dict[str, object] = dict(trend_level=0, strokes=[])
         self.previous_index: int | None = None
         self._projection = _OwnedPolylineTurns() if _owned_tail else None
+        self._point_version: PointVersion | None = None
 
     def advance(self, frame: _DrawingFrame) -> dict[str, object]:
         dates = self.dates
@@ -310,6 +312,7 @@ class PolylineLifecycleSource:
         self.previous_index = frame.index
         if frame.epoch != self.epoch:
             self.epoch, self.structure, self.known_points = frame.epoch, _PolylineStructure(), {}
+            self._point_version = None
         if self.gate.changed(frame.epoch, frame.raw):
             _validate_raw(frame.raw, dates, frame.index)
             path = f'lecture-{frame.epoch}'
@@ -329,9 +332,23 @@ class PolylineLifecycleSource:
             self.known_points = current
             if points[:len(self.structure.source)] != self.structure.source:
                 self.structure = _PolylineStructure()
+                self._point_version = None
             for point in points[len(self.structure.source):]:
                 self.structure.append(point)
-            self.row = dict(trend_level=0, strokes=[dict(id=path, source_path=path, points=list(self.structure.points))]
+            published: Sequence[dict[str, object]] = self.structure.points
+            if self._projection is not None:
+                # append 只向新点添加观察；已发布的点和证明从不回写。将这个
+                # 生产者约束交给六态投影，避免每次增加峰谷都重读全部旧事实。
+                previous = self._point_version
+                start = len(previous) if previous is not None else 0
+                if previous is None or start != len(self.structure.points):
+                    self._point_version = PointVersion(self.structure.points[start:],
+                        previous=previous, start=start).seal()
+                assert self._point_version is not None
+                published = self._point_version
+            else:
+                published = list(published)
+            self.row = dict(trend_level=0, strokes=[dict(id=path, source_path=path, points=published)]
                 if self.structure.points else [], source_kind='technical_polyline')
         return self.row
 

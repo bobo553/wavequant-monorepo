@@ -1,9 +1,14 @@
 """内部点版本共享不可变前缀；公开序列化仍恢复普通数组。"""
 
-from collections.abc import Iterable
-from typing import cast, overload
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, cast, overload
 
 from .trend_frozen_state import FrozenPrefixList
+
+if TYPE_CHECKING:
+    from .evidence_record_sequence import EvidenceSequence
+    from .owned_evidence_producer import PointRecord, ProducerRecordScope
+    from .owned_evidence_records import OwnedEvidenceRecords
 
 
 class PointVersion(FrozenPrefixList[dict[str, object]]):
@@ -22,11 +27,50 @@ class PointVersion(FrozenPrefixList[dict[str, object]]):
         self.parent = previous.token if previous is not None else None
         self.changed_from = start
         self._sealed = False
+        self._record_sequence: EvidenceSequence | None = None
+        self._record_store: OwnedEvidenceRecords | None = None
+        self._record_prefix = 0
         if previous is not None:
             previous.seal()
             self._archive, self._capacity, self._stop = previous._archive, previous._capacity, previous._stop
             self._truncate(start)
+            self._record_sequence, self._record_store = previous._record_sequence, previous._record_store
+            self._record_prefix = min(start, previous._record_prefix)
         self.extend(values)
+
+    @property
+    def point_records(self) -> Sequence['PointRecord']:
+        """已认证前缀的惰性载体；不在版本上保存视图或逐点身份表。"""
+        from .trend_point_records import PointRecordView
+
+        if not self._sealed or self._record_sequence is None or self._record_store is None:
+            return ()
+        return PointRecordView(self, self._record_store, self._record_sequence, self._record_prefix)
+
+    @property
+    def evidence_sequence(self) -> 'EvidenceSequence | None':
+        sequence = self._record_sequence
+        return (sequence if self._sealed and sequence is not None
+                and self._record_prefix == len(self) == sequence.length else None)
+
+    @property
+    def record_store(self) -> 'OwnedEvidenceRecords | None':
+        return self._record_store if self.evidence_sequence is not None else None
+
+    @property
+    def record_metadata_bytes(self) -> int:
+        from .trend_point_records import point_record_metadata_bytes
+
+        return point_record_metadata_bytes(self)
+
+    def _invalidate_records(self, index: int | slice) -> None:
+        if isinstance(index, slice):
+            start, stop, step = index.indices(len(self))
+            positions = range(start, stop, step)
+            start = min(positions[0], positions[-1]) if positions else start
+        else:
+            start = index if index >= 0 else len(self) + index
+        self._record_prefix = min(self._record_prefix, max(0, start))
 
     def seal(self) -> 'PointVersion':
         if not self._sealed:
@@ -47,6 +91,7 @@ class PointVersion(FrozenPrefixList[dict[str, object]]):
     def __setitem__(self, index: int | slice,
                     value: dict[str, object] | Iterable[dict[str, object]]) -> None:
         self._writeable()
+        self._invalidate_records(index)
         start = index.indices(len(self))[0] if isinstance(index, slice) else index if index >= 0 else len(self) + index
         self.changed_from = min(self.changed_from, max(0, start))
         if isinstance(index, slice):
@@ -61,6 +106,7 @@ class PointVersion(FrozenPrefixList[dict[str, object]]):
 
     def __delitem__(self, index: int | slice) -> None:
         self._writeable()
+        self._invalidate_records(index)
         start = index.indices(len(self))[0] if isinstance(index, slice) else index if index >= 0 else len(self) + index
         self.changed_from = min(self.changed_from, max(0, start))
         super().__delitem__(index)
@@ -82,6 +128,7 @@ class PointVersion(FrozenPrefixList[dict[str, object]]):
 
     def insert(self, index: int, value: dict[str, object]) -> None:
         self._writeable()
+        self._record_prefix = min(self._record_prefix, max(0, index))
         self.changed_from = min(self.changed_from, max(0, index))
         self._validate(value)
         super().insert(index, value)
@@ -107,3 +154,10 @@ class PointVersion(FrozenPrefixList[dict[str, object]]):
             return self.changed_from
         # 跨过中间版本时按共享块定位变化，不能重新遍历整段冻结前缀。
         return self.shared_prefix(previous)
+
+
+def record_point_version(version: PointVersion, scope: 'ProducerRecordScope | None' = None) -> 'EvidenceSequence | None':
+    """内部生产者在最终 seal 后显式连接并行证据根。"""
+    from .trend_point_records import record_point_version as record
+
+    return record(version, scope)

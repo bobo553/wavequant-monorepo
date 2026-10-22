@@ -23,11 +23,16 @@ from types import MappingProxyType
 from typing import cast
 
 from .owned_evidence import CertifiedSource, current_evidence, finite_evidence, owned_signature as _geometry_signature
+from .owned_evidence_producer import current_producer_records
 from .trend_frozen_state import FrozenPrefixList, FrozenPrefixMap, _IndexArchive, _IndexNode, _SequenceNode, _node_children
 from .trend_options import ordinary_completion_enabled
 from .polyline import LinePoint, ReversalPoint
 from .trend_level_upgrades import _PointRange, _TrendUpgradeState, promote_trend_key_breaks
-from .trend_levels import Moment, _SourceTurn, _TrendReversalState, _later_moment, _source_turns, trend_reversals
+from .trend_levels import (
+    Moment, _SourceTurn, _TrendReversalState, _later_moment, _source_record_reference, _source_turns, trend_reversals,
+)
+from .trend_point_records import PointRecordView
+from .trend_upgrade_checkpoint import _UpgradeConsumptionCache
 
 __all__ = ['TrendJudgement', 'judge_trend', 'mutable_points']
 
@@ -61,12 +66,30 @@ class TrendJudgement:
     _delta: _JudgementDelta | None = field(default=None, compare=False, repr=False)
 
 
+@dataclass(frozen=True, slots=True)
+class _OwnedTrendJudgement(TrendJudgement):
+    """已认证内部管线移交的 builtin 只读图，公开入口不返回此类型。
+
+    每个点拥有独立可替换外壳；点及嵌套证明发布后不再原位修改。
+    内部消费者只复制外壳，公共消费者仍通过 mutable_points 独立导出。
+    此标记说明复制边界，不提供缓存准入或内存费用豁免。
+    """
+
+
+def _judgement_working_points(
+    points: Sequence[Mapping[str, object]], *, owned: bool,
+) -> list[dict[str, object]]:
+    return [dict(point) for point in points] if owned else mutable_points(points)
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class _FrozenPoint(Mapping[str, object]):
     """只读点及其标准证据导出模板；模板从不参与领域判定。"""
 
     data: Mapping[str, object]
     json_template: str | None
+    _budget_upper_bytes: int | None = field(default=None, init=False, repr=False, compare=False)
+    _budget_owner: '_FrozenBudgetOwner | None' = field(default=None, init=False, repr=False, compare=False)
 
     def __getitem__(self, key: str) -> object:
         return self.data[key]
@@ -248,13 +271,15 @@ _owned_point_admission: ContextVar[_OwnedPointAdmission | None] = ContextVar('ow
 
 
 def _owned_mutable_points(
-    points: Sequence[Mapping[str, object]], owned: bool,
+    points: Sequence[Mapping[str, object]], owned: bool, *, _admitted: list[bool] | None = None,
 ) -> list[dict[str, object]]:
     """内部调用方移交标准工作集；公共或未知输入仍独立复制所有证据。
 
     移交后原工作集只能被读取，不再修改或公开导出。tuple 归一化、未知
     deepcopy 钩子以及非有限叶子的当前 identity 仍遵守原公共复制边界。
     """
+    if _admitted is not None:
+        _admitted[0] = False
     if not owned or type(points) not in (list, tuple):
         return mutable_points(points)
     admission = _owned_point_admission.get()
@@ -262,6 +287,8 @@ def _owned_mutable_points(
         admission = _OwnedPointAdmission()
     if not all(admission.certify(point) for point in points):
         return mutable_points(points)
+    if _admitted is not None:
+        _admitted[0] = True
     return [dict(point) for point in points]
 
 
@@ -316,7 +343,10 @@ def _freeze_point_uncached(
         except (ValueError, TypeError):
             # 特大整数等编码边界仍使用原有独立 deepcopy 导出。
             pass
-    return _FrozenPoint(frozen, template)
+    result = _FrozenPoint(frozen, template)
+    if template is not None:
+        _frozen_budget_upper(result)
+    return result
 
 
 def _frozen_owned_bytes(value: object, seen: set[int]) -> int:
@@ -327,7 +357,10 @@ def _frozen_owned_bytes(value: object, seen: set[int]) -> int:
     size = getsizeof(value)
     if type(value) is _FrozenPoint:
         point = value
-        return size + _frozen_owned_bytes(point.data, seen) + _frozen_owned_bytes(point.json_template, seen)
+        # 构造器仍可接收未认证点；只有内部冻结入口会创建尺寸证书。
+        certificate = getsizeof(point._budget_upper_bytes) if point._budget_upper_bytes is not None else 0
+        return (size + certificate + _frozen_owned_bytes(point.data, seen)
+                + _frozen_owned_bytes(point.json_template, seen))
     if type(value) is MappingProxyType:
         # proxy 自身不包含其后方 dict 的容量，直接读取标准容器的 GC 引用。
         return size + sum(_frozen_owned_bytes(child, seen) for child in get_referents(value))
@@ -340,6 +373,32 @@ def _frozen_owned_bytes(value: object, seen: set[int]) -> int:
     return size
 
 
+def _frozen_budget_upper(point: _FrozenPoint) -> int:
+    """只读标准点的独占上界；不保存对象索引或跨版本强引用。
+
+    追加计费允许重复计入不同点共享的子树，临近限额仍由完整对象图按
+    identity 校准。因此缓存不会把共享误差变成直接拒绝，也不依赖某个
+    请求池的折扣；同一点在任何请求中该上界都保持有效。
+    """
+    if point.json_template is None:
+        raise ValueError('only standard immutable point evidence has a stable budget')
+    retained = point._budget_upper_bytes
+    if retained is None:
+        # 标准冻结入口在任何状态持有该点之前填充证书。预留完整地址空间
+        # 的整数大小，覆盖证书本身；不依赖计算结果恰好落入小整数缓存。
+        retained = _frozen_owned_bytes(point, set()) + getsizeof(2 ** 64)
+        # 只写与业务值无关的惰性元数据，data 与 json_template 始终只读。
+        object.__setattr__(point, '_budget_upper_bytes', retained)
+    return retained
+
+
+@dataclass(slots=True)
+class _FrozenBudgetOwner:
+    """仅证明一个独立预算仍持有点，不反向持有缓存或任何证据。"""
+
+    alive: bool = True
+
+
 class _FrozenPointCache:
     """单阶段的有界完整点复用；不保存来源判断、行情或可变导出。"""
 
@@ -349,6 +408,7 @@ class _FrozenPointCache:
         self._limit = memory_bytes
         self._thread = get_ident()
         self._closed = False
+        self._budget_token = _FrozenBudgetOwner()
         self._points: OrderedDict[bytes, tuple[_FrozenPoint, int]] = OrderedDict()
         self._payload_bytes = 0
         self._calls = 0
@@ -360,7 +420,8 @@ class _FrozenPointCache:
 
     @property
     def memory_used(self) -> int:
-        return self._payload_bytes + getsizeof(self._points) if self._points else 0
+        return (self._payload_bytes + getsizeof(self._points) + getsizeof(self._budget_token)
+                if self._points else 0)
 
     def intern(
         self, point: Mapping[str, object], memo: dict[int, tuple[object, object]] | None = None,
@@ -382,35 +443,46 @@ class _FrozenPointCache:
             # 未知审计值和非 JSON 标准容器每次沿用原来的复制次数与钩子。
             self._fallbacks += 1
             return frozen
-        owned = _frozen_owned_bytes(frozen, set()) + getsizeof(signature)
+        owned = _frozen_budget_upper(frozen) + getsizeof(signature)
         charged = owned + getsizeof((frozen, owned)) + getsizeof(owned)
-        if charged + getsizeof(OrderedDict()) > self._limit:
+        if charged + getsizeof(OrderedDict()) + getsizeof(self._budget_token) > self._limit:
             self._fallbacks += 1
             return frozen
-        self._points[signature] = frozen, charged
-        self._payload_bytes += charged
-        refused = False
-        while self.memory_used > self._limit:
-            # 每日顺序扫全窗时 LRU 会逐个淘汰上一日稳定点，超容量后命中
-            # 可降为零。优先拒绝刚到达的新版本，保留已有完整快照。
-            removed_signature, (_, removed) = self._points.popitem(last=True)
-            self._payload_bytes -= removed
+        # 池已满时立即拒绝；试插也不能改变旧表容量，否则拒绝新项后
+        # OrderedDict 的扩容余量仍可能迫使旧项被淘汰，使借用凭证失效。
+        if self.memory_used + charged > self._limit:
             self._evictions += 1
-            refused = refused or removed_signature == signature
-        if refused:
             self._fallbacks += 1
-        if not self._points:
-            self._points.clear()
+            return frozen
+        # 只复制有界点索引，不复制点及证明；仅成功新增项支付此事务成本，
+        # 命中和超容量拒绝均不复制。实际表容量合格后才替换当前索引。
+        admitted = self._points.copy()
+        admitted[signature] = frozen, charged
+        if self._payload_bytes + charged + getsizeof(admitted) + getsizeof(self._budget_token) > self._limit:
+            self._evictions += 1
+            self._fallbacks += 1
+            return frozen
+        self._points = admitted
+        self._payload_bytes += charged
+        object.__setattr__(frozen, '_budget_owner', self._budget_token)
         self._peak_bytes = max(self._peak_bytes, self.memory_used)
         return frozen
 
     def close(self) -> None:
+        self._budget_token.alive = False
         self._points.clear()
         self._payload_bytes = 0
         self._closed = True
 
 
 _frozen_point_cache: ContextVar[_FrozenPointCache | None] = ContextVar('trend_frozen_point_cache', default=None)
+
+
+def _current_frozen_budget_owner() -> _FrozenBudgetOwner | None:
+    cache = _frozen_point_cache.get()
+    if cache is not None and cache._budget_token.alive and cache._thread == get_ident():
+        return cache._budget_token
+    return None
 
 
 @contextmanager
@@ -466,6 +538,7 @@ def _visible_source(
     points: Sequence[Mapping[str, object]], source_level: int, asof: Moment | None,
     *, _validated_turns: list[_SourceTurn] | None = None,
     _owned_source: bool = False,
+    _owned_admission: list[bool] | None = None,
     _source_position_offset: int = 0, _validated_position_offset: int = 0,
 ) -> tuple[list[dict[str, object]], tuple[int, ...]]:
     """先建立可知来源前缀；类型校验不属于高低点趋势判断。
@@ -475,7 +548,7 @@ def _visible_source(
     才允许普通定义或严格升级读取。原首参数位置单独保存，迟知点被过滤
     不会令输出 source_position 指向别的来源。
     """
-    working = _owned_mutable_points(points, _owned_source)
+    working = _owned_mutable_points(points, _owned_source, _admitted=_owned_admission)
     turns = _source_turns(working, source_level, _position_offset=_source_position_offset)
     cutoff = _moment_key(asof) if asof is not None else None
     visible: list[dict[str, object]] = []
@@ -488,6 +561,7 @@ def _visible_source(
             if asof is not None and _later_moment(turn.available_at, asof) != asof:
                 continue
         point = dict(turn.source)
+        source_record = _source_record_reference(point)
         visible.append(point)
         positions.append(turn.position)
         if _validated_turns is not None:
@@ -497,7 +571,8 @@ def _visible_source(
             reversal = ReversalPoint(turn.reversal.point, turn.index,
                                      f'level{source_level}_source_position_{position}')
             _validated_turns.append(_SourceTurn(point, position, turn.index, turn.ordinal, turn.kind,
-                                                turn.value, turn.time, turn.available_at, reversal))
+                                                turn.value, turn.time, turn.available_at, reversal,
+                                                source_record))
     return visible, tuple(positions)
 
 
@@ -510,6 +585,7 @@ class _SourceVersion:
     positions: FrozenPrefixList[int]
     turns: FrozenPrefixList[_SourceTurn]
     certificates: FrozenPrefixList[bytes]
+    owned_result: bool = False
 
 
 class _SourceVersionOwner:
@@ -550,6 +626,10 @@ class _SourceVersionOwner:
             signatures.append(signature)
             signature_bytes += getsizeof(signature)
         versioned = cast(CertifiedSource, source) if certified else None
+        scope = current_producer_records()
+        if (scope is not None and versioned is not None and versioned.record_store is not None
+                and versioned.record_store is not scope.owner):
+            raise ValueError('source point records must belong to the active request owner')
         if versioned is not None and versioned.token is self._input_version and self.current is not None:
             return self.current
         keys = versioned.keys if versioned is not None else tuple(signatures)
@@ -570,9 +650,16 @@ class _SourceVersionOwner:
         boundary = max(0, bisect_left(previous.positions, changed) - 1) if previous is not None else 0
         # 原首个可见点之前的 display_only／seed 也可能转为有效，不能越过实际修订位置。
         start = min(changed, previous.positions[boundary]) if previous is not None and previous.positions else 0
+        if scope is not None and versioned is not None and versioned.record_store is not None:
+            # 解析还需要前一可见点校验边界；仅绑定这段实际重读的原始后缀。
+            records = cast(PointRecordView, versioned.point_records)
+            for record in records.iter_range(start):
+                scope.bind(record)
         turns: list[_SourceTurn] = []
+        admitted = [False]
         tail, positions = _visible_source(source[start:], self.level - 1, None, _validated_turns=turns,
-            _source_position_offset=start, _validated_position_offset=boundary)
+            _source_position_offset=start, _validated_position_offset=boundary, _owned_source=certified,
+            _owned_admission=admitted)
         certificates = tuple(_geometry_signature((position, point)) for position, point in zip(positions, tail))
         if any(certificate is None for certificate in certificates):
             self.clear()
@@ -594,9 +681,12 @@ class _SourceVersionOwner:
         source_certificates.extend(cast(tuple[bytes, ...], certificates))
         for buffer in (visible, source_positions, source_turns, source_certificates):
             buffer.freeze(len(buffer))
+        # 未认证的保留前缀继续使用公开冻结；资格随变化后缀传播，不为
+        # 恢复共享快路径扫描历史证明。完整替换后才能重新获得严格资格。
         version = _SourceVersion(object(), previous.token if previous is not None else None,
             bisect_left(previous.positions, changed) if previous is not None else 0,
-            visible, source_positions, source_turns, source_certificates)
+            visible, source_positions, source_turns, source_certificates,
+            admitted[0] and (previous is None or start == 0 or previous.owned_result))
         # 不保留版本链；容量不足时调用原公共校验，不截断历史。
         if (signature_bytes + certificate_bytes) * 4 > self.limit:
             self.clear()
@@ -708,7 +798,8 @@ class _CandidateBucket:
 class _JudgementLedger:
     """按坐标追加候选账本；旧坐标补充结束证明时仅重整该桶及受影响几何后缀。"""
 
-    def __init__(self) -> None:
+    def __init__(self, *, _owned_result: bool = False) -> None:
+        self._owned_result = _owned_result
         self.ordinary_count = 0
         self.event_count = 0
         self.buckets: MutableMapping[tuple[int, int], _CandidateBucket] = {}
@@ -761,7 +852,8 @@ class _JudgementLedger:
             entry = self.buckets[order]
             upgraded = [*entry.base, *(entry.merged[key] for key in sorted(entry.merged)), *entry.events]
             candidates = _restore_source_positions(_complete_candidates(entry.ordinary, upgraded), positions, level - 1)
-            entry.candidates = tuple(_frozen_point(point, frozen_memo) for point in candidates)
+            entry.candidates = tuple(dict(point) if self._owned_result else _frozen_point(point, frozen_memo)
+                                     for point in candidates)
             owned = _restore_source_positions(_complete_candidates((), upgraded), positions, level - 1)
             canonical = _canonical_points(owned)
             entry.point = canonical[0] if canonical else None
@@ -805,8 +897,9 @@ class _JudgementLedger:
                 count = (high, low)
                 self.counts.append(count)
                 changed_objects.append(count)
-                self.points.append(_frozen_point(dict(point, state='reversal',
-                    label=f"{point['kind']}{high if point['kind'] == 'H' else low}"), frozen_memo))
+                labelled = dict(point, state='reversal',
+                                label=f"{point['kind']}{high if point['kind'] == 'H' else low}")
+                self.points.append(labelled if self._owned_result else _frozen_point(labelled, frozen_memo))
             del self.geometry_orders[boundary:]
             new_orders = [_order(point) for point in self.geometry[boundary:]]
             self.geometry_orders.extend(new_orders)
@@ -814,7 +907,8 @@ class _JudgementLedger:
             changed_objects.extend(self.points[boundary:])
         delta = _JudgementDelta(object(), self.revision, point_change, candidate_change)
         self.revision = delta.token
-        return TrendJudgement(level, level - 1, tuple(self.points), tuple(self.candidates), delta), changed_objects
+        result_type = _OwnedTrendJudgement if self._owned_result else TrendJudgement
+        return result_type(level, level - 1, tuple(self.points), tuple(self.candidates), delta), changed_objects
 
     def reconcile_formal(self, previous_candidates: Sequence[Mapping[str, object]],
                          candidates: Sequence[Mapping[str, object]], candidate_from: int,
@@ -849,7 +943,8 @@ class _JudgementLedger:
                 records = getattr(edit(order), name)
                 del records[len(records) - count:]
             for point in new[start:]:
-                getattr(edit(_order(point)), name).append(mutable_points((point,))[0] if name == 'base' else point)
+                getattr(edit(_order(point)), name).append(
+                    _judgement_working_points((point,), owned=self._owned_result)[0] if name == 'base' else point)
         for turn in (upgrade.merged.values() if not self.event_count and not self.revision
                      else upgrade.updated_merged.values()):
             point = turn.source
@@ -950,6 +1045,8 @@ class _TrendJudgementState:
         self._limit = memory_bytes
         self._thread = get_ident()
         self._tail_reuse = _tail_reuse
+        self._budget_owner = current_evidence()
+        self._frozen_budget_owner = _current_frozen_budget_owner()
         self._checkpoint: tuple[tuple[bytes, ...], tuple[bytes, ...], _TrendReversalState,
                                 _TrendUpgradeState, _EventRows] | None = None
         self._flip_checkpoint: tuple[tuple[bytes, ...], tuple[bytes, ...], _TrendReversalState,
@@ -1123,6 +1220,10 @@ class _TrendJudgementState:
         新增点直接追加到当前状态。尾部修订时回到这里，只处理翻向之后的
         新来源；前缀证据有变或容量不足时拒绝复用，不能用截断输入造新趋势。
         """
+        if (self._budget_owner is not current_evidence()
+                or self._frozen_budget_owner is not _current_frozen_budget_owner()):
+            self.clear()
+            return
         if self._ordinary is None or self._upgrade is None:
             return
         if self._flip_checkpoint is not None and self._flip_checkpoint[0] == self._source_keys:
@@ -1209,15 +1310,19 @@ class _TrendJudgementState:
         self.frozen_boundary = self.frozen_known = None
         self._payload_upper_bytes = 0
         self.memory_used = 0
+        self._budget_owner = current_evidence()
+        self._frozen_budget_owner = _current_frozen_budget_owner()
 
     def _owned_bytes(self) -> int:
         return self._owned_value_bytes([self])
 
-    def _owned_value_bytes(self, roots: Sequence[object]) -> int:
+    def _owned_value_bytes(self, roots: Sequence[object], *, _incremental: bool = False) -> int:
         # 已认证的标准容器及内部状态对象才可进入计数，不调用未知 __sizeof__
         # 或遍历全局函数/类引用。相同来源、证明和叶子只按实际 identity 计一次。
         pending: list[object] = list(roots)
         seen: set[int] = set()
+        owner = current_evidence()
+        frozen_owner = _current_frozen_budget_owner()
         size = 0
         state_types = (_TrendJudgementState, _TrendReversalState, _TrendUpgradeState,
                        _PointRange, _SourceTurn, LinePoint, ReversalPoint,
@@ -1228,6 +1333,18 @@ class _TrendJudgementState:
             if id(value) in seen:
                 continue
             seen.add(id(value))
+            # 请求池已按完整对象图计费并持有该不可变节点。状态只承担引用，
+            # 不在每次追加/容量校准时重新扫描旧证明；池外对象仍完整计费。
+            if owner is not None and owner.reference(value) is not None:
+                size += 8
+                continue
+            if (frozen_owner is not None and type(value) is _FrozenPoint
+                    and value._budget_owner is frozen_owner):
+                size += 8
+                continue
+            if _incremental and type(value) is _FrozenPoint and value._budget_upper_bytes is not None:
+                size += value._budget_upper_bytes
+                continue
             size += getsizeof(value)
             if type(value) is _TrendJudgementState:
                 attributes = vars(value)
@@ -1244,6 +1361,8 @@ class _TrendJudgementState:
                 size += len(diagnostics) * getsizeof(2 ** 64)
             elif type(value) is _FrozenPoint:
                 # slots 快照没有 __dict__；证据与导出模板都属于预算。
+                if value._budget_upper_bytes is not None:
+                    size += getsizeof(value._budget_upper_bytes)
                 pending.extend((value.data, value.json_template))
             elif type(value) in (_SequenceNode, _IndexNode):
                 pending.extend(_node_children(value))
@@ -1292,6 +1411,10 @@ class _TrendJudgementState:
             merged = promote_trend_key_breaks(source, ordinary, trend_level=self.trend_level, event_sink=events,
                 ordinary_trend_completion_enabled=self.ordinary_trend_completion_enabled)
             return ordinary, merged, events
+        if (self._budget_owner is not current_evidence()
+                or self._frozen_budget_owner is not _current_frozen_budget_owner()):
+            # 旧请求的池已不再为当前状态承担共享载荷，必须重新建立预算。
+            self.clear()
         # 私有入口本身也拒绝未知及非有限审计值；不能依赖某一调用方的准入。
         # 先 exact builtin 编码才使用 C JSON，未知对象没有额外序列化钩子。
         # 只有缓存入口已完整认证 exact builtin/finite 的工作集才能传入证书；
@@ -1398,7 +1521,7 @@ class _TrendJudgementState:
             roots.extend(upgrade.new_merged_keys)
             # 新证据可引用旧子树，逐批重复计费形成保守上界；不持有逐日版本、
             # object-id memo 或已被替换的证据。可变顶层容器使用其当前真实容量。
-            self._payload_upper_bytes += self._owned_value_bytes(roots)
+            self._payload_upper_bytes += self._owned_value_bytes(roots, _incremental=True)
             observed_bytes = self._payload_upper_bytes + self._container_bytes()
         else:
             self._source_keys = certified
@@ -1425,16 +1548,22 @@ class _TrendJudgementState:
         return ordinary, merged, events
 
     def finalize(self, ordinary: Sequence[Mapping[str, object]], merged: Sequence[Mapping[str, object]],
-                 events: _EventRows, positions: Sequence[int]) -> TrendJudgement:
+                 events: _EventRows, positions: Sequence[int], *, _owned_result: bool = False) -> TrendJudgement:
+        if (get_ident() == self._thread and (self._budget_owner is not current_evidence()
+                or self._frozen_budget_owner is not _current_frozen_budget_owner())):
+            self.clear()
         if self._ordinary is None or self._upgrade is None or get_ident() != self._thread:
-            return _finalize_judgement(ordinary, merged, events, positions, self.trend_level)
+            return _finalize_judgement(ordinary, merged, events, positions, self.trend_level,
+                                      _owned_result=_owned_result)
+        if self._ledger is not None and self._ledger._owned_result != _owned_result:
+            self._ledger = None
         initial = self._ledger is None
         if self._ledger is None:
-            self._ledger = _JudgementLedger()
+            self._ledger = _JudgementLedger(_owned_result=_owned_result)
         result, changed = self._ledger.update(self._ordinary, self._upgrade, events, positions,
                                               initial=initial, level=self.trend_level)
         self._freeze_prefix()
-        self._payload_upper_bytes += self._owned_value_bytes(changed)
+        self._payload_upper_bytes += self._owned_value_bytes(changed, _incremental=True)
         # 账本含共享来源与可变桶；预留固定对象头余量，临近上限再精确校准。
         observed = self._payload_upper_bytes + self._container_bytes() + 4096
         if observed > self._limit:
@@ -1454,6 +1583,7 @@ class _TrendJudgementState:
 def _finalize_judgement(
     ordinary: Sequence[Mapping[str, object]], merged: Sequence[Mapping[str, object]],
     upgrade_events: Sequence[Mapping[str, object]], positions: Sequence[int], trend_level: int,
+    *, _owned_result: bool = False,
 ) -> TrendJudgement:
     source_level = trend_level - 1
     candidates = _restore_source_positions(_complete_candidates(ordinary, [*merged, *upgrade_events]), positions, source_level)
@@ -1465,6 +1595,9 @@ def _finalize_judgement(
         kind = cast(str, point['kind'])
         counts[kind] += 1
         point.update(state='reversal', label=f'{kind}{counts[kind]}')
+    if _owned_result:
+        return _OwnedTrendJudgement(trend_level, source_level,
+                                    tuple(dict(point) for point in points), tuple(candidates))
     frozen_memo: dict[int, tuple[object, object]] = {}
     return TrendJudgement(trend_level, source_level,
                           tuple(_frozen_point(point, frozen_memo) for point in points),
@@ -1479,7 +1612,8 @@ class _FormalKeyBreakState:
     证明修订或追加门禁失败均重新执行原严格状态机，不裁掉冻结关键位。
     """
 
-    def __init__(self, trend_level: int, *, memory_bytes: int = 8 * 1024 * 1024) -> None:
+    def __init__(self, trend_level: int, *, memory_bytes: int = 8 * 1024 * 1024,
+                 _consumption_checkpoints: bool = True) -> None:
         if type(trend_level) is not int or trend_level not in (2, 3):
             raise ValueError('formal key break level must be 2 or 3')
         if type(memory_bytes) is not int or memory_bytes <= 0:
@@ -1487,15 +1621,21 @@ class _FormalKeyBreakState:
         self.trend_level = trend_level
         self._limit = memory_bytes
         self._thread = get_ident()
+        self._use_consumption_checkpoints = _consumption_checkpoints
+        self._consumption = _UpgradeConsumptionCache(memory_bytes // 2)
         self.clear()
 
     def clear(self) -> None:
         self._checkpoint: _FormalKeyBreakState | None = None
+        self._consumption.reset()
+        self._budget_owner = current_evidence()
+        self._frozen_budget_owner = _current_frozen_budget_owner()
         self._source_keys: tuple[bytes, ...] = ()
         self._candidate_keys: tuple[str, ...] = ()
         self._turns: list[_SourceTurn] = []
         self._candidates: list[dict[str, object]] = []
         self._regular: list[_SourceTurn] = []
+        self._regular_offsets = FrozenPrefixList([0])
         self._upgrade: _TrendUpgradeState | None = None
         self._events: _EventRows = []
         self._payload_upper_bytes = 0
@@ -1505,12 +1645,15 @@ class _FormalKeyBreakState:
         self._base_token: object | None = None
         self._source_token: object | None = None
         self._early_attack: int | None = None
+        self._owned_result_mode: bool | None = None
 
     @staticmethod
-    def _value_bytes(roots: Sequence[object]) -> int:
+    def _value_bytes(roots: Sequence[object], *, _incremental: bool = False) -> int:
         # 入场已拒绝未知审计值；只遍历本地状态和标准容器，不追踪类／函数全局。
         pending = list(roots)
         seen: set[int] = set()
+        owner = current_evidence()
+        frozen_owner = _current_frozen_budget_owner()
         size = 0
         while pending:
             value = pending.pop()
@@ -1518,6 +1661,18 @@ class _FormalKeyBreakState:
             if identity in seen:
                 continue
             seen.add(identity)
+            # 与普通趋势状态共用请求级所有权边界；不得把共享旧证明
+            # 再次计入每条严格突破状态，更不能据此触发整段冷重算。
+            if owner is not None and owner.reference(value) is not None:
+                size += 8
+                continue
+            if (frozen_owner is not None and type(value) is _FrozenPoint
+                    and value._budget_owner is frozen_owner):
+                size += 8
+                continue
+            if _incremental and type(value) is _FrozenPoint and value._budget_upper_bytes is not None:
+                size += value._budget_upper_bytes
+                continue
             size += getsizeof(value)
             if type(value) is dict:
                 pending.extend(cast(dict[object, object], value).keys())
@@ -1525,6 +1680,8 @@ class _FormalKeyBreakState:
             elif type(value) in (list, tuple, set, frozenset):
                 pending.extend(cast(Sequence[object], value))
             elif type(value) is _FrozenPoint:
+                if value._budget_upper_bytes is not None:
+                    size += getsizeof(value._budget_upper_bytes)
                 pending.extend((value.data, value.json_template))
             elif type(value) in (_SequenceNode, _IndexNode):
                 pending.extend(_node_children(value))
@@ -1536,19 +1693,22 @@ class _FormalKeyBreakState:
                 pending.append(vars(value))
         return size
 
-    def _containers(self) -> list[object]:
+    def _containers(self, *, _include_consumption: bool = True) -> list[object]:
         containers: list[object] = [self._source_keys, self._candidate_keys, self._turns,
-            self._candidates, self._regular, *_append_state_containers(None, self._upgrade, self._events)]
+            self._candidates, self._regular, self._regular_offsets,
+            *_append_state_containers(None, self._upgrade, self._events)]
         containers.extend((self._base_points, *_TrendJudgementState._ledger_containers(self._ledger)))
+        if _include_consumption:
+            containers.extend(self._consumption.live_roots())
         if self._checkpoint is not None:
             containers.extend((self._checkpoint, vars(self._checkpoint)))
-            containers.extend(self._checkpoint._containers())
+            containers.extend(self._checkpoint._containers(_include_consumption=False))
         return containers
 
     def _copy_checkpoint(self) -> '_FormalKeyBreakState':
         if self._upgrade is not None:
             self._events = _seal_checkpoint_records(None, self._upgrade, self._events)
-        for name in ('_turns', '_candidates', '_regular'):
+        for name in ('_turns', '_candidates', '_regular', '_regular_offsets'):
             raw = getattr(self, name)
             records = raw if type(raw) is FrozenPrefixList else FrozenPrefixList(raw)
             records.freeze(len(records))
@@ -1558,6 +1718,7 @@ class _FormalKeyBreakState:
         saved._ledger = _TrendJudgementState._copy_ledger(self._ledger)
         saved._turns, saved._candidates, saved._regular = (
             self._turns.copy(), self._candidates.copy(), self._regular.copy())
+        saved._regular_offsets = self._regular_offsets.copy()
         saved._events = self._events.copy()
         if self._upgrade is not None:
             upgrade = saved._upgrade = copy(self._upgrade)
@@ -1601,22 +1762,38 @@ class _FormalKeyBreakState:
             for value in {id(value): value for value in containers}.values())
         if appended:
             # 只为新来源、候选、事件和索引项计费；重复引用形成保守上界。
-            self._payload_upper_bytes += self._value_bytes(added)
-            observed = self._payload_upper_bytes + container_size
+            self._payload_upper_bytes += self._value_bytes(added, _incremental=True)
+            current = self._payload_upper_bytes + container_size
         else:
-            observed = self._value_bytes(containers)
-            self._payload_upper_bytes = max(0, observed - container_size)
+            current = self._value_bytes(containers)
+            self._payload_upper_bytes = max(0, current - container_size)
+        # 快照独占上界已在新增节点入场时认证，不能每天再次遍历全部旧图。
+        # 与当前图的重复引用保守计费；临界时先丢加速快照再校准原状态。
+        observed = current + self._consumption.retained_upper_bytes
         if appended and observed > self._limit:
-            observed = self._value_bytes(containers)
-            self._payload_upper_bytes = max(0, observed - container_size)
+            current = self._value_bytes(containers)
+            self._payload_upper_bytes = max(0, current - container_size)
+            observed = current + self._consumption.retained_upper_bytes
+        if observed > self._limit and self._consumption.frames:
+            # 检查点与现态共用原总预算；内存紧张先放弃恢复加速，保留原算法。
+            self._consumption._count('total_budget_rejections')
+            self._consumption.disable_for_budget()
+            containers = self._containers()
+            container_size = sum(getsizeof(value) + (value.storage_bytes
+                if type(value) in (FrozenPrefixList, FrozenPrefixMap) else 0)
+                for value in {id(value): value for value in containers}.values())
+            current = self._value_bytes(containers)
+            self._payload_upper_bytes = max(0, current - container_size)
+            observed = current + self._consumption.retained_upper_bytes
         if observed > self._limit and self._checkpoint is not None:
             self._checkpoint = None
             containers = self._containers()
             container_size = sum(getsizeof(value) + (value.storage_bytes
                 if type(value) in (FrozenPrefixList, FrozenPrefixMap) else 0)
                 for value in {id(value): value for value in containers}.values())
-            observed = self._value_bytes(containers)
-            self._payload_upper_bytes = max(0, observed - container_size)
+            current = self._value_bytes(containers)
+            self._payload_upper_bytes = max(0, current - container_size)
+            observed = current + self._consumption.retained_upper_bytes
         if observed > self._limit:
             self.clear()
         else:
@@ -1627,6 +1804,13 @@ class _FormalKeyBreakState:
         if get_ident() != self._thread or result.trend_level != self.trend_level:
             self.clear()
             return None
+        if (self._budget_owner is not current_evidence()
+                or self._frozen_budget_owner is not _current_frozen_budget_owner()):
+            self.clear()
+        owned_result = type(result) is _OwnedTrendJudgement
+        if self._owned_result_mode is not None and self._owned_result_mode != owned_result:
+            self.clear()
+        self._owned_result_mode = owned_result
         if type(source) not in (list, tuple) and not (type(source) is CertifiedSource
                 and source.owner is current_evidence() and _certified_keys is source.keys):
             self.clear()
@@ -1646,10 +1830,20 @@ class _FormalKeyBreakState:
                            and result._delta.parent is self._base_token else 0)
         candidate_keys: list[str] = list(self._candidate_keys[:candidate_start])
         for point in result.candidates[candidate_start:]:
-            if type(point) is not _FrozenPoint or point.json_template is None:
+            if owned_result:
+                # 与公开 FrozenPoint 的 JSON 模板完全相同的内容键，不使用
+                # 实例/lease 令牌替代相等性；只编码实际变化的候选后缀。
+                try:
+                    candidate_keys.append(json.dumps(point, allow_nan=False, ensure_ascii=False,
+                                                      separators=(',', ':')))
+                except (TypeError, ValueError):
+                    self.clear()
+                    return None
+            elif type(point) is not _FrozenPoint or point.json_template is None:
                 self.clear()
                 return None
-            candidate_keys.append(point.json_template)
+            else:
+                candidate_keys.append(point.json_template)
         try:
             certified_source = _certified_keys if _certified_keys is not None else tuple(source_keys)
             certified_candidates = tuple(candidate_keys)
@@ -1701,6 +1895,8 @@ class _FormalKeyBreakState:
             self._candidate_keys = ()
             self._candidates = []
             self._regular = []
+            self._regular_offsets = FrozenPrefixList([0])
+            self._consumption.reset()
             self._upgrade = None
             self._events = []
             self._ledger = None
@@ -1709,16 +1905,20 @@ class _FormalKeyBreakState:
             self._retain(appended=source_appended and previously_empty,
                          added=[*source_tail, *source_keys[source_common:]])
             return result
-        new_candidates = mutable_points(result.candidates[candidate_common:])
+        owned_result = type(result) is _OwnedTrendJudgement
+        new_candidates = _judgement_working_points(result.candidates[candidate_common:], owned=owned_result)
         self._candidates = [*self._candidates[:candidate_common], *new_candidates]
-        regular_tail = [turn for candidate in new_candidates for turn in _source_turns([candidate], self.trend_level,
-            retain_geometry=True, accept_direction_facts=True)]
-        if candidates_appended:
-            self._regular.extend(regular_tail)
-        else:
-            # 一个候选可能被投影门禁过滤，不能用原候选数量切片解析后的 regular。
-            self._regular = [turn for candidate in self._candidates for turn in _source_turns([candidate],
-                self.trend_level, retain_geometry=True, accept_direction_facts=True)]
+        # 候选可能被投影门禁过滤；保存每个候选后的真实输出长度，修订时
+        # 精确保留已完整校验的前缀，不因索引不等长重新扫描全部旧证明。
+        regular_start = self._regular_offsets[candidate_common]
+        regular_tail: list[_SourceTurn] = []
+        del self._regular_offsets[candidate_common + 1:]
+        for candidate in new_candidates:
+            regular_tail.extend(_source_turns([candidate], self.trend_level,
+                retain_geometry=True, accept_direction_facts=True))
+            self._regular_offsets.append(regular_start + len(regular_tail))
+        del self._regular[regular_start:]
+        self._regular.extend(regular_tail)
         appended = (self._upgrade is not None and source_appended and candidates_appended
                     and self._upgrade.append(self._turns[old_turn_count:], self._regular[old_regular_count:]))
         if not appended:
@@ -1727,12 +1927,25 @@ class _FormalKeyBreakState:
                                                event_sink=self._events, strict_only=True)
             self._ledger = None
         assert self._upgrade is not None
-        self._upgrade.advance(_snapshot=False)
+        checkpointing = self._consumption.prepare(source, source_keys, candidate_keys,
+            self._regular_offsets, self._regular, owned=owned_result and self._use_consumption_checkpoints,
+            appended_from=candidate_common if appended else None)
+        restored = not appended and checkpointing and self._consumption.restore(self._upgrade)
+        checkpointing = checkpointing and self._consumption.begin(self._upgrade, cold=not appended and not restored)
+        # begin/restore 将事件容器转为可共享的独立根，账本必须读取同一个根。
+        assert self._upgrade.event_sink is not None
+        self._events = cast(_EventRows, self._upgrade.event_sink)
+        self._consumption._count('advance_calls')
+        self._consumption._count('attacks_consumed', len(self._upgrade.turns) - self._upgrade.processed_count)
+        self._consumption._count('appended_advances' if appended else 'resumed_advances' if restored else 'full_rebuilds')
+        self._upgrade.advance(_snapshot=False, _checkpoint=self._consumption.capture if checkpointing else None)
         changed: list[object] = []
         output = result
+        if self._ledger is not None and self._ledger._owned_result != owned_result:
+            self._ledger = None
         if self._events:
             if self._ledger is None:
-                self._ledger = _JudgementLedger()
+                self._ledger = _JudgementLedger(_owned_result=owned_result)
                 previous_candidates, previous_points = (), ()
                 candidate_common = point_common = 0
             elif result._delta is not None and result._delta.parent is self._base_token:
@@ -1753,6 +1966,7 @@ class _FormalKeyBreakState:
         upgrade = self._upgrade
         new_orders = upgrade.orders[old_order_count:] if appended else ()
         self._retain(appended=appended, added=[*changed, *retained_points, *source_tail, *new_candidates, *regular_tail,
+            *self._regular_offsets[candidate_common + 1:],
             *source_keys[source_common:], *candidate_keys[candidate_common:], *self._events[old_event_count:],
             *upgrade.updated_merged.values(), *upgrade.updated_merged, *upgrade.new_merged_keys, *new_orders,
             *(upgrade.positions[order] for order in new_orders), *(upgrade.source_positions[order] for order in new_orders),
@@ -1789,13 +2003,15 @@ def _with_formal_key_breaks(
             return reused
     elif _append_state is not None:
         _append_state.clear()
-    turns = _source_turns(mutable_points(source), level - 1, formal_key_attacks=True)
+    owned_result = type(result) is _OwnedTrendJudgement
+    working_source = _owned_mutable_points(list(source), True) if owned_result else mutable_points(source)
+    turns = _source_turns(working_source, level - 1, formal_key_attacks=True)
     if asof is not None:
         turns = [turn for turn in turns if _later_moment(turn.available_at, asof) == asof]
     if not _has_early_formal_attack(turns):
         return result
     # 本级候选先恢复原始来源坐标；后续严格状态使用相同原位置，不重排知识日。
-    candidates = mutable_points(result.candidates)
+    candidates = _judgement_working_points(result.candidates, owned=owned_result)
     regular = [turn for candidate in candidates for turn in _source_turns([candidate], level,
         retain_geometry=True, accept_direction_facts=True)]
     events: list[dict[str, object]] = []
@@ -1803,8 +2019,8 @@ def _with_formal_key_breaks(
     promoted = state.advance()
     if not events:
         return result
-    return _finalize_judgement(candidates, [*mutable_points(result.points), *promoted], events,
-                               tuple(range(len(source))), level)
+    return _finalize_judgement(candidates, [*_judgement_working_points(result.points, owned=owned_result), *promoted], events,
+                               tuple(range(len(source))), level, _owned_result=owned_result)
 
 
 def judge_trend(
@@ -1813,6 +2029,7 @@ def judge_trend(
     _append_state: _TrendJudgementState | None = None,
     _owned_source: bool = False,
     _certified_standard: bool = False,
+    _owned_result: bool = False,
 ) -> TrendJudgement:
     """只根据直接下级高低点判断一个层级，并返回可直接递归的结构点。
 
@@ -1853,9 +2070,13 @@ def judge_trend(
         _moment_key(asof)
     source_level = trend_level - 1
     validated_turns: list[_SourceTurn] | None = [] if _append_state is not None else None
+    admitted = [False]
     try:
         source, positions = _visible_source(high_low_points, source_level, asof,
-                                            _validated_turns=validated_turns, _owned_source=_owned_source)
+            _validated_turns=validated_turns, _owned_source=_owned_source, _owned_admission=admitted)
+        # 有限证据允许 tuple／非字符串键等审计类型；内部共享还须通过
+        # 入场复制边界的严格 builtin 认证，不能只凭调用方的意愿标记。
+        owned_result = _owned_result and _owned_source and _certified_standard and admitted[0]
         if _append_state is None:
             ordinary = trend_reversals(source, trend_level=trend_level)
             upgrade_events: _EventRows = []
@@ -1866,8 +2087,10 @@ def judge_trend(
                 raise ValueError('append state must belong to the judged trend level')
             ordinary, merged, upgrade_events = _append_state.calculate(source, positions,
                 _validated_turns=validated_turns, _certified_standard=_certified_standard)
-        result = (_append_state.finalize(ordinary, merged, upgrade_events, positions) if _append_state is not None else
-                  _finalize_judgement(ordinary, merged, upgrade_events, positions, trend_level))
+        result = (_append_state.finalize(ordinary, merged, upgrade_events, positions, _owned_result=owned_result)
+                  if _append_state is not None else
+                  _finalize_judgement(ordinary, merged, upgrade_events, positions, trend_level,
+                                      _owned_result=owned_result))
         return _with_formal_key_breaks(high_low_points, result, asof=asof)
     except Exception:
         # 来源、升级或冻结异常均不能留下半更新状态；原异常继续交给调用方。

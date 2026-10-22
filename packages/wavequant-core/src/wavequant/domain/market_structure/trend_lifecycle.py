@@ -14,6 +14,7 @@ from math import isfinite
 from typing import TYPE_CHECKING, cast
 
 from .trend_point_version import PointVersion
+from .trend_frozen_state import FrozenPrefixList
 from .owned_evidence import CertifiedSource
 from ..models.model import Bar
 from .bull_alternation_confirmation import AlternationPolicy, confirm_bull_alternation
@@ -330,48 +331,100 @@ def _upgrade_flip_fact(raw: Mapping[str, object], point: _Pivot,
     return _Fact('翻空为多' if up else '翻多为空', point, available, background_origin, broken=frozen)
 
 
-def _facts(points: object, dates: Mapping[str, int], now: int) -> tuple[_Fact, ...]:
+def _point_facts(raw: Mapping[str, object], point: _Pivot, own_points: Mapping[tuple[int, int], _Pivot],
+                 dates: Mapping[str, int], now: int) -> tuple[_Fact, ...]:
     result: list[_Fact] = []
-    parsed = tuple((raw, point) for raw in _records(points)
-                   if (point := _pivot(raw, dates, now)) is not None)
-    own_points = {(point.index, point.ordinal): point for _, point in parsed}
-    for raw, point in parsed:
-        ordinary_flip = False
-        for observation in _records(raw.get('observations')):
-            title = observation.get('title')
-            known = _clock(observation.get('available_at'), dates)
-            if not isinstance(title, str) or title not in _TITLES or known is None or known > now:
+    ordinary_flip = False
+    for observation in _records(raw.get('observations')):
+        title = observation.get('title')
+        known = _clock(observation.get('available_at'), dates)
+        if not isinstance(title, str) or title not in _TITLES or known is None or known > now:
+            continue
+        up = title in ('底部疑虑', '翻空为多', '空多交替')
+        expected = ('H' if up else 'L') if title in ('翻空为多', '翻多为空') else ('L' if up else 'H')
+        if point.kind != expected:
+            continue
+        origin_raw = observation.get('confirmed_low' if up else 'confirmed_high', observation.get('origin'))
+        origin = _pivot(origin_raw, dates, now)
+        impulse_raw = observation.get('flip_high' if up else 'flip_low')
+        if title in ('底部疑虑', '头部疑虑'):
+            impulse_raw = observation.get('key')
+        impulse = _pivot(impulse_raw, dates, now)
+        if (origin_raw is not None and origin is None) or (impulse_raw is not None and impulse is None):
+            continue
+        frozen = None
+        if title in ('翻空为多', '翻多为空') and observation.get('key') is not None:
+            frozen = _pivot(observation['key'], dates, now)
+            sign = 1 if up else -1
+            if (frozen is None or frozen.kind != point.kind or sign * (point.price - frozen.price) <= 0
+                    or (frozen.index, frozen.ordinal) >= (point.index, point.ordinal)):
                 continue
-            up = title in ('底部疑虑', '翻空为多', '空多交替')
-            expected = ('H' if up else 'L') if title in ('翻空为多', '翻多为空') else ('L' if up else 'H')
-            if point.kind != expected:
-                continue
-            origin_raw = observation.get('confirmed_low' if up else 'confirmed_high', observation.get('origin'))
-            origin = _pivot(origin_raw, dates, now)
-            impulse_raw = observation.get('flip_high' if up else 'flip_low')
-            if title in ('底部疑虑', '头部疑虑'):
-                impulse_raw = observation.get('key')
-            impulse = _pivot(impulse_raw, dates, now)
-            if (origin_raw is not None and origin is None) or (impulse_raw is not None and impulse is None):
-                continue
-            frozen = None
-            if title in ('翻空为多', '翻多为空') and observation.get('key') is not None:
-                frozen = _pivot(observation['key'], dates, now)
-                sign = 1 if up else -1
-                if (frozen is None or frozen.kind != point.kind or sign * (point.price - frozen.price) <= 0
-                        or (frozen.index, frozen.ordinal) >= (point.index, point.ordinal)):
-                    continue
-            result.append(_Fact(title, point, max(known, point.known,
-                origin.known if origin else 0, impulse.known if impulse else 0,
-                frozen.known if frozen else 0), origin, impulse, frozen))
-            ordinary_flip = ordinary_flip or title == ('翻空为多' if point.kind == 'H' else '翻多为空')
-        # 本级冻结关键位的正式突破优先；没有正式标记才读取升级证明。
-        if not ordinary_flip:
-            upgrade = _upgrade_flip_fact(raw, point, own_points, dates, now)
-            if upgrade is not None:
-                result.append(upgrade)
-    return tuple(sorted(dict.fromkeys(result), key=lambda fact: (
+        result.append(_Fact(title, point, max(known, point.known,
+            origin.known if origin else 0, impulse.known if impulse else 0,
+            frozen.known if frozen else 0), origin, impulse, frozen))
+        ordinary_flip = ordinary_flip or title == ('翻空为多' if point.kind == 'H' else '翻多为空')
+    # 本级冻结关键位的正式突破优先；没有正式标记才读取升级证明。
+    if not ordinary_flip:
+        upgrade = _upgrade_flip_fact(raw, point, own_points, dates, now)
+        if upgrade is not None:
+            result.append(upgrade)
+    return tuple(result)
+
+
+def _ordered_facts(values: Iterable[_Fact]) -> tuple[_Fact, ...]:
+    return tuple(sorted(dict.fromkeys(values), key=lambda fact: (
         fact.known, fact.point.index, fact.point.ordinal, _TITLES.index(fact.title))))
+
+
+def _facts(points: object, dates: Mapping[str, int], now: int, *,
+           _parsed: Sequence[tuple[Mapping[str, object], _Pivot]] | None = None) -> tuple[_Fact, ...]:
+    parsed = (_parsed if _parsed is not None else tuple((raw, point) for raw in _records(points)
+              if (point := _pivot(raw, dates, now)) is not None))
+    own_points = {(point.index, point.ordinal): point for _, point in parsed}
+    return _ordered_facts(fact for raw, point in parsed for fact in _point_facts(raw, point, own_points, dates, now))
+
+
+class _StructureProjection:
+    """受控有序点的事实投影；新尾部不重新读取未变前缀的嵌套证明。
+
+    升级事实只引用该点之前的本级坐标，最早修订位置覆盖所有受影响的
+    后继事实。知识时钟到期或非严格有序输入则重新投影，不能借用旧结论。
+    """
+
+    def __init__(self) -> None:
+        self.points: PointVersion | None = None
+        self.dates: Mapping[str, int] | None = None
+        self.parsed = FrozenPrefixList[tuple[Mapping[str, object], _Pivot] | None]()
+        self.facts = FrozenPrefixList[tuple[_Fact, ...]]()
+        self.own: dict[tuple[int, int], _Pivot] = {}
+
+    def advance(self, points: PointVersion, dates: Mapping[str, int], now: int, *, restart: bool) -> tuple[
+        tuple[_Fact, ...], tuple[tuple[Mapping[str, object], _Pivot], ...],
+    ] | None:
+        start = points.changed_since(self.points) if not restart and self.dates is dates else 0
+        for entry in self.parsed.iter_range(start):
+            if entry is not None:
+                self.own.pop((entry[1].index, entry[1].ordinal), None)
+        del self.parsed[start:]
+        del self.facts[start:]
+        previous = next(reversed(self.own.values()), None)
+        for raw in points.iter_range(start):
+            point = _pivot(raw, dates, now)
+            if point is not None:
+                if previous is not None and (previous.index, previous.ordinal) >= (point.index, point.ordinal):
+                    self.__init__()
+                    return None
+                self.own[point.index, point.ordinal] = point
+                previous = point
+            self.parsed.append((raw, point) if point is not None else None)
+        for entry in self.parsed.iter_range(start):
+            self.facts.append(_point_facts(entry[0], entry[1], self.own, dates, now) if entry is not None else ())
+        self.parsed.freeze(len(self.parsed))
+        self.facts.freeze(len(self.facts))
+        self.points, self.dates = points, dates
+        parsed = tuple(entry for entry in self.parsed if entry is not None)
+        facts = _ordered_facts(fact for values in self.facts for fact in values)
+        return facts, parsed
 
 
 class TrendLifecycle:
@@ -392,6 +445,7 @@ class TrendLifecycle:
         self._failed_breakouts: dict[tuple[int, str], FailedBreakoutState] = {}
         self._structure_facts: dict[tuple[int, str], _StructureFacts] = {}
         self._structure_clocks: dict[tuple[int, str], _StructureClocks] = {}
+        self._structure_projections: dict[tuple[int, str], _StructureProjection] = {}
         self._checkpoint_seen: dict[
             tuple[int, str], tuple[frozenset[_Fact], tuple[tuple[object, ...], ...]]
         ] = {}
@@ -639,6 +693,7 @@ class TrendLifecycle:
         if not _owned_structure:
             self._structure_facts.clear()
             self._structure_clocks.clear()
+            self._structure_projections.clear()
             self._source_turns = None
         events: list[dict[str, object]] = []
         present: set[tuple[int, str]] = set()
@@ -669,16 +724,30 @@ class TrendLifecycle:
                     bear_candidate = cached.bear_candidate
                     failed_seed = cached.failed_breakout_seed
                 else:
-                    facts = _facts(stroke.get('points'), dates, now)
-                    parsed_points = tuple(point for raw in _records(stroke.get('points'))
-                                          if (point := _pivot(raw, dates, now)) is not None)
-                    point_orders = _point_orders(parsed_points)
-                    fact_set, parsed_set = frozenset(facts), frozenset(parsed_points)
-                    bear_candidate = _prepare_bearish_structure(stroke, now, dates, facts=facts)
-                    failed_seed = prepare_failed_breakout(facts, parsed_points)
+                    raw_points = stroke.get('points')
+                    standard, next_known = False, None
                     if _owned_structure:
                         clocks = self._structure_clocks.setdefault(key, _StructureClocks())
-                        standard, next_known = clocks.advance(stroke.get('points'), dates, now)
+                        standard, next_known = clocks.advance(raw_points, dates, now)
+                    projected = None
+                    if standard and type(raw_points) in (PointVersion, CertifiedSource) and raw_points._sealed:
+                        projection = self._structure_projections.setdefault(key, _StructureProjection())
+                        projected = projection.advance(cast(PointVersion, raw_points), dates, now,
+                            restart=cached is None or cached.next_known is not None and now >= cached.next_known)
+                    else:
+                        self._structure_projections.pop(key, None)
+                    if projected is None:
+                        parsed = tuple((raw, point) for raw in _records(raw_points)
+                                       if (point := _pivot(raw, dates, now)) is not None)
+                        facts = _facts(raw_points, dates, now, _parsed=parsed)
+                    else:
+                        facts, parsed = projected
+                    parsed_points = tuple(point for _, point in parsed)
+                    point_orders = _point_orders(parsed_points)
+                    fact_set, parsed_set = frozenset(facts), frozenset(parsed_points)
+                    bear_candidate = _prepare_bearish_structure(stroke, now, dates, facts=facts, _parsed=parsed)
+                    failed_seed = prepare_failed_breakout(facts, parsed_points)
+                    if _owned_structure:
                         if standard:
                             self._structure_facts[key] = _StructureFacts(
                                 stroke, facts, parsed_points, point_orders, fact_set, parsed_set, next_known,
@@ -795,6 +864,7 @@ class TrendLifecycle:
         self._failed_breakouts = {key: state for key, state in self._failed_breakouts.items() if key in present}
         self._structure_facts = {key: facts for key, facts in self._structure_facts.items() if key in present}
         self._structure_clocks = {key: clocks for key, clocks in self._structure_clocks.items() if key in present}
+        self._structure_projections = {key: value for key, value in self._structure_projections.items() if key in present}
         self._checkpoint_seen = {key: facts for key, facts in self._checkpoint_seen.items() if key in present}
         # 单级联动借用当日下级事件；整层恢复使用同一次 advance 的下级结果。
         market_breaks = self._source_market_breaks.observe(levels, bars, now, dates,

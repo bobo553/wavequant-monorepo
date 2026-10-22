@@ -10,10 +10,12 @@
 from collections.abc import Mapping, Sequence
 from bisect import bisect_right
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import isfinite
 from typing import Literal, TypeAlias, cast
 
+from .owned_evidence_producer import PointRecord, current_producer_records
+from .owned_evidence_records import RecordRef
 from .polyline import LinePoint, PointKind, ReversalPoint
 from .trend_structure import StructuralTrend, classify_trend_prices, preceding_turn
 
@@ -61,16 +63,31 @@ def _completion_evidence(point: Mapping[str, object]) -> dict[str, object]:
     fields = ('index', 'ordinal', 'kind', 'value', 'time', 'available_at',
               'wave_direction_before', 'wave_direction_after', 'confirmation_rule',
               'definition_evidence', 'upgrade_evidence', 'lower_wave_identity_evidence', 'body_reversal_evidence')
-    return {field: deepcopy(point[field]) for field in fields if field in point}
+    result = {field: deepcopy(point[field]) for field in fields if field in point}
+    scope = current_producer_records()
+    record = scope.lookup(point) if scope is not None else None
+    if scope is not None and record is not None:
+        # 原逻辑逐字段 deepcopy；各可变字段必须分别进入独立复制域。
+        for field, value in result.items():
+            reference = record.field_reference(field)
+            if reference is not None:
+                scope.bind_clone(value, point[field], reference)
+        scope.record_point(result)
+    return result
 
 
 def _stamp_wave_completion(point: dict[str, object], *, closed: bool, owned: bool = True) -> None:
     """本级重建结束标记；开放端点只保留几何资格，不取得递归来源资格。"""
     point['wave_completion_policy'] = _WAVE_COMPLETION_POLICY
     point['wave_identity_state'] = 'owned' if owned else 'direction_only'
+    scope = current_producer_records()
     if closed and owned:
         point['wave_completed_at'] = point['available_at']
+        if scope is not None and scope.tracks(point):
+            scope.record_point(point)
         point['wave_completion_evidence'] = _completion_evidence(point)
+    if scope is not None and scope.tracks(point):
+        scope.record_point(point)
 
 
 def _completed_source_point(raw: Mapping[str, object]) -> dict[str, object] | None:
@@ -449,6 +466,41 @@ class _SourceTurn:
     time: str
     available_at: Moment
     reversal: ReversalPoint
+    source_record: tuple[bytes, int] | None = field(default=None, compare=False, repr=False)
+
+    def __deepcopy__(self, memo: dict[int, object]) -> '_SourceTurn':
+        # 真正复制后的证据图具有独立别名域；旧磁盘根只能证明原 source 壳。
+        result = object.__new__(type(self))
+        memo[id(self)] = result
+        for name, value in vars(self).items():
+            object.__setattr__(result, name, None if name == 'source_record' else deepcopy(value, memo))
+        return result
+
+
+def _source_record_reference(source: Mapping[str, object]) -> tuple[bytes, int] | None:
+    """状态只持有常量引用，不保留临时载体或作用域身份表。"""
+    scope = current_producer_records()
+    if scope is None or type(source) is not dict:
+        return None
+    record = scope.record_point(cast(dict[str, object], source))
+    return record.reference.namespace, record.reference.offset
+
+
+def _bind_source_record(turn: _SourceTurn) -> None:
+    """旧状态跨作用域被实际消费时恢复直接字段引用，不展开历史子图。"""
+    scope = current_producer_records()
+    if scope is None or turn.source_record is None:
+        return
+    namespace, offset = turn.source_record
+    if namespace != scope.owner.namespace or type(turn.source) is not dict:
+        raise ValueError('source turn records require their original request owner and dictionary')
+    if scope.lookup(turn.source) is not None:
+        return
+    reference = RecordRef(namespace, offset)
+    source = cast(dict[str, object], turn.source)
+    refs = scope.owner.dictionary_refs(reference)
+    fields = tuple((key, pair[1]) for key, pair in zip(source, refs))
+    scope.bind(PointRecord(source, reference, fields, scope.owner))
 
 
 def _source_turns(
@@ -515,8 +567,9 @@ def _source_turns(
             LinePoint(index, ordinal, PointKind(kind), float(price)), index,
             f'level{source_level}_source_position_{position}',
         )
-        turns.append(_SourceTurn(geometry if retain_geometry else raw, position, index, ordinal, 'H' if kind == 'H' else 'L',
-                                 float(price), time, moment, reversal))
+        source = geometry if retain_geometry else raw
+        turns.append(_SourceTurn(source, position, index, ordinal, 'H' if kind == 'H' else 'L',
+                                 float(price), time, moment, reversal, _source_record_reference(source)))
     return turns
 
 
@@ -551,13 +604,24 @@ def _strip_source_license(source: Mapping[str, object]) -> dict[str, object]:
         result.pop(field, None)
     # 来源的确认链只用于说明这个下级点为何已存在，不能供本级 publisher 授权。
     result['source_confirmation'] = deepcopy(source.get('confirmed_by'))
+    scope = current_producer_records()
+    if scope is not None:
+        record = scope.lookup(source)
+        reference = record.field_reference('confirmed_by') if record is not None else None
+        if reference is not None:
+            scope.bind_clone(result['source_confirmation'], source.get('confirmed_by'), reference)
+        scope.record_point(result)
     return result
 
 
 def _candidate_from_source(turn: _SourceTurn) -> dict[str, object]:
     """复制真实来源，移除下级许可证；上级必须由本级门禁重新取得发布证书。"""
+    _bind_source_record(turn)
     result = _strip_source_license(turn.source)
     result.update(_reference(turn))
+    scope = current_producer_records()
+    if scope is not None:
+        scope.record_point(result)
     return result
 
 
@@ -611,6 +675,9 @@ def _ordinary_point(
                       **{f'source_level{source_level}_available_at': extreme.available_at,
                          f'source_level{source_level}_position': extreme.position,
                          f'confirmed_on_level{source_level}': point.position})
+    scope = current_producer_records()
+    if scope is not None:
+        scope.record_point(result)
     _stamp_wave_completion(result, closed=owned, owned=owned)
     return result
 
