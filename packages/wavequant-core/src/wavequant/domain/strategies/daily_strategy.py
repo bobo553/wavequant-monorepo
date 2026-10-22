@@ -174,6 +174,10 @@ def daily_signals(
                     interval_skipped_days=result.counts.get('interval_skipped_days', 0) + 1,
                     buy_interval_level=config.buy_interval_level,
                     long_signals=sum(signal.side == 'LONG' for signal in state.signals)))
+        # 独立结构事实不进入交易候选；每次只附加本前缀已经发布的观察。
+        result.audit[:] = [row for row in result.audit
+                           if row['event'] not in ('n_structure_completed', 'n_structure_invalidated')]
+        result.audit.extend(analysis.structural_n_events)
         decision_seconds += monotonic() - started
         account_started = monotonic()
         report_phase('处理分钟成交、账户与图表快照')

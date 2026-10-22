@@ -3,6 +3,42 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { nTargetAt, nTargetGuide, nTargetLevels, nTargetObservations } from "../public/n-target-focus.js";
+import { buildAnnotations } from "../public/annotations.js";
+import { isQualifiedNTargetSource } from "../public/bottom-n-targets.js";
+import { buyEligibilityRanges } from "../public/buy-eligibility-overlay.js";
+
+test("structural N targets survive historical hover without granting trading qualification", () => {
+    const data = [
+        { time: "2021-10-28", high: 19.78, close: 19.54 },
+        { time: "2021-11-01", high: 19.78, close: 19.65 },
+        { time: "2021-11-02", high: 20.18, close: 19.32 },
+        { time: "2021-11-03", high: 20, close: 19 },
+    ];
+    const event = {
+        id: "n:polyline-example", n_id: "polyline-example", event: "n_completed", direction: "up",
+        time: "2021-11-02", available_at: "2021-11-03", price: 19.32,
+        target_eligible: false, structural_target: true, n_invalidated_at: "2021-11-03",
+        shape: [{ time: "2021-10-28", value: 18.98 }],
+        levels: [
+            { stage: "one_p", name: "一饱", price: 21.38, anchor_at: "2021-11-01", available_at: "2021-11-03", measurement_at: "2021-11-02", valid_until: "2021-11-02" },
+            { stage: "two_t", name: "二吐", price: 22.58, anchor_at: "2021-11-01", available_at: "2021-11-03", measurement_at: "2021-11-02", valid_until: "2021-11-02" },
+        ],
+    };
+    const view = { bars: data, asof: "2021-11-03", markers: [], signals: [], orders: [], trades: [], audit: [
+        { event: "trading_interval_opened", timestamp: "2021-11-03", trend_level: 2,
+            source_path: "scope", bar_index: 3, start_low_time: "2021-10-28" },
+    ] };
+    const theory = { asof: view.asof, n_target_policy: "level_one_floor_n_exclusive_v3", events: [event] };
+    const items = buildAnnotations(view, theory);
+    const observations = nTargetObservations(items, data, view.asof);
+    assert.equal(nTargetAt(observations, "2021-11-02")?.raw.n_id, event.n_id);
+    assert.equal(nTargetAt(observations, "2021-11-03"), null);
+    assert.equal(observations[0].from, buyEligibilityRanges(view)[0].start);
+    assert.equal(isQualifiedNTargetSource(event, theory), false);
+    assert.deepEqual(nTargetObservations(items, data, "2021-11-02"), []);
+    assert.equal(buildAnnotations({ ...view, asof: "2021-11-02" }, theory)
+        .some((item) => item.id === event.id), false);
+});
 
 const bars = [
     { time: "2024-03-01", high: 4.5, close: 4.3 },

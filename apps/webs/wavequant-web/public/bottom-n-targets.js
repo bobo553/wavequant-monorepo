@@ -7,6 +7,11 @@ export function isBottomNTargetSource(event, theory, asof = theory?.asof) {
     return isQualifiedNTargetSource(event, theory) && isActivePositiveN(event, asof);
 }
 
+/** 结构测幅可供历史悬停；有效区间由 Core 发布，不能充当交易测幅资格。 */
+export function isStructuralNTargetSource(event) {
+    return event?.event === "n_completed" && event.direction === "up" && event.structural_target === true;
+}
+
 /** 历史资格保留给已经形成的父 A/B；当前 N 的存活另按截面判断。 */
 export function isQualifiedNTargetSource(event, theory) {
     return (
@@ -18,6 +23,7 @@ export function isQualifiedNTargetSource(event, theory) {
 }
 
 export function bottomNTargetCaption(event) {
+    if (isStructuralNTargetSource(event)) return `折线正 N ${event.time}`;
     if (event?.display_target_eligible) return `${event.display_target_level}级资格区间 · 正 N ${event.time}`;
     if (event?.target_eligible !== true) return "";
     const bottom = event.target_bottom_date || event.shape?.[0]?.time;

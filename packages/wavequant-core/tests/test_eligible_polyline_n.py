@@ -58,3 +58,22 @@ def test_unknown_vertices_are_rejected_without_advancing_clock():
     with pytest.raises(ValueError, match='unknown'):
         stream.advance(0, (point(1, 'L', 10),), ())
     assert stream.advance(0, (), ()) == ()
+
+
+def test_structural_scope_keeps_red_background_origin_until_close_and_reopen():
+    stream = EligiblePolylineN(2, folded_window=30, structural=True)
+    points = (point(0,'L',8), point(1,'H',12), point(2,'L',8))
+    for now in range(3):
+        assert stream.advance(now, points[:now+1], ()) == ()
+    first = stream.advance(3, points, (opening(3,0),))
+    assert any(source.points == points for source in first)
+    assert all(source.low_index == 0 and source.known_at == 3 for source in first)
+    # 同窗口后来出现新低点/确认事件，也不能移动已经画出的红色背景起点。
+    later = (*points, point(4,'H',13), point(5,'L',9))
+    stream.advance(4,later[:4],())
+    update = stream.advance(5,later,(opening(5,2),))
+    assert update and all(source.low_index == 0 and source.window_start == 3 for source in update)
+    assert stream.advance(6,later,(dict(opening(6,2),state='多空交替'),)) == ()
+    reopened = stream.advance(7,later,(opening(7,2),))
+    assert reopened and all(source.low_index == 2 and source.window_start == 7 for source in reopened)
+    assert all(source.points[0].point.index >= 2 for source in reopened)

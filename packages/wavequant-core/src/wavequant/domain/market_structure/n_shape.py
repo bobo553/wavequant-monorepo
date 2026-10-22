@@ -56,10 +56,13 @@ def _finite(value, name):
 class PivotRef:
     index: int
     confirmed_index: int
+    ordinal: int | None = None
 
     def __post_init__(self):
         _index(self.index,'pivot index')
         _index(self.confirmed_index,'pivot confirmation')
+        if self.ordinal is not None:
+            _index(self.ordinal, 'pivot ordinal')
         if self.confirmed_index < self.index:
             raise ValueError('pivot confirmation cannot precede its source')
 
@@ -81,8 +84,13 @@ class NSetup:
     staged_defense: bool = False
     allow_mother_pullback: bool = False
     allow_inside_pullback: bool = False
+    polyline_structure: bool = False
 
     def __post_init__(self):
+        if type(self.polyline_structure) is not bool:
+            raise ValueError('polyline structure policy must be boolean')
+        if self.polyline_structure and (self.source != 'lecture_causal' or self.direction != Direction.UP):
+            raise ValueError('polyline structure requires confirmed positive lecture pivots')
         if type(self.allow_inside_pullback) is not bool:
             raise ValueError('inside pullback policy must be boolean')
         if self.allow_inside_pullback and self.allow_mother_pullback:
@@ -114,7 +122,13 @@ class NSetup:
         inside_pullback = (self.allow_inside_pullback and self.source == 'lecture_causal'
                            and self.direction == Direction.UP
                            and self.origin.index < self.neckline.index == self.pullback.index)
-        if not (self.origin.index < self.neckline.index < self.pullback.index or mother or mother_pullback or inside_pullback):
+        ordered_polyline = (self.polyline_structure and all(p.ordinal is not None for p in refs)
+                            and all((a.index, a.ordinal if a.ordinal is not None else -1)
+                                    < (b.index, b.ordinal if b.ordinal is not None else -1)
+                                    for a, b in zip(refs, refs[1:])))
+        if self.polyline_structure and not ordered_polyline:
+            raise ValueError('polyline structure requires explicitly ordered pivot ordinals')
+        if not (self.origin.index < self.neckline.index < self.pullback.index or ordered_polyline or mother or mother_pullback or inside_pullback):
             raise ValueError('A, B, C must be strictly chronological')
         if not self.origin.confirmed_index <= self.neckline.confirmed_index <= self.pullback.confirmed_index:
             raise ValueError('pivot confirmations must be chronological')
@@ -185,7 +199,7 @@ class NObservation:
 
 def project_n_targets(origin: float, neckline: float, pullback: float, *,
                       box_anchor: float, direction: Direction,
-                      domain: ValueDomain) -> NTargets:
+                      domain: ValueDomain, allow_equal_origin: bool = False) -> NTargets:
     """Equal=C+B-A; 1P=2X-A; 2T=3X-2A. X is a separate box anchor.
 
     Mathematical projection supports signed indicators; PRICE rejects nonpositive
@@ -198,7 +212,9 @@ def project_n_targets(origin: float, neckline: float, pullback: float, *,
         if domain == ValueDomain.PRICE and value <= 0:
             raise ValueError('price anchors must be positive')
     sign = 1 if direction == Direction.UP else -1
-    if not 0 < sign*(pullback-origin) < sign*(neckline-origin):
+    distance = sign * (pullback - origin)
+    if not ((distance > 0 or (allow_equal_origin and direction == Direction.UP and distance == 0))
+            and distance < sign * (neckline - origin)):
         raise ValueError('standard N requires a positive impulse and a partial retracement')
     if sign*(box_anchor-neckline) < 0:
         raise ValueError('box anchor must be at or beyond the neckline in attack direction')
@@ -219,10 +235,12 @@ def project_n_targets(origin: float, neckline: float, pullback: float, *,
 def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
               milestone_basis: MilestoneBasis, asof_index: int | None = None,
               measurement_start: int | None = None, measure_targets: bool = True) -> NObservation:
-    """Earliest same-bar real+virtual completion, never backdated to unknown pivots.
+    """Observe the explicit completion policy without backdating unknown pivots.
 
     A/C are lows and B a high for positive N, symmetric for inverse N. Real
     threshold is B-bar close; virtual threshold is B-bar extreme (figure 003).
+    Confirmed positive polyline structures use the strict high breakout alone;
+    the actual close evidence is retained separately from structural completion.
     Completion-bar targets are credited only by its CLOSE, because earlier high/
     low may predate formation. Later-bar extrema are allowed only if requested.
     measurement_start preserves historical geometry but starts trading target
@@ -259,7 +277,7 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         return NObservation(NStatus.AWAIT_ANCHORS,end,when)
     up = setup.direction == Direction.UP
     sign = 1 if up else -1
-    if setup.origin.index == setup.neckline.index:
+    if setup.origin.index == setup.neckline.index and not setup.polyline_structure:
         mother_index = setup.origin.index
         mother_bar = bars[mother_index]
         if (mother_index == 0 or mother_bar.close <= mother_bar.open
@@ -268,7 +286,7 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             raise ValueError('mother impulse requires an observed bullish outside candle')
     a = bars[setup.origin.index].low if up else bars[setup.origin.index].high
     bb = bars[setup.neckline.index]
-    if setup.neckline.index == setup.pullback.index:
+    if setup.neckline.index == setup.pullback.index and not setup.polyline_structure:
         mother_index = setup.neckline.index
         if setup.allow_inside_pullback:
             # The confirmed lecture path orders a bearish child's H before L.
@@ -285,20 +303,22 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     c = bars[setup.pullback.index].low if up else bars[setup.pullback.index].high
     # Validate the explicit standard A-B-C geometry; no arbitrary 1/2 filter.
     if measure_targets:
-        project_n_targets(a,b,c,box_anchor=b,direction=setup.direction,domain=ValueDomain.PRICE)
+        project_n_targets(a,b,c,box_anchor=b,direction=setup.direction,domain=ValueDomain.PRICE,
+                          allow_equal_origin=setup.polyline_structure)
     else:
         for value in (a, b, c):
             _finite(value, 'N anchor')
             if value <= 0:
                 raise ValueError('price anchors must be positive')
-        if not 0 < sign * (c - a) < sign * (b - a):
+        if not ((sign * (c-a) > 0 or (setup.polyline_structure and c == a))
+                and sign * (c-a) < sign * (b-a)):
             raise ValueError('standard N requires a positive impulse and a partial retracement')
     anchors = NAnchors(a,b,bb.close,c,known,(b-c)/(b-a))
     kind = LevelKind.RESISTANCE if up else LevelKind.SUPPORT
     # B can already be known when today's close confirms a historical C.
     # This is a close-time observation, never an intraday order using future C.
     same_confirmation = (setup.allow_confirmation_bar and setup.pullback.index < known
-                         and setup.neckline.confirmed_index < known)
+                         and (setup.neckline.confirmed_index < known or setup.polyline_structure))
     # Lecture outside-candle convention describes completed daily geometry only.
     # The close must cross B's real and virtual levels; no intrabar order is assumed.
     outside_close = (setup.allow_outside_close and setup.source == 'lecture_causal'
@@ -351,10 +371,10 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             first_stage = i
         if i == known and outside_turn and not outside_close:
             continue
-        if sign*(bar.close-bb.close) <= 0 or sign*(extreme-b) <= 0:
+        if (not setup.polyline_structure and sign*(bar.close-bb.close) <= 0) or sign*(extreme-b) <= 0:
             continue
         prev = bars[i-1]
-        previous_joint = (sign*(prev.close-bb.close)>0 and
+        previous_joint = ((setup.polyline_structure or sign*(prev.close-bb.close)>0) and
                           sign*((prev.high if up else prev.low)-b)>0)
         # A C candle skipped above was not a completed attack. Its directional
         # wick must not suppress the next candle's fresh crossing; observe_attack
@@ -366,11 +386,12 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             vl, vh = virtual_low(prev, bar), virtual_high(prev, bar)
             completion = NCompletion(i,bar.timestamp,True,True,vl,vh,vl if up else vh,'轧空低' if up else '杀多高')
             break
-        real = observe_attack(bars,i,real_key,timeframe=timeframe)
-        virtual = observe_attack(bars,i,virtual_key,timeframe=timeframe)
-        # Occupancy beyond both levels alone must not create a belated attack.
-        if not (real.close_crossed or virtual.intrabar_crossed):
-            continue
+        if not setup.polyline_structure:
+            real = observe_attack(bars,i,real_key,timeframe=timeframe)
+            virtual = observe_attack(bars,i,virtual_key,timeframe=timeframe)
+            # Occupancy beyond both levels alone must not create a belated attack.
+            if not (real.close_crossed or virtual.intrabar_crossed):
+                continue
         vl, vh = virtual_low(prev, bar), virtual_high(prev, bar)
         defense = vl if up else vh
         if setup.staged_defense and first_stage is not None:
@@ -380,7 +401,7 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             defense = (min if up else max)(bars[first_stage-1].close,
                 *(adverse_value(v) for v in bars[first_stage:i+1]))
             # Box targets retain the actual completion extreme.
-        completion = NCompletion(i,bar.timestamp,True,True,vl,vh,defense,
+        completion = NCompletion(i,bar.timestamp,sign*(bar.close-bb.close)>0,True,vl,vh,defense,
                                  '轧空低' if up else '杀多高')
         break
     if completion is None:
@@ -393,7 +414,8 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         return NObservation(NStatus.COMPLETED, end, when, anchors, completion=completion)
     box = ((completion.virtual_high if up else completion.virtual_low)
            if setup.box_anchor_mode == BoxAnchorMode.ATTACK_VIRTUAL_EXTREME else b)
-    targets = project_n_targets(a,b,c,box_anchor=box,direction=setup.direction,domain=ValueDomain.PRICE)
+    targets = project_n_targets(a,b,c,box_anchor=box,direction=setup.direction,domain=ValueDomain.PRICE,
+                                allow_equal_origin=setup.polyline_structure)
     hit: list[Milestone] = []
     defense_breach: int | None = None
     origin_breach: int | None = None

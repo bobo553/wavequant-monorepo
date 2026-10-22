@@ -129,6 +129,11 @@ def confirmed_polyline_segments(bars, snapshots, epochs, blocked):
     return segments
 
 
+class _NInvalidation(TypedDict):
+    bar_index: int
+    reason: str
+
+
 class _NExtensionLevel(TypedDict):
     stage: str
     price: float
@@ -863,6 +868,39 @@ class ChartRepository:
 
     @with_strategy_trend_options("config")
     def render_theory(self, bars, config, result, asof, *, geometry=None):
+        # 结构与交易事实保持独立；只在展示适配层复用 N 的绘图契约。
+        structural_types = {'n_structure_completed': 'n_completed', 'n_structure_invalidated': 'n_invalidated'}
+        chart_audit = [dict(row, event=structural_types[row['event']])
+                       if row['event'] in structural_types else row for row in result.audit]
+        def structure_key(row):
+            return tuple(row.get(key) for key in ('origin', 'neckline', 'pullback', 'bar_index',
+                                                  'qualification_window_start', 'source_path'))
+
+        # 同窗口、同三点、同完成日只发布一个图形，保留交易来源 ID 供已有目标引用。
+        trading = {structure_key(row): position for position, row in enumerate(chart_audit)
+                   if row['event'] == 'n_completed' and not row.get('structural_target')}
+        aliases = {}
+        duplicates = set()
+        for position, row in enumerate(chart_audit):
+            if row['event'] != 'n_completed' or not row.get('structural_target'):
+                continue
+            if max(row['bar_index'], row.get('known_at', row['bar_index'])) >= len(bars):
+                continue
+            prior_position = trading.get(structure_key(row))
+            if prior_position is None:
+                continue
+            prior = chart_audit[prior_position]
+            if not prior.get('n_id'):
+                continue
+            aliases[row['n_id']] = prior['n_id']
+            chart_audit[prior_position] = dict(prior, structural_target=True,
+                equal_wave=row['equal_wave'], one_p=row['one_p'], two_t=row['two_t'],
+                box_anchor=row['box_anchor'], scope_low_index=row['scope_low_index'],
+                scope_low_ordinal=row['scope_low_ordinal'], real_break=row['real_break'],
+                virtual_break=row['virtual_break'])
+            duplicates.add(position)
+        chart_audit = [dict(row, n_id=aliases[row['n_id']]) if row.get('n_id') in aliases else row
+                       for position, row in enumerate(chart_audit) if position not in duplicates]
         qualified_windows = config.buy_point_definition == 'whole_flip_wave_v3'
         snapshots, epochs, limits, blocked = pivot_history(bars, config)
         segments = confirmed_polyline_segments(bars, snapshots, epochs, blocked)
@@ -895,9 +933,14 @@ class ChartRepository:
                 target_retirements[scope] = min(target_retirements.get(scope, len(bars)), row['bar_index'])
                 if row.get('reason') == 'trading_eligibility_closed':
                     window_closures[scope] = min(window_closures.get(scope, len(bars)), row['bar_index'])
-        n_invalidations = {row['n_id']: row for row in result.audit
-                           if row['event'] == 'n_invalidated'
-                           and max(row['bar_index'], row.get('known_at', row['bar_index'])) <= i}
+        n_invalidations: dict[str, _NInvalidation] = {}
+        for row in chart_audit:
+            if (row['event'] != 'n_invalidated'
+                    or max(row['bar_index'], row.get('known_at', row['bar_index'])) > i):
+                continue
+            prior = n_invalidations.get(row['n_id'])
+            if prior is None or row['bar_index'] < prior['bar_index']:
+                n_invalidations[row['n_id']] = dict(bar_index=row['bar_index'], reason=row['reason'])
         for row in result.audit:
             if row['bar_index'] > i:
                 continue
@@ -937,7 +980,7 @@ class ChartRepository:
                 )
             elif stage in levels and row['state'] in ('pullback', 'invalidated'):
                 levels[stage]['status'] = '回调暂停' if row['state'] == 'pullback' else '已失效'
-        for r in result.audit:
+        for r in chart_audit:
             if r['event'] not in _CHART_EVENT_TYPES:
                 continue
             available = max(r["bar_index"], r.get("known_at", r["bar_index"]))
@@ -948,7 +991,7 @@ class ChartRepository:
                 id=f"rule-{len(events)}",
                 available_at=day(bars[available].timestamp.isoformat()),
                 time=day(r["timestamp"]),
-                price=bars[available].close,
+                price=bars[r['bar_index'] if r.get('structural_target') else available].close,
                 levels=[],
             )
             for key, title in (
@@ -968,7 +1011,8 @@ class ChartRepository:
                 up = r["direction"] == "up"
                 if r.get('n_id'):
                     event['id'] = f"n:{r['n_id']}"
-                invalidation = n_invalidations.get(r.get('n_id'))
+                identity = r.get('n_id')
+                invalidation = n_invalidations.get(identity) if isinstance(identity, str) else None
                 if invalidation is not None:
                     event['n_invalidated_at'] = day(bars[invalidation['bar_index']].timestamp.isoformat())
                     event['n_invalidation_reason'] = invalidation['reason']
@@ -998,21 +1042,19 @@ class ChartRepository:
                 attack = bars[r["bar_index"]]
                 previous = bars[r["bar_index"] - 1]
                 box = max(attack.high, previous.close) if up else min(attack.low, previous.close)
-                targets = project_n_targets(
-                    *(p["value"] for p in coords[:3]),
-                    box_anchor=box,
-                    direction=Direction.UP if up else Direction.DOWN,
-                    domain=ValueDomain.PRICE,
-                )
+                # 结构目标消费当日已冻结结果，不在 hover 或图表重算 N。
+                targets = (None if r.get('structural_target') else project_n_targets(
+                    *(p["value"] for p in coords[:3]), box_anchor=box,
+                    direction=Direction.UP if up else Direction.DOWN, domain=ValueDomain.PRICE))
                 event["levels"] += [
                     dict(name="颈线（高低点）", price=coords[1]["value"]),
                     dict(name="颈线（前波收盘）", price=bars[r["neckline"]].close),
                     dict(name="轧空低" if up else "杀多高", price=r["defense"]),
                 ]
                 for key, title in (("equal_wave", "等浪投影"), ("one_p", "1P 投影"), ("two_t", "2T 投影")):
-                    if up and r.get('target_eligible') is False:
+                    if up and r.get('target_eligible') is False and not r.get('structural_target'):
                         continue
-                    price = getattr(targets, key)
+                    price = r.get(key) if targets is None else getattr(targets, key)
                     if price is None:
                         continue
                     target_level = dict(name=title, price=price)
@@ -1022,6 +1064,8 @@ class ChartRepository:
                             stage=key, display_name="一饱（正 N）" if key == "one_p" else "二吐（正 N）",
                             anchor_at=coords[2]["time"], available_at=event["available_at"],
                         )
+                        if r.get('structural_target'):
+                            target_level['measurement_at'] = day(r['timestamp'])
                         if valid_until is not None:
                             target_level['valid_until'] = valid_until
                     event["levels"].append(target_level)
@@ -1128,6 +1172,7 @@ class ChartRepository:
         return dict(
             asof=asof,
             trading_observation_policy='qualified_windows_v1' if qualified_windows else 'legacy_v1',
+            structural_n_policy='confirmed_polyline_fixed_eligibility_origin_v1',
             points=points,
             polyline_segments=segments,
             **geometry,
@@ -1143,7 +1188,7 @@ class ChartRepository:
                 'a_wave_policy': A_WAVE_POLICY}
                if config.buy_point_definition == 'whole_flip_wave_v3' and config.pivot_mode == 'lecture_causal' else {}),
             note=(
-                "新版使用讲义递推器的收盘确认转折，过滤同日 N 和非真实高低点；显示连接线本身不作为交易证据。"
+                "正 N 使用已确认技术折线的低高低和最高价突破，同日点保留明确顺序；结构目标与交易资格独立。"
                 if config.pivot_mode == "lecture_causal"
                 else "折线保留各历史结构段的已确认点；旧严格内外包未解处断开，代理版使用独立分形规则。"
             ),

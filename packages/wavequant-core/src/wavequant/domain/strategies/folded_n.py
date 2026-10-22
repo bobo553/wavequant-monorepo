@@ -3,15 +3,15 @@
 from ..market_structure.polyline import PointKind
 
 
-def folded_positive_n_candidates(points, *, earliest):
-    return _folded_candidates(points, earliest=earliest, up=True)
+def folded_positive_n_candidates(points, *, earliest, allow_equal_origin=False):
+    return _folded_candidates(points, earliest=earliest, up=True, allow_equal_origin=allow_equal_origin)
 
 
 def folded_inverse_n_candidates(points, *, earliest):
     return _folded_candidates(points, earliest=earliest, up=False)
 
 
-def _folded_candidates(points, *, earliest, up):
+def _folded_candidates(points, *, earliest, up, allow_equal_origin=False):
     high = PointKind.HIGH if up else PointKind.LOW
     low = PointKind.LOW if up else PointKind.HIGH
     sign = 1 if up else -1
@@ -36,7 +36,7 @@ def _folded_candidates(points, *, earliest, up):
                 break
             if p.point.kind != low or p.point.index <= b.point.index:
                 continue
-            if price(p) <= price(a):
+            if price(p) < price(a) or (price(p) == price(a) and not allow_equal_origin):
                 c = None
                 break
             if c is None or price(p) < price(c):

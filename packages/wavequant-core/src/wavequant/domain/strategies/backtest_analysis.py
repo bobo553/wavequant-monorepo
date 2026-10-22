@@ -25,6 +25,7 @@ from .chart_drawing_history import ChartDrawingHistory
 from .market_calculations import MarketCalculations, MarketDay
 from .eligible_polyline_n import EligibleNSource, EligiblePolylineN
 from .polyline_target_stream import PolylineTargetStream
+from .structural_n_stream import StructuralNStream
 from .market_preview import publish_market_preview
 
 if TYPE_CHECKING:
@@ -53,6 +54,7 @@ class BacktestAnalysis:
     n_window_ends: dict[tuple[str, int], int] = field(default_factory=dict)
     scoped_n_observations: dict[tuple[EligibleNSource, int], NObservation] = field(default_factory=dict)
     hierarchy: 'HierarchyHistoryStream | None' = None
+    structural_n_events: list[dict[str, object]] = field(default_factory=list)
 
 
 @contextmanager
@@ -80,6 +82,9 @@ def prepare_backtest_analysis(
             else None))
     targets = PolylineTargetStream(bars, config,
         publish=(lambda row: steps.append(2, row)) if steps is not None else None)
+    structures = StructuralNStream(bars, pattern_ttl=config.pattern_ttl)
+    structural_sources = EligiblePolylineN(config.buy_interval_level,
+        folded_window=config.structure_window, structural=True)
     last_progress = -1
 
     def report(number: int, message: str) -> None:
@@ -147,9 +152,13 @@ def prepare_backtest_analysis(
         frame = day.frame
         points = pivot_state.advance(frame.index, frame.epoch, frame.raw)
         sources = n_sources.advance(frame.index, points, day.lifecycle_events)
+        structure_sources = structural_sources.advance(frame.index, points, day.lifecycle_events)
         eligible = day.permits_buy(config.buy_interval_level)
         active_scopes = {(window.source_path, window.start_index)
                          for window in n_sources.eligibility.active_intervals}
+        structures.advance(frame.index, structure_sources, active_scopes=active_scopes,
+                           interrupted=frame.index in pivot_state.blocked)
+        current.structural_n_events = structures.events
         for window in n_sources.eligibility.intervals:
             if window.end_index is not None:
                 current.n_window_ends[window.source_path, window.start_index] = window.end_index
