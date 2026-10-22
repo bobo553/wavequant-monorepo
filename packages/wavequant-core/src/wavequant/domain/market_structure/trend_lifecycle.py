@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from .trend_lines import _OwnedPolylineTurns
 
 
-LIFECYCLE_VERSION = 'six_state_without_observation_candidates_v34'
+LIFECYCLE_VERSION = 'six_state_volume_n_squeeze_same_close_v35'
 
 
 class LifecycleState(StrEnum):
@@ -411,7 +411,7 @@ class _StructureProjection:
             point = _pivot(raw, dates, now)
             if point is not None:
                 if previous is not None and (previous.index, previous.ordinal) >= (point.index, point.ordinal):
-                    self.__init__()
+                    type(self).__init__(self)
                     return None
                 self.own[point.index, point.ordinal] = point
                 previous = point
@@ -723,7 +723,8 @@ class TrendLifecycle:
                         clocks = self._structure_clocks.setdefault(key, _StructureClocks())
                         standard, next_known = clocks.advance(raw_points, dates, now)
                     projected = None
-                    if standard and type(raw_points) in (PointVersion, CertifiedSource) and raw_points._sealed:
+                    if (standard and type(raw_points) in (PointVersion, CertifiedSource)
+                            and cast(PointVersion | CertifiedSource, raw_points)._sealed):
                         projection = self._structure_projections.setdefault(key, _StructureProjection())
                         projected = projection.advance(cast(PointVersion, raw_points), dates, now,
                             restart=cached is None or cached.next_known is not None and now >= cached.next_known)

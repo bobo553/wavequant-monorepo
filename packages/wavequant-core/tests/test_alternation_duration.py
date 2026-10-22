@@ -75,3 +75,27 @@ def test_short_squeeze_waits_until_breakout_and_never_backdates():
     assert all(e["bar_index"] == 13 for e in result)
     bars[12] = replace(bars[12], low=9)
     assert squeeze_alternations(bars, audit, anchors) == []
+
+
+def test_later_a_high_breakout_does_not_reserve_an_earlier_volume_squeeze():
+    from wavequant.domain.market_structure.squeeze_alternation import squeeze_alternations
+
+    bars = [Bar(datetime(2026, 1, 1) + timedelta(days=i), 'TEST', 12, 15, 11, 13, 100) for i in range(15)]
+    bars[0] = replace(bars[0], low=4)
+    bars[6] = replace(bars[6], high=16, close=15)
+    bars[7] = replace(bars[7], low=10, close=12)
+    bars[13] = replace(bars[13], high=15.5, close=15.2, volume=190)
+    bars[14] = replace(bars[14], high=18, close=17)
+    audit = [dict(event='n_completed', direction='up', bar_index=10, known_at=10,
+                  origin=7, neckline=8, pullback=9),
+             dict(event='regime_confirmation', regime='轧空', attack=10, bar_index=12),
+             dict(event='regime_confirmation', regime='轧空', attack=10, bar_index=13)]
+    anchors = {10: [dict(origin=dict(index=0, value=4), high=dict(index=6, value=16),
+        key=dict(index=0, value=8), known_index=7, source_path='test', trend_level=2)]}
+    assert squeeze_alternations(bars[:13], audit, anchors) == []
+    for history in (bars[:14], bars):
+        confirmations = [event for event in squeeze_alternations(history, audit, anchors)
+                         if event['event'] == 'squeeze_alternation_confirmed']
+        assert len(confirmations) == 1
+        assert confirmations[0]['bar_index'] == confirmations[0]['candidate_index'] == 13
+        assert confirmations[0]['duration_confirmation'] == 'volume_bullish_n_squeeze'
