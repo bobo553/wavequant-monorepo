@@ -1,6 +1,6 @@
 """完整证据池拒绝后仍按当前不可变图增量保存，旧版本只占临时文件。"""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, Sequence, Sized
 from dataclasses import dataclass
 from math import isfinite
 import pickle
@@ -17,6 +17,7 @@ from .trend_frozen_state import _SequenceNode
 
 _MAGIC = b'WQ-prepared-graph-1\x00'
 _SIZE = Struct('>Q')
+_WRITE_BLOCK = 64 * 1024
 _Token = tuple[str, object]
 
 
@@ -84,7 +85,7 @@ class PreparedGraphHistory:
         if type(value) in (int, bool, type(None)):
             return 'value', value
         if type(value) is float:
-            if not isfinite(cast(float, value)):
+            if not isfinite(value):
                 raise _NotAdmitted
             return 'value', value
         node = self._objects.get(id(value))
@@ -155,8 +156,8 @@ class PreparedGraphHistory:
             while pending:
                 item, leaving, internal_block = pending.pop()
                 if leaving is not None:
-                    kind, children, charged = leaving
-                    records.append((item, kind, children, charged))
+                    record_kind, children, charged = leaving
+                    records.append((item, record_kind, children, charged))
                     planned.add(id(item))
                     visiting.remove(id(item))
                     continue
@@ -177,7 +178,7 @@ class PreparedGraphHistory:
                 if id(item) in visiting:
                     raise _NotAdmitted
                 # 在枚举容器前检查其直接存储，拒绝巨型外壳时不额外复制它。
-                count = len(item) if kind in (dict, list, tuple) else 3 if kind in (
+                count = len(cast(Sized, item)) if kind in (dict, list, tuple) else 3 if kind in (
                     PointVersion, CertifiedSource, _SequenceNode) else 0
                 edges = count * 2 if kind is dict else count
                 charged = getsizeof(item) + 768 + edges * 24
@@ -191,26 +192,52 @@ class PreparedGraphHistory:
                     raise _NotAdmitted
                 record_kind, children = self._children(item)
                 # 内嵌标量没有独立身份节点，大整数等实际存储仍须纳入父记录。
-                charged += sum(getsizeof(child) for child in children
-                               if type(child) in (int, float, bool, type(None)))
+                # 同次计费即完成标量准入，不再给每个叶子建立 DFS 帧、查表和
+                # 再次分派；只读生产者保证写出前这些值不会被原位替换。
+                descendants: list[tuple[object, tuple[str, list[object], int] | None, bool]] = []
+                for index in range(len(children) - 1, -1, -1):
+                    child = children[index]
+                    child_type = type(child)
+                    if child_type in (int, float, bool, type(None)):
+                        if child_type is float and not isfinite(cast(float, child)):
+                            raise _NotAdmitted
+                        charged += getsizeof(child)
+                    else:
+                        descendants.append((child, None,
+                            record_kind == 'points' and index == 0 or record_kind == 'block' and index > 0))
                 if self._used + reserved + charged > self._limit:
                     raise _NotAdmitted
                 reserved += charged
                 visiting.add(id(item))
                 pending.append((item, (record_kind, children, charged), internal_block))
-                pending.extend((children[index], None,
-                                record_kind == 'points' and index == 0 or record_kind == 'block' and index > 0)
-                               for index in range(len(children) - 1, -1, -1))
+                pending.extend(descendants)
             # 整批准入后才写入；超过预算的版本不先写整图再截断文件。
             # records 已按后序排列，写出时只需连接新节点和已有的磁盘 ID。
-            for item, kind, children, charged in records:
-                tokens = tuple(self._token(child) for child in children)
-                record = (kind, item if kind in ('str', 'bytes') else tokens)
+            # 每个记录的 ID 仍是原字节偏移，连续写入只需一次定位；合并小
+            # 记录避免每个证据节点都触发 BufferedRandom 的 seek/flush。
+            if records:
+                self._stream.seek(start)
+            buffered = bytearray()
+            for item, record_kind, children, charged in records:
+                tokens = tuple(('value', child) if type(child) in (int, float, bool, type(None))
+                               else self._token(child) for child in children)
+                record = (record_kind, item if record_kind in ('str', 'bytes') else tokens)
                 payload = pickle.dumps(record, protocol=5)
                 reference = self._end
-                self._stream.seek(reference)
-                self._stream.write(_SIZE.pack(len(payload)))
-                self._stream.write(payload)
+                header = _SIZE.pack(len(payload))
+                if len(buffered) + len(header) + len(payload) > _WRITE_BLOCK:
+                    if buffered:
+                        self._stream.write(buffered)
+                        buffered.clear()
+                    if len(header) + len(payload) > _WRITE_BLOCK:
+                        self._stream.write(header)
+                        self._stream.write(payload)
+                    else:
+                        buffered.extend(header)
+                        buffered.extend(payload)
+                else:
+                    buffered.extend(header)
+                    buffered.extend(payload)
                 self._end += _SIZE.size + len(payload)
                 child_ids = tuple(cast(int, token[1]) for token in tokens if token[0] == 'ref')
                 node = _LiveNode(item, reference, child_ids, charged)
@@ -220,6 +247,8 @@ class PreparedGraphHistory:
                 for child in child_ids:
                     self._references[child].users += 1
                 self._used += charged
+            if buffered:
+                self._stream.write(buffered)
             root = cast(int, self._token(value)[1])
             self._references[root].users += 1
             previous = self._root
@@ -299,18 +328,18 @@ class PreparedGraphHistory:
                 restored[reference] = _DecodedBlock(cast(tuple[object, ...], values[0]),
                     cast(_DecodedBlock | None, values[1]), cast(_DecodedBlock | None, values[2]))
             elif kind == 'points':
-                if (len(values) != 3 or type(values[1]) is not int or cast(int, values[1]) < 0
+                if (len(values) != 3 or type(values[1]) is not int or values[1] < 0
                         or type(values[2]) is not tuple
                         or values[0] is not None and type(values[0]) is not _DecodedBlock):
                     raise ValueError('graph history has an invalid point version')
                 points: list[object] = []
-                blocks = [cast(_DecodedBlock | None, values[0])]
+                blocks: list[_DecodedBlock | None] = [values[0]]
                 while blocks:
                     block = blocks.pop()
                     if block is not None:
                         points.extend(block.values)
                         blocks.extend((block.right, block.left))
-                stop = cast(int, values[1])
+                stop = values[1]
                 if len(points) != stop:
                     raise ValueError('graph history point prefix length differs')
                 points.extend(cast(tuple[object, ...], values[2]))

@@ -5,11 +5,14 @@ Snapshots share unchanged frozen turns; later drawing changes never backdate a s
 Only undefined doji/initial-direction issues delimit structural episodes.
 """
 import math
+from bisect import bisect_left
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import TypeGuard, TypedDict, cast
 
 from ..market_structure.lecture_drawing import lecture_drawing
 from ..market_structure.polyline import LinePoint,PointKind,ReversalPoint
+from ..market_structure.trend_point_version import PointVersion
 
 
 _PIVOT_SOURCE = 'lecture_close_confirmed_convention_not_intrabar_execution'
@@ -43,6 +46,113 @@ def _same_frozen_pivot(previous: ReversalPoint | None, index: int, ordinal: int,
     )
 
 
+class _OwnedLecturePivotVersions:
+    """仅供 lecture_drawing 的私有逐日回调发布不可变尾部版本。"""
+
+    def __init__(self) -> None:
+        self._epoch: int | None = None
+        self._version: PointVersion | None = None
+
+    def publish(self, epoch: int, points: Sequence[Mapping[str, object]]) -> PointVersion:
+        previous = self._version if epoch == self._epoch else None
+        count = len(previous) if previous is not None else 0
+        # 生产者只替换尾点；相邻锚被替换或路径缩短时不能继承旧前缀。
+        retained = previous is not None and len(points) >= count and (
+            count < 2 or points[count - 2] is previous[count - 2])
+        start = max(0, count - 1) if retained else 0
+        if (previous is not None and retained and count == len(points)
+                and (not count or points[-1] is previous[-1])):
+            return previous
+        version = PointVersion(cast(Sequence[dict[str, object]], points[start:]),
+            previous=previous, start=start).seal()
+        self._epoch, self._version = epoch, version
+        return version
+
+
+_PivotKey = tuple[int, int, str, float]
+
+
+@dataclass(frozen=True, slots=True)
+class _PivotEdit:
+    key: _PivotKey
+    previous: ReversalPoint | None
+    removed: ReversalPoint | None
+
+
+class _VersionedLecturePivots:
+    """只撤销变化三点组之后的编辑，保留被同类极值替换点的知识日期。"""
+
+    def __init__(self) -> None:
+        self.source: PointVersion | None = None
+        self.positions: list[int] = []
+        self.compact: list[_PivotPoint] = []
+        self.known: list[ReversalPoint] = []
+        self.prior: dict[_PivotKey, ReversalPoint] = {}
+        self.edits: list[_PivotEdit | None] = [None]
+        self._duplicate_keys = 0
+
+    def advance(self, source: PointVersion, index: int,
+                prior: Mapping[_PivotKey, ReversalPoint]) -> tuple[ReversalPoint, ...]:
+        # 同坐标重复事件的后项可覆盖 prior 的知识日，下一日会影响前项。
+        # 这种输入保留全量重放；正常讲义生产者的唯一坐标继续复用前缀。
+        start = source.changed_since(self.source) if not self._duplicate_keys else 0
+        if self.source is source and not self._duplicate_keys:
+            return tuple(self.known)
+        keep = bisect_left(self.positions, start)
+        affected = max(1, keep - 1)
+        original: dict[_PivotKey, ReversalPoint | None] = {}
+        for edit in reversed(self.edits[affected:]):
+            if edit is None:
+                continue
+            original.setdefault(edit.key, self.prior.get(edit.key))
+            self.known.pop()
+            if edit.removed is not None:
+                self.known.append(edit.removed)
+            if edit.previous is None:
+                self.prior.pop(edit.key, None)
+            else:
+                self.prior[edit.key] = edit.previous
+                self._duplicate_keys -= 1
+        del self.edits[affected:]
+        del self.positions[keep:]
+        del self.compact[keep:]
+        for position, raw in enumerate(source.iter_range(start), start):
+            point = cast(_PivotPoint, raw)
+            if not self.compact or point['value'] != self.compact[-1]['value']:
+                self.positions.append(position)
+                self.compact.append(point)
+        for position in range(affected, len(self.compact) - 1):
+            left, point, right = self.compact[position - 1:position + 2]
+            edit = None
+            if point['state'] not in ('seed', 'developing'):
+                kind = ('H' if point['value'] > left['value'] and point['value'] > right['value'] else
+                        'L' if point['value'] < left['value'] and point['value'] < right['value'] else None)
+                if kind is not None and kind == point['kind']:
+                    key = point['index'], point['ordinal'], kind, point['value']
+                    previous = (original.get(key, prior.get(key)) if prior is self.prior else prior.get(key))
+                    confirmed = previous.confirmed_index if previous is not None else index
+                    if self.known:
+                        confirmed = max(confirmed, self.known[-1].confirmed_index)
+                    ref = (previous if _same_frozen_pivot(previous, point['index'], point['ordinal'], kind,
+                           point['value'], confirmed) else ReversalPoint(LinePoint(point['index'],
+                           point['ordinal'], PointKind(kind), point['value']), confirmed, _PIVOT_SOURCE))
+                    removed = None
+                    if self.known and ref.point.kind == self.known[-1].point.kind:
+                        sign = 1 if kind == 'H' else -1
+                        if sign * (ref.point.price - self.known[-1].point.price) <= 0:
+                            self.edits.append(None)
+                            continue
+                        removed = self.known.pop()
+                    original.setdefault(key, prior.get(key))
+                    edit = _PivotEdit(key, self.prior.get(key), removed)
+                    self._duplicate_keys += edit.previous is not None
+                    self.known.append(ref)
+                    self.prior[key] = ref
+            self.edits.append(edit)
+        self.source = source
+        return tuple(self.known)
+
+
 class LecturePivotState:
     """Consume each published polyline once, freezing its first knowledge dates."""
 
@@ -52,6 +162,7 @@ class LecturePivotState:
         self.blocked: set[int] = set()
         self.prior: dict[tuple[int, int, str, float], ReversalPoint] = {}
         self.last_epoch: int | None = None
+        self._versioned: _VersionedLecturePivots | None = None
 
     def advance(self, i: int, epoch: int, points: Sequence[Mapping[str, object]]) -> tuple[ReversalPoint, ...]:
         if i != len(self.snapshots):
@@ -61,6 +172,13 @@ class LecturePivotState:
         if epoch!=last_epoch: prior={}
         last_epoch=epoch;epochs[i]=epoch
         if i and not points and epoch==i: blocked.add(i)
+        if type(points) is PointVersion and points._sealed:
+            if self._versioned is None or epoch != self.last_epoch:
+                self._versioned = _VersionedLecturePivots()
+            snapshots[i] = self._versioned.advance(points, i, prior)
+            self.prior, self.last_epoch = self._versioned.prior, last_epoch
+            return snapshots[i]
+        self._versioned = None
         known: list[ReversalPoint] = []
         now={}
         # Match reversal_trends' geometric-turn selection, not synthetic bridges.

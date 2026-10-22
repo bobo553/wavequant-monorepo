@@ -1,7 +1,9 @@
 """内部点版本共享不可变前缀；公开序列化仍恢复普通数组。"""
 
-from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING, cast, overload
+from collections.abc import Iterable, Iterator, Sequence
+from itertools import repeat
+from operator import is_not
+from typing import TYPE_CHECKING, SupportsIndex, cast, overload
 
 from .trend_frozen_state import FrozenPrefixList
 
@@ -113,7 +115,7 @@ class PointVersion(FrozenPrefixList[dict[str, object]]):
 
     @staticmethod
     def _validate(value: dict[str, object]) -> None:
-        if type(value) is not dict or any(type(key) is not str for key in value):
+        if type(value) is not dict or any(map(is_not, map(type, value), repeat(str))):
             raise ValueError('owned points require dictionaries with string keys')
 
     def append(self, value: dict[str, object]) -> None:
@@ -133,7 +135,9 @@ class PointVersion(FrozenPrefixList[dict[str, object]]):
         self._validate(value)
         super().insert(index, value)
 
-    def __reduce_ex__(self, protocol: int) -> object:
+    def __reduce_ex__(self, protocol: SupportsIndex) -> tuple[
+        type[list[dict[str, object]]], tuple[()], None, Iterator[dict[str, object]],
+    ]:
         # 公开 pickle/deepcopy 边界物化；历史分块编码可直接读取变化后缀。
         return list, (), None, iter(self)
 

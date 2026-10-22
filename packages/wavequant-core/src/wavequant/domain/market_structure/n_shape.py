@@ -15,7 +15,7 @@ from typing import Sequence
 
 from ..models.model import Bar
 from .candle_primitives import virtual_high, virtual_low
-from .price_action import (Direction, KeyLevel, LevelKind, observe_attack, _ordered_pair,
+from .price_action import (Direction, KeyLevel, LevelKind, observe_attack, _validate_bar_order,
                            _validate_bar, teaching_inside, teaching_outside)
 
 
@@ -270,7 +270,7 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         if bars[i].symbol != setup.symbol:
             raise ValueError('setup and bar symbols differ')
         if i:
-            _ordered_pair(bars[i-1],bars[i])
+            _validate_bar_order(bars[i-1],bars[i])
     known = setup.pullback.confirmed_index
     when = bars[end].timestamp
     if known > end:

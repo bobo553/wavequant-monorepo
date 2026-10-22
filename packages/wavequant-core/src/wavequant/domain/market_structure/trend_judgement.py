@@ -22,7 +22,9 @@ from threading import get_ident
 from types import MappingProxyType
 from typing import cast
 
-from .owned_evidence import CertifiedSource, current_evidence, finite_evidence, owned_signature as _geometry_signature
+from .owned_evidence import (
+    CertifiedSource, _UNINDEXED_SCALAR_TYPES, current_evidence, finite_evidence, owned_signature as _geometry_signature,
+)
 from .owned_evidence_producer import current_producer_records
 from .trend_frozen_state import FrozenPrefixList, FrozenPrefixMap, _IndexArchive, _IndexNode, _SequenceNode, _node_children
 from .trend_options import ordinary_completion_enabled
@@ -842,8 +844,8 @@ class _JudgementLedger:
         for point in events[self.event_count:]:
             bucket(point).events.append(point)
         for turn in (upgrade.merged.values() if initial else upgrade.updated_merged.values()):
-            point = turn.source
-            bucket(point).merged[turn.index, turn.ordinal, turn.kind, turn.value] = point
+            merged_source = turn.source
+            bucket(merged_source).merged[turn.index, turn.ordinal, turn.kind, turn.value] = merged_source
         self.ordinary_count, self.event_count = len(ordinary.selected), len(events)
         return self._finish(dirty, positions, level, changed_objects)
 
@@ -1345,12 +1347,13 @@ class _TrendJudgementState:
                        _IndexNode, _SequenceNode)
         while pending:
             value = pending.pop()
-            if id(value) in seen:
+            identity = id(value)
+            if identity in seen:
                 continue
-            seen.add(id(value))
+            seen.add(identity)
             # 请求池已按完整对象图计费并持有该不可变节点。状态只承担引用，
             # 不在每次追加/容量校准时重新扫描旧证明；池外对象仍完整计费。
-            if owner is not None and owner.reference(value) is not None:
+            if owner is not None and type(value) not in _UNINDEXED_SCALAR_TYPES and owner.reference(value) is not None:
                 size += 8
                 continue
             if (frozen_owner is not None and type(value) is _FrozenPoint
@@ -1387,7 +1390,7 @@ class _TrendJudgementState:
                 pending.extend(attributes.keys())
                 pending.extend(item for key, item in attributes.items()
                                if key not in ('_record_store', '_record_sequence', '_record_prefix'))
-            elif type(value) in (_SequenceNode, _IndexNode):
+            elif type(value) is _SequenceNode or type(value) is _IndexNode:
                 pending.extend(_node_children(value))
             elif type(value) in state_types:
                 pending.append(vars(value))
@@ -1417,7 +1420,8 @@ class _TrendJudgementState:
             if id(container) not in seen:
                 seen.add(id(container))
                 size += getsizeof(container)
-                if type(container) in (FrozenPrefixList, FrozenPrefixMap, PointVersion):
+                if (type(container) is FrozenPrefixList or type(container) is FrozenPrefixMap
+                        or type(container) is PointVersion):
                     size += container.storage_bytes
                     if type(container) is PointVersion:
                         size += container.record_metadata_bytes
@@ -1688,7 +1692,7 @@ class _FormalKeyBreakState:
             seen.add(identity)
             # 与普通趋势状态共用请求级所有权边界；不得把共享旧证明
             # 再次计入每条严格突破状态，更不能据此触发整段冷重算。
-            if owner is not None and owner.reference(value) is not None:
+            if owner is not None and type(value) not in _UNINDEXED_SCALAR_TYPES and owner.reference(value) is not None:
                 size += 8
                 continue
             if (frozen_owner is not None and type(value) is _FrozenPoint
@@ -1715,7 +1719,7 @@ class _FormalKeyBreakState:
                 pending.extend(attributes.keys())
                 pending.extend(item for key, item in attributes.items()
                                if key not in ('_record_store', '_record_sequence', '_record_prefix'))
-            elif type(value) in (_SequenceNode, _IndexNode):
+            elif type(value) is _SequenceNode or type(value) is _IndexNode:
                 pending.extend(_node_children(value))
             elif type(value) is MappingProxyType:
                 pending.extend(get_referents(value))
@@ -1790,7 +1794,7 @@ class _FormalKeyBreakState:
     def _retain(self, *, appended: bool, added: Sequence[object]) -> None:
         containers = self._containers()
         container_size = sum(getsizeof(value) + (value.storage_bytes
-            if type(value) in (FrozenPrefixList, FrozenPrefixMap, PointVersion) else 0)
+            if type(value) is FrozenPrefixList or type(value) is FrozenPrefixMap or type(value) is PointVersion else 0)
             + (value.record_metadata_bytes if type(value) is PointVersion else 0)
             for value in {id(value): value for value in containers}.values())
         if appended:
@@ -1813,7 +1817,7 @@ class _FormalKeyBreakState:
             self._consumption.disable_for_budget()
             containers = self._containers()
             container_size = sum(getsizeof(value) + (value.storage_bytes
-                if type(value) in (FrozenPrefixList, FrozenPrefixMap, PointVersion) else 0)
+                if type(value) is FrozenPrefixList or type(value) is FrozenPrefixMap or type(value) is PointVersion else 0)
                 + (value.record_metadata_bytes if type(value) is PointVersion else 0)
                 for value in {id(value): value for value in containers}.values())
             current = self._value_bytes(containers)
@@ -1823,7 +1827,7 @@ class _FormalKeyBreakState:
             self._checkpoint = None
             containers = self._containers()
             container_size = sum(getsizeof(value) + (value.storage_bytes
-                if type(value) in (FrozenPrefixList, FrozenPrefixMap, PointVersion) else 0)
+                if type(value) is FrozenPrefixList or type(value) is FrozenPrefixMap or type(value) is PointVersion else 0)
                 + (value.record_metadata_bytes if type(value) is PointVersion else 0)
                 for value in {id(value): value for value in containers}.values())
             current = self._value_bytes(containers)
@@ -1908,7 +1912,7 @@ class _FormalKeyBreakState:
         candidates_appended = candidate_common == len(self._candidate_keys)
         old_turn_count, old_regular_count = len(self._turns), len(self._regular)
         old_event_count = len(self._events)
-        previous_candidates = self._candidates
+        previous_candidates: Sequence[Mapping[str, object]] = self._candidates
         previous_points = self._base_points
         old_order_count = len(self._upgrade.orders) if self._upgrade is not None else 0
         source_tail: list[_SourceTurn] = []

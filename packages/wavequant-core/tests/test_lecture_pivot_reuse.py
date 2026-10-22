@@ -39,6 +39,9 @@ def _drawing(
     frames: Sequence[tuple[int, int, list[dict[str, object]]]],
 ) -> None:
     def draw(_bars: Sequence[Bar], *, on_step: Callable[..., None]) -> None:
+        # 真实绘图从第 0 日连续发布；第 2 日才具备夹具中的三点转折。
+        on_step(0, 0, [])
+        on_step(1, 0, [])
         for index, epoch, points in frames:
             on_step(index, epoch, points)
 
@@ -59,7 +62,7 @@ def test_unchanged_frozen_turn_is_shared_without_backdating_or_mutation(
     assert first.source == 'lecture_close_confirmed_convention_not_intrabar_execution'
     points[1]['value'] = 19. if low else 21.
     assert first.point.price == price
-    assert epochs == {2: 0, 3: 0, 4: 0} and not blocked
+    assert epochs == {0: 0, 1: 0, 2: 0, 3: 0, 4: 0} and not blocked
     assert all(limit == 4 for limit in limits.values())
 
 
