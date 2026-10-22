@@ -377,3 +377,44 @@ def test_short_pullback_duration_keeps_first_close_above_and_floor_boundary(brok
         actual = filter_duration_landmarks([landmark], prefix, _market_index=_MarketPrefixIndex(owner, prefix))
         assert actual == filter_duration_landmarks([landmark], prefix)
         assert bool(actual) == (end >= 8 and not broken)
+
+@pytest.mark.parametrize('level', (1, 2, 3))
+def test_restoring_tail_rolls_back_discarded_payload_charge(level: int) -> None:
+    source = _points((20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 38, 42, 32, 36, 24, 29, 26, 50),
+                     level=level - 1, clock='integer')
+    cache = _TrendJudgementCache(tail_reuse=True)
+    for end in range(8, len(source) + 1):
+        cache.judge(source[:end], path='source', trend_level=level)
+    state = cache._states[level, 'source']
+    assert state._checkpoint is not None
+    expected = state._checkpoint_payload_upper_bytes
+    state._payload_upper_bytes += 1_000_000
+    before_walks = state.deep_budget_walks
+    assert state._restore_tail(state._checkpoint[0])
+    assert state._payload_upper_bytes == expected
+    assert state.deep_budget_walks == before_walks
+    assert state._owned_bytes() <= state.memory_used
+    for revision in range(30):
+        revised = deepcopy(source)
+        revised[-1]['audit'] = {'revision': revision}
+        actual = cache.judge(revised, path='source', trend_level=level)
+        cold = judge_trend(revised, trend_level=level)
+        assert actual == cold
+    assert state._payload_upper_bytes < expected + 200_000
+    assert state._owned_bytes() <= state.memory_used
+
+
+def test_restoring_tail_keeps_charge_for_a_later_flip_checkpoint() -> None:
+    source = _points((20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 38, 42, 32, 36, 24, 29, 26, 50),
+                     level=0, clock='integer')
+    cache = _TrendJudgementCache(tail_reuse=True)
+    for end in range(8, len(source) + 1):
+        cache.judge(source[:end], path='source', trend_level=1)
+    state = cache._states[1, 'source']
+    assert state._checkpoint is not None
+    state.remember_source_flip()
+    assert state._checkpoint_flip_token is not state._flip_budget_token
+    expected = state._payload_upper_bytes
+    assert state._restore_tail(state._checkpoint[0])
+    assert state._payload_upper_bytes == expected
+    assert state._owned_bytes() <= state.memory_used

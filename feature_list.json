@@ -196,6 +196,7 @@
                 "2026-10-19 外围消费者增量化：来源、候选、许可轻量投影传递不可变版本/父令牌/最早变化位置；分组、来源认证、几何标注、结构腿共享持久前缀；许可来源/候选查找索引只更新后缀；共享层级历史在交易区间内外只更新投影后缀。旧关键位/整波起点只读引用，不删除证据，不以结构冻结代替逐日资格核验；追加、修订、截短、同坐标事实、延迟可知、跨请求失效及公开独立列表导出待提交时验证。"
             ],
             "verification": [
+                {"command": "2026-10-21 isolated frozen 2132-day sh.601086 sampling; pytest tests/test_combined_a_replay.py; final minimal-fix comparison pending", "status": "not-run", "summary": "定位并修复 CombinedAReplay 容量拒绝后冷重放重新建档；该局部用例已验证，修复版完整对照仍在运行。合并版339.06秒/合并前393.72秒完整研究与账户哈希相同，未复现国芳核心计算变慢，不能宣称现场问题完全解决。3003 main API 已异常退出并等待源码变化；根因堆栈缺失。仅独立分支局部修复，未恢复其他已撤回优化，未提交合并推送。"},
                 {
                     "command": "pytest tests/test_double_volume_fade_exit.py tests/test_breakout_shadow_exit.py tests/test_breakout_limit_open_exit.py tests/test_breakout_gap_clear.py tests/test_breakout_bearish_child_exit.py -q; mypy --follow-imports=skip src/wavequant/domain/strategies/double_volume_fade_exit.py src/wavequant/domain/strategies/breakout_shadow_exit.py src/wavequant/domain/strategies/trend_flip_exit.py src/wavequant/domain/strategies/strategy_profiles.py src/wavequant/application/analytics/backtest.py tests/test_double_volume_fade_exit.py; git diff --check",
                     "status": "passed",
@@ -1585,6 +1586,11 @@
                     "command": "pytest tests/test_bottom_n_targets.py tests/test_positive_n_reformation.py -q --tb=short; Node两文件; mypy三文件（仅隔离numpy外部存根）",
                     "status": "passed",
                     "summary": "2026-10-20 底部N合并前问题已解决：真实1593日资格核对确认二级最后窗口于2024-01-24关闭，7/31、8/15、8/20 buy/scan均False；旧图表用例错误要求区间外交易N，修正为真实策略不补造N，并以独立形态→底部资格→图表契约严格断言两形态只发布底部4.83/5.52，保留来源、形状和未完成K线/前缀限制。最终pytest test_bottom_n_targets.py test_positive_n_reformation.py：38 passed(215.62s)；类型断言与图表接收者修订后重成形12项再次通过（重叠不合计）。Web两文件Node17项通过且生产代码未再变化。状态机及两测试3文件mypy通过，使用项目3.11配置与follow-imports=silent，临时仅对宿主不兼容的numpy/numpy.*外部存根设置follow_imports=skip、follow_imports_for_stubs=true；未改项目依赖或全局配置，不宣称全仓类型通过。早先历史KeyError和测试可空类型错误已解决；先前失败记录保留作历史。完整Core/Web套件、另一个历史pipeline文件、浏览器与构建未运行或未完成，不作为通过。用户要求解决后合并main、不推送。"
+                },
+                {
+                    "command": "pytest (10 related modules); mypy --follow-imports=silent (3 cache modules); time-guofang-final-20261021.py guofang-{main,candidate}-merge-20261022; git diff --check",
+                    "status": "passed",
+                    "summary": "2026-10-22 · MONOREPO-330 冻结证据复用合并验收\n\n用户明确要求合并到本地 main，不推送。优化提交 851bde8，已同步 main bec9c38；代码无冲突，进度/交接冲突合并保留双方记录。按共享树块定位变化，发布缓存只给变化后缀计费，只读层级投影复用发布点，公开结果仍复制隔离；校正标量索引费用与尾部恢复账本，64KiB 相同字节块复用压缩；组合 A 几何采用请求专属临时文件、有界索引及拒绝回退，请求结束释放。没有修改交易规则。\n\n合并前 pytest（test_backtest_incremental_costs、test_combined_a_replay、test_trend_publication_frontier、test_trend_consumer_versions、test_trend_staging_payload_cache、test_owned_evidence_history、test_chart_staging_resources、test_formal_attack_reuse、test_backtest_prefix_cost、test_double_volume_fade_exit）210 passed。资源释放测试更新过期替身参数、prepare_trend_cascade 入口及真实八资源数量，保留成功/异常均全部关闭断言。mypy --follow-imports=silent 使用隔离兼容配置检查 combined_a_replay.py、trend_publication_cache.py、trend_staging.py，3 个源码文件通过；未宣称全仓类型或完整测试通过，历史其他失败未顺带清理。git diff --check 通过。\n\n同冻结 sh.601086、2018-01-02 至 2026-10-20、2132 日、41 个完整分钟日、N/普通确认关闭，使用 time-guofang-final-20261021.py 顺序离线对照：最新 main 379.079 秒（CPU 375.922），候选 341.931 秒（CPU 330.969），单轮总耗时减少约 9.8%。前1600根150.124→163.873秒；最后532根228.771→177.896秒。研究结果 SHA256 c4d10b487b44bf67f5449d7d71b9f576acb37d20333636815e5cb47abcbfab65，账户结果 SHA256 5918864a85ce027c3bc9ba50b68e6da53e7f84d8fa171287622f34b3ce73f31a，两个版本分别完全一致。证据位于主目录 .codex-runtime/actual-regression-20261020/guofang-{main,candidate}-merge-20261022/。不含 API 排队、最终图表或浏览器；单轮不能承诺固定耗时，前段没有提速，后段增长仍未完全消除，MONOREPO-330 继续 in-progress。后续需继续定位剩余全证据处理，不能把本次局部改善记为彻底解决。"
                 }
             ]
         },

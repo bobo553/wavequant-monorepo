@@ -1,3 +1,22 @@
+2026-10-22 · MONOREPO-330 冻结证据复用合并验收
+
+用户明确要求合并到本地 main，不推送。优化提交 851bde8，已同步 main bec9c38；代码无冲突，进度/交接冲突合并保留双方记录。按共享树块定位变化，发布缓存只给变化后缀计费，只读层级投影复用发布点，公开结果仍复制隔离；校正标量索引费用与尾部恢复账本，64KiB 相同字节块复用压缩；组合 A 几何采用请求专属临时文件、有界索引及拒绝回退，请求结束释放。没有修改交易规则。
+
+合并前 pytest（test_backtest_incremental_costs、test_combined_a_replay、test_trend_publication_frontier、test_trend_consumer_versions、test_trend_staging_payload_cache、test_owned_evidence_history、test_chart_staging_resources、test_formal_attack_reuse、test_backtest_prefix_cost、test_double_volume_fade_exit）210 passed。资源释放测试更新过期替身参数、prepare_trend_cascade 入口及真实八资源数量，保留成功/异常均全部关闭断言。mypy --follow-imports=silent 使用隔离兼容配置检查 combined_a_replay.py、trend_publication_cache.py、trend_staging.py，3 个源码文件通过；未宣称全仓类型或完整测试通过，历史其他失败未顺带清理。git diff --check 通过。
+
+同冻结 sh.601086、2018-01-02 至 2026-10-20、2132 日、41 个完整分钟日、N/普通确认关闭，使用 time-guofang-final-20261021.py 顺序离线对照：最新 main 379.079 秒（CPU 375.922），候选 341.931 秒（CPU 330.969），单轮总耗时减少约 9.8%。前1600根150.124→163.873秒；最后532根228.771→177.896秒。研究结果 SHA256 c4d10b487b44bf67f5449d7d71b9f576acb37d20333636815e5cb47abcbfab65，账户结果 SHA256 5918864a85ce027c3bc9ba50b68e6da53e7f84d8fa171287622f34b3ce73f31a，两个版本分别完全一致。证据位于主目录 .codex-runtime/actual-regression-20261020/guofang-{main,candidate}-merge-20261022/。不含 API 排队、最终图表或浏览器；单轮不能承诺固定耗时，前段没有提速，后段增长仍未完全消除，MONOREPO-330 继续 in-progress。后续需继续定位剩余全证据处理，不能把本次局部改善记为彻底解决。
+
+2026-10-21 · MONOREPO-330 国芳长区间回退排查（进行中）
+
+用户确认故障页面为 main 的 3003，自选首只国芳 sh.601086；固定 2018-01-01 至 2026-10-20，N/普通确认关闭、二级资格。新捕获同源 2132 日及 41 个完整分钟日；旧 1777 日样本漏掉 2025-04-30 后的区间。隔离合并版实际第 1809 日 CombinedAReplay 超过 4 MiB，冷重放重新建档后再次在第 1799 日超限。归档本身累计约 2 秒，不能据此归因全部现场慢。
+
+独立分支已同步 main 的撤回提交 386a4b0，仅取回 chart_entry_history/combined_a_replay 的局部重放优化并修复拒绝状态跨冷重放保留；没有恢复其余已撤回优化。拒绝后保留正确冷算，不扩预算、不删交易证据、不改判定。补充同请求多次冷重放不再投影/压缩及新请求重新准入回归。定向回归已执行；完整修复版对照尚在运行，不宣称提速或已解决全部问题。
+
+当前隔离剖析：同一新冻结输入合并版 339.06 秒，合并前 393.72 秒，研究及账户 SHA256 分别 b477d5656e5aee1ec97d9e56813df88fec4abeaf3149b3ed06addedef5d5532b / 9579c57b14f83f12e280169839bc53ad43a149df244399a76c8460d273efe479，均一致；含采样，不是多轮纯计时验收。未复现合并后核心计算更慢。新华传媒的中止剖析只用于证明重复超限，不是完整性能结果。
+
+额外现场证据：main dev 日志在撤回后记录 API exited (2147483651); waiting for a source fix，8765 无监听，前端 ECONNREFUSED；异常退出根因没有堆栈，不能归咎本次算法。8766=三级趋势统一、8775=资格区间续查，均非 main，且共享持久任务列表；不得将列表不同版本耗时直接归为本次 main 合并前后。待对照完成后恢复现有 main 热重载服务。证据位于主工作区 .codex-runtime/actual-regression-20261020/ 和 wavequant-dev-20261020-001735.*.log。未提交、合并、推送；330 保持 in-progress。
+
+
 2026-10-22 · 真实K线突破减仓提交验证
 
 按用户“直接合并到main”进入提交阶段：pytest test_double_volume_fade_exit、test_breakout_shadow_exit、test_breakout_limit_open_exit、test_breakout_gap_clear、test_breakout_bearish_child_exit五文件139通过（0.97秒）；六变更Python文件mypy --follow-imports=skip通过，git diff --check通过。星网真实10/09—10/22行情自动识别10/15高点；空hierarchy且关闭趋势风险的账户验证10/21收盘减九成，覆盖严格突破/次日边界、全清优先和不可卖。完整2018起实股回放、页面结果与此前未定位扩展失败未复验，不纳入本轮通过结论。复核仅本任务文件，版本v144，本地no-ff合并，不推送、不重启；MONOREPO-330其他未完成事项保持原状态。

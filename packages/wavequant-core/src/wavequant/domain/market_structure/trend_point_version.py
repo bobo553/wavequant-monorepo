@@ -105,9 +105,5 @@ class PointVersion(FrozenPrefixList[dict[str, object]]):
             return 0
         if self.parent is previous.token:
             return self.changed_from
-        # 收敛轮次会跨过中间版本；叶子由生产者只读拥有，相同点引用仍可
-        # 证明前缀未变。不能因父令牌不同而把整份旧证明重新送入认证/编码。
-        for position, (left, right) in enumerate(zip(previous, self)):
-            if left is not right:
-                return position
-        return min(len(previous), len(self))
+        # 跨过中间版本时按共享块定位变化，不能重新遍历整段冻结前缀。
+        return self.shared_prefix(previous)

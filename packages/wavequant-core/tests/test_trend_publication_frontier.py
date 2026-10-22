@@ -255,3 +255,49 @@ def test_disabled_n_does_not_block_frontier_when_lower_level_permissions_are_sup
         assert actual == expected
         assert cache.checkpoint is not None
         assert cache.checkpoint.offset == len(candidates)
+
+
+def test_invalidated_publication_keeps_unchanged_input_budget(monkeypatch):
+    import wavequant.domain.market_structure.trend_publication_cache as module
+
+    owner = _MarketRangeIndex(_bars())
+    source, candidates = _versions()
+    cache = _PublicationCache()
+    _publish(cache, owner, 4, source, candidates)
+    prefix_ids = {id(source[0]), id(candidates[0])}
+    size = module._publication_size
+
+    def checked(value, limit):
+        assert id(value) not in prefix_ids, 'old input was charged after publication invalidation'
+        return size(value, limit)
+
+    revised = PointVersion([dict(source[1], available_at=3)], previous=source, start=1).seal()
+    monkeypatch.setattr(module, '_publication_size', checked)
+    assert _publish(cache, owner, 5, revised, candidates) == _publish(None, owner, 5, revised, candidates)
+    assert cache.checkpoint is None
+    assert cache._source is revised and cache._candidates is candidates
+
+
+@pytest.mark.parametrize('level', (1, 2, 3))
+def test_readonly_publication_skips_copy_but_public_result_remains_isolated(monkeypatch, level):
+    owner = _MarketRangeIndex(_bars())
+    source, candidates = _versions(level)
+    cache = _PublicationCache()
+    expected = _publish(cache, owner, 4, source, candidates, level=level)
+    market = market_prefix(owner.bars, 5)
+    with monkeypatch.context() as scoped:
+        def forbidden(*args, **kwargs):
+            raise AssertionError('readonly publication copied frozen evidence')
+        scoped.setattr(publication, 'deepcopy', forbidden)
+        actual = publication.publish_uptrends(
+            candidates, source, market, source_level=level - 1,
+            _market_index=_MarketPrefixIndex(owner, market), _publication_cache=cache,
+            _readonly_result=True,
+        )
+    assert actual == expected
+    assert cache.checkpoint is not None
+    assert actual[0] is cache.checkpoint.result[0]
+    exported = _publish(cache, owner, 5, source, candidates, level=level)
+    assert exported == actual and exported[0] is not actual[0]
+    exported[0]['value'] = -999
+    assert _publish(cache, owner, 5, source, candidates, level=level) == expected
