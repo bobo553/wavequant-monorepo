@@ -4,6 +4,43 @@
     "activeFeature": "MONOREPO-330",
     "features": [
         {
+            "id": "MONOREPO-355",
+            "name": "global-two-t-touch-entry-guard",
+            "title": "正N首次触及二吐当日全局禁买",
+            "status": "done",
+            "dependencies": [],
+            "description": "桂林旅游2021-09-10从8/16正N一饱二吐区间上攻，当日已观察高点触及二吐不应买入；用户确认采用已观察高点而非涨停价预测。",
+            "scope": "所有正N、补充收盘、跳空及账户入场共用目标门禁；使用有效测幅来源及决策时可知价格，首次到二吐当日禁止新买和加仓，不按股票日期修补，不变更趋势或退出规则。",
+            "acceptanceCriteria": [
+                "当前有效正N首次触及二吐包含等值，收盘未到二吐同样禁买，跳空无豁免。",
+                "日线收盘用全天高点；盘中只用已观察高点及成交开盘价，后续高点不倒改早盘成交；缺分钟的原开盘模型只读开盘。",
+                "目标首次可知日只消费收盘；未来、非主测幅、退休与失效来源不能制造禁买；此前已达二吐不永久阻止后续独立C浪。",
+                "冻结桂林行情与显式N/资格回归覆盖共用规则、三个资格级别、跳空、分钟、账户和来源转交；完整在线回测另行验证。"
+            ],
+            "verification": [
+                {
+                    "command": "pytest tests/test_two_t_entry_gate.py tests/test_qualified_gap_entry.py tests/test_qualified_rising_close_entry.py tests/test_streaming_backtest.py tests/test_signal_execution_stream.py tests/test_squeeze_n_round.py tests/test_alternation_duration.py tests/test_squeeze_alternation.py -q -p no:cacheprovider --tb=short; mypy --follow-imports=skip <8 modified Python files>; git diff --check",
+                    "status": "passed",
+                    "summary": "2026-10-22 同步最新本地main 6ecced6后，保留其轧空同日资格规则；冲突仅在profile与进度/交接，双方记录保留，profile协调为v150_two_t_entry。最终8模块112通过，8个修改文件局部类型及差异空白检查通过；最终相对main仍仅11个本任务文件。未将此前停止的其他任务实股回归记为本次通过。"
+                },
+                {
+                    "command": "pytest tests/test_two_t_entry_gate.py tests/test_signal_execution_stream.py tests/test_qualified_gap_entry.py tests/test_streaming_backtest.py -q -p no:cacheprovider --tb=short; pytest tests/test_two_t_entry_gate.py tests/test_streaming_backtest.py -q -p no:cacheprovider --tb=short",
+                    "status": "passed",
+                    "summary": "2026-10-22 用户要求合并后进入提交阶段。事件流契约修正后四模块54通过；新增加仓边界及持久审计后两模块29通过（重叠不累计）。此前资格收盘及来源所有权相邻用例通过。初次账户缺attack及混入波段事件的失败已通过独立entry_target_events修复，不放宽原断言。冻结桂林OHLCV配合显式N/资格，不冒充完整在线趋势与账户重算。"
+                },
+                {
+                    "command": "mypy --follow-imports=skip --cache-dir=<writable-cache> two_t_entry_gate.py integrated_strategy.py strategy_profiles.py intraday_entry.py backtest.py streaming_backtest.py stock_backtest.py test_two_t_entry_gate.py; git diff --check",
+                    "status": "passed",
+                    "summary": "8个修改文件局部类型通过。首次默认缓存受沙箱目录权限阻止，NUL缓存路径无效，换可写缓存后第三方numpy类型文件使用Python3.12语法与项目3.11配置冲突；采用显式修改文件局部检查通过，未更改项目Python版本或忽略本地诊断。不宣称全依赖类型通过。"
+                },
+                {
+                    "command": "完整在线桂林回测、浏览器/E2E、全仓测试和打包",
+                    "status": "not-run",
+                    "summary": "本次按改动风险执行局部提交验证，未运行浏览器或完整在线账户重算；未重启服务、清缓存或推送。策略profile升级使新请求使用独立身份。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-335",
             "name": "daily-volume-expansion-levels",
             "title": "日线成交量分级标识与提示",

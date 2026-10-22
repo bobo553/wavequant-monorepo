@@ -1,3 +1,9 @@
+2026-10-22 · 二吐禁买交付范围与待验证项
+
+MONOREPO-355：用户确认使用已观察高点而非涨停价预测，并要求合并main。正N主策略、独立放量收盘和跳空、账户新买/加仓共用two_t_entry_gate；首次到二吐当日禁买（含等值），后续独立C浪仍遵守原门禁。账户目标事实经独立entry_target_events传递，不改变退出事件契约。分钟只用已观察高点及成交开盘，后续高点不倒改早盘；首次可知目标只用收盘。桂林冻结OHLCV+显式N/资格回归完成；完整在线趋势来源与账户重算仍未执行，禁止把显式资格测试称为全链路验收。相关pytest与8文件局部mypy证据见feature_list.json，未运行浏览器/完整构建或重启服务。
+
+专属worktree C:/Users/zb/.codex/worktrees/target-entry-guard/wavequant-monorepo，分支feat-二吐目标禁买。已同步最新本地main 6ecced6并保留轧空资格修复与双方记录，profile协调为v150_two_t_entry；同步后8模块112通过，8个修改文件局部类型及最终差异复核通过，按用户要求本地no-ff合并，不推送。355完成后330恢复唯一in-progress；其他历史待办不在本任务继续开发。尚未执行的完整在线桂林回测与其他任务实股验证继续保留为待验证。
+
 ## 2026-10-22 按用户要求直接合并轧空同日资格与买入
 
 用户重新要求合并main，并在提交检查运行期间明确要求“直接合并”。本次按最新指令停止正在运行的pytest，不追加回归、类型、格式、lint、构建或运行探针；停止时日志无完整结果，不能宣称新国芳用例或本轮海洋王复测通过。已完成的10个修改Python文件局部mypy（--config-file packages/wavequant-core/pyproject.toml --follow-imports=skip --no-incremental）结果为Success: no issues found in 10 source files；JSON读取、唯一活动功能与Git空白/冲突及范围复核已完成。原失败和后续诊断记录保留，不记作被测试消除。
