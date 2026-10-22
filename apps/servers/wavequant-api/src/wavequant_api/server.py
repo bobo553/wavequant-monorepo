@@ -79,9 +79,12 @@ def backtest_job_error(error: Exception) -> tuple[int, str]:
     """Expose a stable status without relaying raw Core or provider exceptions."""
     if isinstance(error, ValueError) and '策略代码已变更' in str(error):
         return 503, '策略服务正在更新，等待重新连接后使用新版本回测'
+    # KeyError/IndexError 也继承 LookupError，但计算字段缺失不是行情服务故障。
+    if isinstance(error, (KeyError, IndexError)):
+        return 500, "回测计算失败，请稍后重试"
     if isinstance(error, (BuySignalSnapshotUnavailable, StructureSnapshotUnavailable, AkShareUnavailable, LookupError)):
         return 503, "行情服务暂不可用，请稍后重试"
-    if isinstance(error, (ValueError, KeyError, FileNotFoundError)):
+    if isinstance(error, (ValueError, FileNotFoundError)):
         return 400, "回测参数或行情数据无效，请检查输入后重试"
     return 500, "回测计算失败，请稍后重试"
 
@@ -275,6 +278,8 @@ def make_server(
     )
 
     class Handler(BaseHTTPRequestHandler):
+        server: ThreadingHTTPServer
+
         def log_message(self, format, *args):
             pass
 
@@ -484,7 +489,7 @@ def make_server(
                     status = backtest_jobs.snapshot()
                     if watchlist_store and watchlist_refresh:
                         # Current-version checks remain in the Web queue; summaries survive job-body expiry.
-                        recent = {}
+                        recent: dict[str, dict[str, object]] = {}
                         for item in watchlist_store.summaries() + status["recent"]:
                             key = json.dumps([item.get("path"), item.get("params"), item.get("version")], sort_keys=True)
                             previous = recent.get(key)
@@ -532,7 +537,7 @@ def make_server(
                     optional = {"symbol", "markets", "n_target_trend_confirmation_enabled", "ordinary_trend_completion_enabled"}
                     if not expected.issubset(q) or not set(q).issubset(expected | optional):
                         raise ValueError("invalid precomputed structure query")
-                    params = {key: q[key][0] for key in set(q)}
+                    params: dict[str, str | int | bool] = {key: q[key][0] for key in set(q)}
                     params["lookback"] = int(params["lookback"])
                     params["trend_level"] = int(params["trend_level"])
                     params["n_target_trend_confirmation_enabled"] = n_target_option(q)

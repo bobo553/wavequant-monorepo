@@ -28,6 +28,16 @@ def config(**kw):
 
 
 class IntegratedStrategyTests(unittest.TestCase):
+    def test_inverse_n_does_not_enter_positive_squeeze_qualification(self):
+        bars = [replace(bar, open=30-bar.open, high=30-bar.low,
+                        low=30-bar.high, close=30-bar.close) for bar in fixture()]
+        result = generate_system_signals(bars, config())
+        self.assertGreater(result.counts['completed_down_n'], 0)
+        self.assertTrue(any(row['event'] == 'n_completed' and row['direction'] == 'down'
+                            for row in result.audit))
+        self.assertFalse(any(row['event'] == 'squeeze_round_changed' for row in result.audit))
+        self.assertFalse(any(signal.side == 'LONG' for signal in result.signals))
+
     def test_strict_end_to_end_n_regime_long(self):
         r = generate_system_signals(fixture(), config())
         longs = [s for s in r.signals if s.side == 'LONG']

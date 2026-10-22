@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from datetime import datetime
+from typing import cast
 
 import pytest
 
@@ -22,7 +23,7 @@ def test_eligibility_changes_only_on_confirmation_events_and_keeps_long_open_tai
     eligibility = TradingEligibility(2)
     assert eligibility.observe(state(2, '空翻多')) is None
     assert eligibility.observe(state(3, '空多交替', kind='trend_lifecycle_candidate')) is None
-    assert eligibility.intervals == ()
+    assert not eligibility.intervals
     assert eligibility.observe(state(4, '空多交替')) is True
     opened = eligibility.intervals
     assert eligibility.observe(state(999, '转多确认')) is None
@@ -65,7 +66,7 @@ def test_formal_last_rise_low_break_closes_without_waiting_for_bear_alternation(
     frozen = _Pivot(5, 0, 'L', 4.30, 6)
     origin = _Pivot(7, 0, 'H', 6.39, 8)
     attack = _Pivot(10, 0, 'L', 4.21, 10)
-    events = []
+    events: list[dict[str, object]] = []
     TrendLifecycle()._consume((level, 'p'), _Fact('翻多为空', attack, 10, origin, broken=frozen), 10, events)
     assert len(events) == 1
     assert events[0]['broken_key_price'] == 4.30
@@ -146,7 +147,7 @@ def test_reversal_low_break_closes_before_opposite_alternation_and_preserves_con
     events = eligibility.close_on_reversal_low_break(row, bars, 4, dates)
     assert len(events) == 1 and not eligibility.active
     assert events[0]['reversal_low_index'] == 2
-    assert events[0]['market_low'] < events[0]['reversal_low_price'] < bars[4].close
+    assert cast(float, events[0]['market_low']) < cast(float, events[0]['reversal_low_price']) < bars[4].close
     closed = eligibility.intervals[0]
     assert (closed.end_index, closed.end_key_index, closed.end_reason) == (4, 2, 'reversal_low_broken')
     assert confirmed_trading_intervals([opening, *events], 5, level) == eligibility.intervals
@@ -226,6 +227,6 @@ def test_no_selected_interval_skips_policy_scan(monkeypatch):
     monkeypatch.setattr(analysis_module.MarketCalculations, 'trading_intervals', no_intervals)
     monkeypatch.setattr(strategy_module, '_generate_system_signals', forbidden)
     result = strategy_module.generate_system_signals(_bars(), replace(_config(), buy_interval_level=3))
-    assert selected == [3]
+    assert selected == [3] * len(_bars())
     assert result.signals == []
     assert result.counts['trading_interval_count'] == 0

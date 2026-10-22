@@ -10,6 +10,8 @@ import pytest
 
 from wavequant.domain.market_structure.trend_history_changes import TrendChangeRows
 from wavequant.domain.market_structure.trend_lifecycle import TrendLifecycle
+from wavequant.domain.market_structure.bull_alternation_confirmation import AlternationPolicy
+from wavequant.domain.market_structure.trend_market_index import _MarketRangeIndex
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies import market_calculations as calculations_module
 from wavequant.domain.strategies.chart_drawing_history import ChartDrawingHistory
@@ -131,7 +133,7 @@ def test_invalid_level_is_rejected(level: object) -> None:
 
 def test_geometry_functions_lazily_build_only_missing_dependencies() -> None:
     with _calculation_case() as (functions, calls, _bars):
-        assert functions.levels == ()
+        assert not functions.levels
         assert calls == []
         third = functions.calculate_trend_line(level=3)
         assert calls == [0, 1, 2, 3]
@@ -148,7 +150,7 @@ def test_independent_polyline_function_is_reused_by_trend_dependencies() -> None
     with _calculation_case() as (functions, calls, _bars):
         frames = functions.calculate_polyline()
         assert functions.calculate_polyline() is frames
-        assert functions.levels == ()
+        assert not functions.levels
         assert calls == [0]
         second = functions.calculate_trend_line(level=2)
         assert second is functions.levels[1]
@@ -162,22 +164,27 @@ def test_trend_line_rejects_polyline_aliases_and_invalid_levels_without_drawing(
         with pytest.raises(ValueError):
             functions.calculate_trend_line(cast(int, level))
         assert calls == []
-        assert functions.levels == ()
+        assert not functions.levels
 
 
 @pytest.mark.parametrize('up', [True, False])
 def test_trend_calculation_completes_all_six_states_and_reads_never_replay(
     monkeypatch: pytest.MonkeyPatch, up: bool,
 ) -> None:
-    dates_seen: list[int] = []
+    dates_seen: list[tuple[object, int]] = []
 
     class CountedLifecycle(TrendLifecycle):
         def advance(
             self, levels: Sequence[Mapping[str, object]], bars: Sequence[Bar], now: int,
-            dates: Mapping[str, int],
+            dates: Mapping[str, int], *, polyline: Sequence[Mapping[str, object]] = (),
+            polyline_path: str | None = None, source_events: Sequence[Mapping[str, object]] = (),
+            confirmation_policy: AlternationPolicy = AlternationPolicy(), _owned_structure: bool = False,
+            _market_index: _MarketRangeIndex | None = None,
         ) -> list[dict[str, object]]:
-            dates_seen.append(now)
-            return super().advance(levels, bars, now, dates)
+            dates_seen.append((levels[0]['trend_level'], now))
+            return super().advance(levels, bars, now, dates, polyline=polyline, polyline_path=polyline_path,
+                source_events=source_events, confirmation_policy=confirmation_policy,
+                _owned_structure=_owned_structure, _market_index=_market_index)
 
     monkeypatch.setattr(calculations_module, 'TrendLifecycle', CountedLifecycle)
     with _calculation_case(up=up) as (functions, calls, bars):
@@ -185,17 +192,17 @@ def test_trend_calculation_completes_all_six_states_and_reads_never_replay(
             functions.history_events(2)
         assert calls == []
         functions.calculate_trend_line(2)
-        assert dates_seen == list(range(len(bars))) * 2
+        assert dates_seen == [(level, now) for level in (0, 1, 2) for now in range(len(bars))]
         expected_states = ['空翻多', '空多交替', '转多确认'] if up else ['多翻空', '多空交替', '转空确认']
         all_events = functions.history_events(2)
         states = [(event['bar_index'], event['state']) for event in all_events
                   if event['event'] == 'trend_lifecycle_state']
-        assert states == list(zip((1, 4, 5), expected_states))
+        assert states == list(zip((2, 4, 5), expected_states))
         assert any(event.get('reason') == 'defense_broken' for event in all_events)
         for _ in range(6):
             assert functions.history_events(2) == all_events
             functions.calculate_trend_line(2)
-        assert dates_seen == list(range(len(bars))) * 2
+        assert dates_seen == [(level, now) for level in (0, 1, 2) for now in range(len(bars))]
         assert calls == [0, 1, 2]
 
 
@@ -210,7 +217,8 @@ def test_returned_events_cannot_mutate_shared_history_or_other_functions() -> No
         copied_history = functions.history_events(2)
         copied_history[0].clear()
         assert functions.history_events(2) == expected
-        assert functions.history_events(2)[0]['state'] == '空翻多'
+        assert next(event for event in functions.history_events(2)
+                    if event['event'] == 'trend_lifecycle_state')['state'] == '空翻多'
 
 
 def test_each_level_has_its_own_event_identity_and_cache() -> None:
@@ -284,7 +292,7 @@ def test_partial_history_is_geometry_only_and_rejects_incomplete_lifecycle() -> 
 def test_public_scope_supports_polyline_six_states_without_building_first_level() -> None:
     bars, _points = _case()
     with market_calculations(bars) as functions:
-        assert functions.levels == ()
+        assert not functions.levels
         first_flip = functions.history_events(level='折线')
         frames = functions.calculate_polyline()
         assert frames.start == 0
@@ -295,7 +303,7 @@ def test_public_scope_supports_polyline_six_states_without_building_first_level(
         assert functions.history_events('折线') == first_flip
         assert all(event['trend_level'] == 0 for event in expected)
         assert functions.calculate_polyline() is frames
-        assert functions.levels == ()
+        assert not functions.levels
     assert frames.closed
     with pytest.raises(RuntimeError, match='closed'):
         functions.history_events('折线')
