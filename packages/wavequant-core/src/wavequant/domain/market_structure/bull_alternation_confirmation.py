@@ -6,6 +6,7 @@ It never generates an order or promotes a polyline low into a trend vertex.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import Protocol
 
 from ..models.model import Bar
@@ -14,7 +15,7 @@ from ..market_state.market_regime import MarketRegime, RegimePolicy, WaveBoundar
 from ..market_state.squeeze_state import observe_squeeze_resumption
 from ..market_state.volume_reversal import volume_reversal_squeeze
 from ..market_state.candle_strength import double_volume_bullish_breakout, volume_high_open_rising
-from ..strategies.attack_quality import medium_bullish_body, v3_positive_n_attack_rejection
+from ..strategies.attack_quality import medium_bullish_body, squeeze_buy_rejection, v3_positive_n_attack_rejection
 from ..strategies.n_consolidation import consolidation_gap
 from .alternation_duration import filter_duration_landmarks, short_shallow_pullback
 from .n_shape import BoxAnchorMode, MilestoneBasis, NSetup, PivotRef, observe_n
@@ -183,6 +184,47 @@ def confirm_body_gap_alternation(
     ))
 
 
+
+def confirm_double_n_pullback(
+    bars: Sequence[Bar], now: int, *, attack: int, origin: ConfirmedTurn,
+    high: ConfirmedTurn, polyline: Sequence[ConfirmedTurn],
+) -> AlternationProof | None:
+    """已确认正 N 和轧空的调用方，以整个翻多波段确认回调资格。"""
+    if not 0 <= origin.index < high.index < attack < now < len(bars) or attack == 0:
+        return None
+    if max(origin.known, high.known) > attack:
+        return None
+    n_bar, previous, bar = bars[attack], bars[attack - 1], bars[now]
+    if (previous.volume <= 0 or n_bar.volume < 2 * previous.volume or n_bar.close <= n_bar.open
+            or bar.close <= n_bar.close or not medium_bullish_body(bar)
+            or squeeze_buy_rejection(bar, bars[now - 1], previous) is not None):
+        return None
+    bottom = min(range(high.index + 1, now + 1), key=lambda index: (bars[index].low, index))
+    low = next((point for point in polyline if point.kind == 'L' and point.index == bottom
+                and point.price == bars[bottom].low and point.known <= now), None)
+    if low is None or low.index >= attack:
+        return None
+    start, peak, floor = (Fraction(str(value)) for value in (origin.price, high.price, low.price))
+    if peak <= start or not start < floor < peak or (peak - floor) * 3 > (peak - start) * 2:
+        return None
+    if any(row.low < origin.price for row in bars[origin.index + 1:now + 1]):
+        return None
+    if any(row.close > high.price for row in bars[high.index + 1:attack]):
+        return None
+    return AlternationProof(low, 'double_volume_positive_n_squeeze_whole_flip_pullback', (low,), dict(
+        confirmation_source='double_volume_positive_n_squeeze', attack=attack,
+        candidate_index=now, bar_index=now,
+        a_origin_index=origin.index, a_origin_price=origin.price,
+        a_high_index=high.index, a_high_price=high.price,
+        b_low_index=low.index, b_low_price=low.price,
+        retracement_ratio=float((peak - floor) / (peak - start)),
+        two_thirds_price=float(peak - (peak - start) * Fraction(2, 3)),
+        counter_basis='minimum_low_over_whole_flip', counter_operator='<=',
+        attack_volume_multiple=n_bar.volume / previous.volume,
+        confirmation_close=bar.close,
+    ))
+
+
 def confirm_bull_alternation(
     bars: Sequence[Bar], now: int, *, origin: ConfirmedTurn, high: ConfirmedTurn,
     broken: ConfirmedTurn, points: Sequence[ConfirmedTurn], polyline: Sequence[ConfirmedTurn],
@@ -317,6 +359,11 @@ def confirm_bull_alternation(
             if frame.regime in (MarketRegime.BULL, MarketRegime.STRONG_BULL) or reversal is not None:
                 confirmed_regime = MarketRegime.BULL if reversal is not None else frame.regime
                 assert confirmed_regime is not None
+                whole_flip = confirm_double_n_pullback(
+                    bars, now, attack=attack, origin=origin, high=high, polyline=polyline)
+                if whole_flip is not None:
+                    return AlternationProof(whole_flip.low, whole_flip.rule,
+                        tuple(dict.fromkeys((whole_flip.low, a, b, c))), whole_flip.evidence)
                 triggers.append(dict(event='regime_confirmation', regime=confirmed_regime.value,
                                      bar_index=now, attack=attack))
             elif policy.squeeze_pullback_entries and observe_squeeze_resumption(bars, now,

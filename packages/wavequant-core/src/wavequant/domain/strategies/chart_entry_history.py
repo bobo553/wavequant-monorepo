@@ -47,7 +47,7 @@ from .market_calculations import MarketCalculations, MarketDay
 
 
 # 生命周期检查点已移除观察候选字段，旧布局不能继续恢复。
-_CONFIRMATION_CACHE_VERSION = "source_causal_frozen_flip_origin_eligibility_v163"
+_CONFIRMATION_CACHE_VERSION = "source_causal_double_n_whole_flip_eligibility_v164"
 
 
 def _combined_a_facts(audit: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:

@@ -2480,3 +2480,7 @@ Web信号、成交详情和复制共用完整组合proof，扫描列表已补独
 ### v140收低清仓最终提交记录
 
 2026-10-21 v140提交验证：五文件pytest为68 passed/2 failed，新增与迁移用例通过；两失败仍是此前已在main复现且用户明确“合并”授权保留的test_limit_up_distribution_exit.py账户True/False用例第112行StopIteration，没有新增失败，不修改旧断言或记为通过。六修改Python文件mypy --follow-imports=skip通过，git diff --check及最终生产/回归差异复核完成。最终行为为严格十倍量当日全清，仅开收同涨停价豁免；豁免后次日仅收低15:00全清，不存在低开09:30清仓分支。main b23c537未前进且主目录当前干净；按当前合并请求和同两项既有失败持续授权本地提交/no-ff合并，不推送。完整套件、构建、浏览器与真实完整行情回放未验证。
+
+
+## MONOREPO-360 海洋王2026优化买点
+独立worktree haiyangwang-entry，分支feat-空翻多回调买点。共用bull_alternation_confirmation新增整段回撤<=2/3且倍量正N后阳线轧空资格入口；新增test_double_n_whole_flip.py。未运行任何验证、未提交合并。下一步按用户提交安排验证完整2026同源行情、三级生命周期接线及实际账户买入；现存海洋王fixture为2021，不能替代本次2026证据。
