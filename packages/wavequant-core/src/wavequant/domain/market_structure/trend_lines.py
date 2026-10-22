@@ -2560,10 +2560,21 @@ def prepare_trend_lines(
             channel=(trend_level, path, 'points'), delta=judgement._delta,
             _owned_result=type(judgement) is _OwnedTrendJudgement)
             if _owned_source and _judgement_cache is not None else mutable_points(judgement.points))
-        events = (_judgement_cache.export_owned(judgement.candidates,
-            channel=(trend_level, path, 'candidates'), delta=judgement._delta,
-            _owned_result=type(judgement) is _OwnedTrendJudgement)
-            if _owned_source and _judgement_cache is not None else mutable_points(judgement.candidates))
+        events: list[dict[str, object]] | PointVersion
+        if (_owned_source and _judgement_cache is not None and type(judgement) is _OwnedTrendJudgement
+                and type(judgement.candidates) is PointVersion and judgement.candidates._sealed):
+            # 候选版本由当前判定账本拥有，历史存储拒绝缓存也不会丢失前缀。
+            # 该数组只读消费；几何标注仍使用上面的独立 points 外壳。
+            events = judgement.candidates
+            if _closed_paths is not None:
+                # 首次保存也须声明所有权；之后历史层按其实际保留父版
+                # changed_since，不能因为缺少出口 hint 而重签全部候选。
+                _closed_paths.trust_points(events, None, 0)
+        else:
+            events = (_judgement_cache.export_owned(judgement.candidates,
+                channel=(trend_level, path, 'candidates'), delta=judgement._delta,
+                _owned_result=type(judgement) is _OwnedTrendJudgement)
+                if _owned_source and _judgement_cache is not None else mutable_points(judgement.candidates))
         if _owned_source and _judgement_cache is not None and _closed_paths is not None:
             _judgement_cache.remember_export(events, _closed_paths)
         if type(events) is PointVersion:

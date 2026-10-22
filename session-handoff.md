@@ -1,3 +1,13 @@
+2026-10-23 · MONOREPO-330 三项优化交付与剩余P0
+
+用户明确三项解决后合并main，并在提交检查后再次要求直接合并。复用feat-回测增量计算根治及C:/Users/zb/.codex/worktrees/backtest-linear-growth/wavequant-monorepo，同步main c367f4f后本地提交/no-ff合并，不推送。当前13文件仅三项优化、相关回归及状态记录；保留旧v5和本轮合并前备份stash e9a3cd87a4a1b08e98327eaeeea8f2410ad3a264。
+
+固定e2d3ad5业务同输入对照：后段parse42511→417、签名45136→530、行情校验86415→5726；完整2133日CPU399.328125→284.1875秒，账户/研究逐字节一致。记录通道仍关闭。性能产物与冻结源码在.codex-runtime/backtest-linear-growth/growth-e2d3ad5，报告ordered-fixes-report.md；不是合入后新业务main的全段重测。
+
+提交阶段相关回归327通过4失败，4项在未修改main全部复现且未改断言。silent局部类型候选53/main51诊断，新增两处类型边界已修正但用户要求直接合并后未重跑；不要将整组检查写成通过。具体命令和失败原因见feature_list.json。
+
+后续仍须根治增长：末133日/首200日日均CPU仍7.227倍。确认417次中包含预算未保留尾部，不能都称真实新增；普通/正式整图预算重复校准、来源修订重建仍是下一轮重点。不要恢复旧失败v5或扩大预算掩盖问题；330保持唯一in-progress。下文为历史阶段记录。
+
 2026-10-23 · MONOREPO-359 按用户要求直接合并
 
 用户明确直接合并、不再回测。同步main c3e4387，保留唯一底部N，profile协调为v156。此前定向回归38通过1失败：桂林真实用例缺预期拒买证据；7文件局部类型与新增文案检查通过。同步后不追加验证，失败未解决、不标记done。仅本地提交合并，不推送。
@@ -23,6 +33,11 @@
 当前worktree C:/Users/zb/.codex/worktrees/single-bottom-n/wavequant-monorepo，分支feat-一级趋势唯一底部N，基于main e2d3ad5。用户用国芳集团2024-03-12截图要求每个一级趋势最多一个底部成功N及目标。已修结构N领域归属、图表唯一投影及前端所有目标入口；详细边界见两个workspace progress.md。成功沿用共用N核心突破定义，第一成功事实锁定，失效不重发名额，交易规则保持原有。
 
 新增test_structural_n_ownership.py、test_guofang_single_bottom_n.py与Web single-bottom-n.test.mjs等回归源码。国芳复用guofang_2024_squeeze_confirmation.json，不重复新增大行情文件。开发阶段严格未运行任何验证或Git状态/差异；下一步按用户提交安排做相关Python/Node回归与必要局部类型、范围复核，再提交本地合并。未推送、清缓存或重启，当前运行页面尚未应用本分支。358唯一in-progress，330仅在本分支暂置backlog并保留原未完成事实。CodeGraph新worktree索引不可用，已改用源码阅读；未重建主目录索引。以下为历史记录。
+2026-10-23 · MONOREPO-330 后段增长续修
+
+当前worktree C:/Users/zb/.codex/worktrees/backtest-linear-growth/wavequant-monorepo，feat-回测增量计算根治已同步main e2d3ad5。当前基线2133日wall429.2894秒/CPU399.3281秒、末133日日均CPU/首200日11.452倍，尚未根治。证据在.codex-runtime/backtest-linear-growth/growth-e2d3ad5，后续必须比较同目录冻结源码/账户/研究输出。记录通道仍关闭，网络禁止。
+
+进行中的代码：候选PointVersion由计算生产者直接发布，防止历史引用失效造成全候选重新导出；确认上下文预算拒绝时复用本次已解析结果，保留可用前缀；行情窗口只认证新增和接缝。单元/类型尚未运行，当前仅授权性能诊断与同输入比较，未开始新提交。后段预算少量调用但每次图规模暴涨仍未解决；保持330唯一in-progress，不恢复旧失败v5 stash，不以局部调用减少宣称完成。
 
 2026-10-23 · MONOREPO-330 紫色圆点提交合并记录
 

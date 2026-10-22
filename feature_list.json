@@ -298,6 +298,8 @@
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。统一三级六态及确认时钟与请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。2026-10-22按用户截图删除内部审计的蓝紫圆点、仅观察用途的跳空/放量候选计算及状态；精简图表事件投影，保留实际交易确认、资格、N与目标线消费者。",
             "acceptanceCriteria": [
+                "2026-10-23 三项重复调用按顺序完成：同一e2d3ad5业务基线及固定数据，2001–2020日parse42511→417、geometry_signature45136→530、validate_bar86415→5726；确认缓存超额复用本次结果和原4MiB内稳定前缀，候选封存版本直接传递且只编码变化后缀，重叠行情窗口只校验新增及接缝。2133日无profiler CPU399.328125→284.1875秒，账户与研究输出逐字节一致。末133日/首200日日均CPU仍7.227倍，330继续in-progress，不宣称P0根治。提交前同步main c367f4f保留新增业务；上述性能数字针对冻结e2d3ad5组合，并非新main重测。",
+                "2026-10-23 后段增长续修：以main e2d3ad5当前业务源码、固定002396完整2133日和本地分钟输入重新对照；默认record关闭。候选由生产者封存版本直交，不让历史缓存拒绝导致旧候选全部重新导出；确认上下文只解析真实变化后缀且同次预算拒绝不重复解析；重叠N行情窗口只验证新行情和接缝。保持原预算、公开输入校验、三级共用规则及逐日因果结果。旧图预算与历史回退继续定位，必须记录旧节点工作量及末133日/首200日CPU增长，不能只以函数调用次数或局部收益验收。当前改造未完成对照，330仍in-progress。",
                 "2026-10-23 紫色圆点续清理：移除正N圆点（含同日多来源的其它配色）及普通紫色规则观察点，不再统计同日N圆点或单独堆叠；保留正N结构/目标/配色载体、倒N绿色、灰色诊断、候选拒绝、橙色ABC及真实B/S/信号。后端在图表审计入口排除17类只供这些规则点展示的事件，不为其转换日期/参考价/levels；图表缓存策略升v2。原始策略审计和N/资格/波段计算有独立消费者，不因删除标记而改变交易判定。回归源码已补，运行与性能收益待提交时验证，不能以圆点数量断言重复计算或P0已根治。",
                 "2026-10-22 国芳长期空翻多：恢复门槛与正式六态共同防守2021-02-08整波起点，不把2022-10-31局部L替换为该波末升低；2024-02-08交替低点在真实确认日开放资格，严格破整波起点仍阻断。三级同规则、当前路径/知识时钟/事件重放一致；完整行情结果待提交验证。",
                 "2026-10-22海洋王续修最终口径：5/26完成正N不提前开放资格，5/31真实轧空且放量中大阳时同日收盘确认资格并判断买入，不等6/1突破A高或倍量。共同确认N须同级同源同窗口同四坐标，倒N在读取身份前隔离，保留原防守与一次消费。未来A高突破不得占用更早的合格轧空；三级共用规则无股票日期特判。重新加入真实AkShare截面及收盘回归；此前海洋王目标用例通过；国芳旧失败已诊断为恢复规则新增后旧预期过期。用户本次明确直接合并，国芳新结构/资格分离回归及最新main组合复测已中止，后续待验证；profile v149。",
@@ -425,6 +427,26 @@
                 "2026-10-19 外围消费者增量化：来源、候选、许可轻量投影传递不可变版本/父令牌/最早变化位置；分组、来源认证、几何标注、结构腿共享持久前缀；许可来源/候选查找索引只更新后缀；共享层级历史在交易区间内外只更新投影后缀。旧关键位/整波起点只读引用，不删除证据，不以结构冻结代替逐日资格核验；追加、修订、截短、同坐标事实、延迟可知、跨请求失效及公开独立列表导出待提交时验证。"
             ],
             "verification": [
+                {
+                    "command": "measure_profile.py baseline --source growth-e2d3ad5/final-profile-2001-2020/source --late-start 2000 --late-count 20; measure_baseline.py baseline --source growth-e2d3ad5/final-profile-2001-2020/source; compare_steps.py; compare_full.py",
+                    "status": "passed",
+                    "summary": "2026-10-23 固定同输入、record=false、禁止网络，各阶段2020日及最终2133日账户/研究输出逐字节一致。最终parse417、签名530、行情校验5726；全源回退解析26557→0，末20日候选重新导出20893→46。完整2133日wall429.289409→286.766898秒、CPU399.328125→284.1875秒（减少28.8%），末段日均CPU倍数11.452→7.227，仍未根治。证据为ignored .codex-runtime/backtest-linear-growth/growth-e2d3ad5/ordered-steps-comparison.json和ordered-fixes-full-comparison.json；性能基线与最终候选均冻结于e2d3ad5业务，不将其当作同步c367f4f后的整段回测。"
+                },
+                {
+                    "command": "python -m pytest tests/test_confirmation_bounded_prefix.py tests/test_confirmation_version_reuse.py tests/test_confirmation_scalar_reuse.py tests/test_confirmation_context_prefix_reuse.py tests/test_confirmation_fact_reuse.py tests/test_owned_candidate_versions.py tests/test_trend_owned_judgement.py tests/test_trend_budget_incremental.py tests/test_trend_budget_borrowing.py tests/test_source_version_budget.py tests/test_owned_record_prepared_history.py tests/test_point_version_records.py tests/test_validated_bar_windows.py tests/test_trend_confirmation_boundaries.py tests/test_n_trend_confirmation.py tests/test_hierarchical_confirmation.py tests/test_streaming_backtest.py tests/test_structural_n_ownership.py -q -p no:cacheprovider --tb=short; same four failing nodes against unchanged main source",
+                    "status": "failed",
+                    "summary": "提交阶段同步c367f4f后327通过4失败（8.38秒）。新增三文件及版本复用回归均通过。4个失败在未修改main源码、同一解释器和测试节点全部复现（3.38秒）：fact_reuse的cold对照触发自身禁用钩子，point_version_records旧异常期待，与两个趋势历史固定期望。未修改业务或放宽断言。用户随后明确直接合并，保留失败记录，不扩大验证或更改这些既有问题。"
+                },
+                {
+                    "command": "python -m mypy --follow-imports=skip <six modified production files>; python -m mypy --follow-imports=silent <same six files>; same silent check against unchanged main",
+                    "status": "failed",
+                    "summary": "skip导入模式111诊断；保留依赖类型的silent模式候选53、未改main51。两处新增诊断为WeakKeyDictionary未公开data类型和候选容器else分支未收窄，已改为vars读取实际表、显式MutableSequence边界cast，不改变数据/判定。其余51为main既有诊断。用户要求直接合并后未重跑检查，不能宣称类型全通过。未运行Python格式/lint、构建、浏览器/E2E、Harness或全仓门禁。两个代理完成只读边界复核，无新增阻塞问题。"
+                },
+                {
+                    "command": "packages/wavequant-core/.venv/Scripts/python.exe .codex-runtime/backtest-linear-growth/growth-e2d3ad5/measure_baseline.py candidate --name growth-e2d3ad5/baseline-2133；same frozen source profile days 2001-2020",
+                    "status": "passed",
+                    "summary": "2026-10-23 用户要求继续定位和同输入性能对照。main e2d3ad5冻结源码SHA48ffb182…186bba3，2133日输入SHA6dba25b5…19a62、分钟SHA545f8965…307ce8，网络禁止且record=false。完整wall429.2894088s/CPU399.328125s；末133日/首200日日均墙钟12.311倍、CPU11.452倍，明确未解决。阶段墙钟geometry224.2344/permissions55.7454/publication53.6867/lifecycle29.2582秒。末133日ordinary_full_budget24次18.752秒、formal_budget106次8.94秒；2001-2020 cProfile分别parse42511次、geometry_signature45136次、validate_bar86415次，该小窗未覆盖预算后期高峰，不当正常计时。完整账户/研究输出存growth-e2d3ad5/baseline-2133供候选比较。仅性能诊断成功运行，候选效果及单元/类型仍待验证；没有提交合并推送。"
+                },
                 {
                     "command": "Core cwd: .venv/Scripts/python.exe -m pytest -q tests/test_chart_event_projection.py tests/test_chart_target_windows.py tests/test_abc_candidate.py --tb=short；.venv/Scripts/python.exe -m mypy --follow-imports=skip src/wavequant/interfaces/charts/visualization.py；Web cwd: pnpm exec node --test tests/annotations.test.mjs tests/abc-annotations.test.mjs tests/positive-n-reformation.test.mjs tests/n-target-focus.test.mjs；git diff HEAD --check",
                     "status": "passed",
