@@ -198,3 +198,29 @@ def test_joint_confirmation_requires_complete_causal_coordinates(field: str, val
     assert isinstance(proof, dict)
     proof[field] = value
     assert not joint_squeeze_confirmations([row], 2)
+
+
+@pytest.mark.parametrize('level', (1, 2, 3))
+def test_joint_squeeze_opens_qualification_and_owns_same_close(level: int) -> None:
+    from wavequant.domain.strategies.trading_intervals import TradingEligibility
+
+    gate = TradingEligibility(level)
+    row = dict(joint_confirmation(), trend_level=level, counter_price=10.0)
+    proof = dict(row['confirmation_evidence'], trend_level=level,
+                 confirmation_source='positive_n_squeeze_polyline_key_breakout')
+    row['confirmation_evidence'] = proof
+    assert not gate.active
+    assert gate.observe(row) is True
+    assert gate.active_intervals[0].start_index == 5
+    assert gate.active_intervals[0].start_index != 3
+    windows = joint_squeeze_confirmations([row], level)
+    first = replace(first_n(), known_at=5)
+    assert ('original-path', 5, first.identity) in windows
+    round_state = SqueezeNRound()
+    assert round_state.select(4, (first,)) is None
+    assert round_state.select(5, (first,)) is not None
+    round_state.consume(first, 5)
+    assert round_state.state.emitted_at == gate.active_intervals[0].start_index
+    assert gate.observe(row) is None
+    assert len(gate.active_intervals) == 1
+    assert round_state.rejection(first) == 'first_n_squeeze_already_emitted'

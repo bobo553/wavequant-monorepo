@@ -15,7 +15,7 @@ from ..market_state.market_regime import MarketRegime, RegimePolicy, WaveBoundar
 from ..market_state.squeeze_state import observe_squeeze_resumption
 from ..market_state.volume_reversal import volume_reversal_squeeze
 from ..market_state.candle_strength import double_volume_bullish_breakout, volume_high_open_rising
-from ..strategies.attack_quality import medium_bullish_body, squeeze_buy_rejection, v3_positive_n_attack_rejection
+from ..strategies.attack_quality import medium_bullish_body, squeeze_bullish_body, squeeze_buy_rejection, v3_positive_n_attack_rejection
 from ..strategies.n_consolidation import consolidation_gap
 from .alternation_duration import filter_duration_landmarks, short_shallow_pullback
 from .n_shape import BoxAnchorMode, MilestoneBasis, NSetup, PivotRef, observe_n
@@ -84,6 +84,7 @@ def _polyline_last_fall_pair(
 def confirm_volume_breakout_alternation(
     bars: Sequence[Bar], now: int, *, origin: ConfirmedTurn, high: ConfirmedTurn,
     polyline: Sequence[ConfirmedTurn], _market_index: _MarketRangeIndex | None = None,
+    confirmed_n_squeeze: bool = False,
 ) -> AlternationProof | None:
     """倍量强阳突破冻结折线末跌高，独立确认已有翻多背景的回撤结束。"""
     if (not 0 <= origin.index < high.index < now < len(bars)
@@ -91,7 +92,11 @@ def confirm_volume_breakout_alternation(
         return None
     bar, previous = bars[now], bars[now - 1]
     doubled = double_volume_bullish_breakout(bar, previous)
-    if not doubled and not volume_high_open_rising(bar, previous):
+    if confirmed_n_squeeze:
+        if (not squeeze_bullish_body(bar, previous) or bar.volume <= previous.volume
+                or squeeze_buy_rejection(bar, previous) is not None):
+            return None
+    elif not doubled and not volume_high_open_rising(bar, previous):
         return None
     pair = _polyline_last_fall_pair(polyline)
     if pair is None:
@@ -115,7 +120,7 @@ def confirm_volume_breakout_alternation(
         return None
     minimum_close = (bars[market.lowest_close_position(high.index + 1, low.index + 1)].close
                      if market is not None else min(row.close for row in bars[high.index + 1:low.index + 1]))
-    if (short_shallow_pullback(origin.price, high.price, minimum_close,
+    if (not confirmed_n_squeeze and short_shallow_pullback(origin.price, high.price, minimum_close,
                               high.index - origin.index, low.index - high.index)
             and bar.close <= high.price):
         return None
@@ -196,7 +201,7 @@ def confirm_double_n_pullback(
         return None
     n_bar, previous, bar = bars[attack], bars[attack - 1], bars[now]
     if (previous.volume <= 0 or n_bar.volume < 2 * previous.volume or n_bar.close <= n_bar.open
-            or bar.close <= n_bar.close or not medium_bullish_body(bar)
+            or bar.close <= n_bar.close or not squeeze_bullish_body(bar, bars[now - 1])
             or squeeze_buy_rejection(bar, bars[now - 1], previous) is not None):
         return None
     bottom = min(range(high.index + 1, now + 1), key=lambda index: (bars[index].low, index))
@@ -273,12 +278,9 @@ def confirm_bull_alternation(
         return None
     structural_breakout = confirm_volume_breakout_alternation(
         bars, now, origin=origin, high=high, polyline=polyline, _market_index=market)
-    if structural_breakout is not None:
-        return structural_breakout
     gap_proof = (confirm_body_gap_alternation(bars, now, origin=origin, high=high, polyline=polyline, _market_index=market)
                  if allow_gap_confirmation else None)
-    if gap_proof is not None:
-        return gap_proof
+    ordinary_proof: AlternationProof | None = None
     # 回调可以继续创新低；首个低点破位后，应由当前已确认的整段最低点
     # 接受原确认门禁。相等保留最早坐标，未确认的新低仍由行情守低校验拒绝。
     counter = min((point for point in points if point.kind == 'L' and point.index > high.index
@@ -299,7 +301,7 @@ def confirm_bull_alternation(
                             available_at=bars[known].timestamp.date().isoformat())
             if ((after_index is None or known > after_index)
                     and filter_duration_landmarks([landmark], bars[:now + 1])):
-                return AlternationProof(counter, 'confirmed_higher_pullback_strictly_below_two_thirds'
+                ordinary_proof = AlternationProof(counter, 'confirmed_higher_pullback_strictly_below_two_thirds'
                     if ratio < 2 / 3 else 'confirmed_higher_pullback_then_confirmed_flip_high_rebreak',
                     trend_source=(counter, rebreak) if ratio >= 2 / 3 and rebreak is not None else (counter,))
 
@@ -382,6 +384,20 @@ def confirm_bull_alternation(
             if frame.regime in (MarketRegime.BULL, MarketRegime.STRONG_BULL) or reversal is not None:
                 confirmed_regime = MarketRegime.BULL if reversal is not None else frame.regime
                 assert confirmed_regime is not None
+                local_breakout = confirm_volume_breakout_alternation(
+                    bars, now, origin=origin, high=high, polyline=polyline,
+                    _market_index=market, confirmed_n_squeeze=True)
+                if (local_breakout is not None and attack < now
+                        and bars[now].close > bars[attack].close
+                        and squeeze_buy_rejection(bars[now], bars[now - 1], bars[attack - 1]) is None):
+                    return AlternationProof(local_breakout.low,
+                        'positive_n_and_squeeze_after_qualified_b',
+                        tuple(dict.fromkeys((*local_breakout.source, a, b, c))),
+                        dict(local_breakout.evidence or {},
+                             confirmation_source='positive_n_squeeze_polyline_key_breakout',
+                             bar_index=now, candidate_index=now, attack=attack,
+                             n_origin=a.index, n_neckline=b.index, n_pullback=c.index,
+                             source_path=path, trend_level=level))
                 whole_flip = confirm_double_n_pullback(
                     bars, now, attack=attack, origin=origin, high=high, polyline=polyline)
                 if whole_flip is not None:
@@ -399,7 +415,9 @@ def confirm_bull_alternation(
         proof = confirmed_proof(triggers)
         if proof is not None:
             return proof
-    return None
+    # 当天同时满足正 N 轧空时，优先发布带原 N 身份的共同确认；
+    # 没有共同确认才回退独立证据，资格日期始终属于当前已知收盘。
+    return structural_breakout or gap_proof or ordinary_proof
 
 
 # 保留旧调用名，普通与特殊分支使用同一个确认实现。
