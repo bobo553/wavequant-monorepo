@@ -1,0 +1,4 @@
+[
+  {"timestamp_ms": 1704153600000, "open_ticks": 1000, "high_ticks": 1050, "low_ticks": 990, "close_ticks": 1030, "volume": 12000},
+  {"timestamp_ms": 1704240000000, "open_ticks": 1030, "high_ticks": 1070, "low_ticks": 1010, "close_ticks": 1060, "volume": 15000}
+]
