@@ -18,6 +18,20 @@ def squeeze_volume_pass(bar: Bar, previous: Bar | None, before_attack: Bar | Non
                for reference in (previous, before_attack))
 
 
+
+def squeeze_bullish_body(bar: Bar, previous: Bar | None) -> bool:
+    """已确认轧空的阳线：倍量实体占振幅至少45%，其他情况沿用中大阳。"""
+    if medium_bullish_body(bar):
+        return True
+    if (previous is None or previous.symbol != bar.symbol or previous.timestamp >= bar.timestamp
+            or previous.volume <= 0 or _price(bar.volume) < 2 * _price(previous.volume)):
+        return False
+    opening, high, low, closing = (_price(value) for value in (bar.open, bar.high, bar.low, bar.close))
+    body, span = closing - opening, high - low
+    return (opening > 0 and span > 0 and body > 0
+            and body >= opening / 50 and body >= span * Fraction(45, 100))
+
+
 def squeeze_buy_rejection(
     bar: Bar, previous: Bar | None, before_attack: Bar | None = None,
 ) -> str | None:
@@ -29,7 +43,8 @@ def squeeze_buy_rejection(
     rejection = bullish_breakout_rejection(bar, previous)
     # 轧空已有候选自身的放量证据；低开后中大阳收复前高不沿用独立突破的倍量门槛。
     # 这里只判买入K线质量，资格、正N/轧空和末跌高仍由调用方分别约束。
-    if (rejection == 'breakout_low_open' and medium_bullish_body(bar)
+    if (rejection in ('breakout_low_open', 'breakout_requires_gap_or_medium_bullish_body')
+            and squeeze_bullish_body(bar, previous)
             and _price(bar.close) > _price(previous.high)):
         rejection = None
     if rejection is not None:
