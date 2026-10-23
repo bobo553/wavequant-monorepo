@@ -254,3 +254,27 @@ def test_structural_breakout_without_close_setup_keeps_qualified_gap_route():
         only_index=9, intervals=[window], polyline_gate=gate)
     assert len(resolved.signals) == 1
     assert executions['TEST', 9]['timing']['execution_model'] == 'same_day_open'
+
+
+def test_confirmed_n_squeeze_local_break_does_not_wait_for_whole_wave_high():
+    # 合成来源仅证明短时浅回调门禁，不冒充海洋王完整行情。
+    bars = [Bar(datetime(2021, 10, 20) + timedelta(days=index), 'TEST',
+                10, 10.5, 9.5, 10, 100) for index in range(10)]
+    bars[0] = replace(bars[0], open=6, high=7, low=5, close=6)
+    bars[4] = replace(bars[4], open=11, high=12, low=10.5, close=11)
+    bars[5] = replace(bars[5], open=9.6, high=10, low=9.4, close=9.8)
+    bars[6] = replace(bars[6], open=9.5, high=9.8, low=9, close=9.4)
+    bars[9] = replace(bars[9], open=10, high=11, low=9.6, close=10.9, volume=300)
+    origin, high = _Pivot(0, 0, 'L', 5, 0), _Pivot(4, 0, 'H', 12, 5)
+    polyline = (high, _Pivot(5, 0, 'H', 10, 6), _Pivot(6, 0, 'L', 9, 7))
+    assert confirm_volume_breakout_alternation(
+        bars, 9, origin=origin, high=high, polyline=polyline) is None
+    proof = confirm_volume_breakout_alternation(
+        bars, 9, origin=origin, high=high, polyline=polyline, confirmed_n_squeeze=True)
+    assert proof is not None
+    assert proof.evidence['candidate_index'] == 9
+    assert proof.evidence['polyline_key_price'] == 10
+    assert bars[9].close < high.price
+    bars[9] = replace(bars[9], close=10)
+    assert confirm_volume_breakout_alternation(
+        bars, 9, origin=origin, high=high, polyline=polyline, confirmed_n_squeeze=True) is None
