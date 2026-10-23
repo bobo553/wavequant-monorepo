@@ -16,6 +16,11 @@
 - **`apps/tools/create-project`**: Interactive CLI for creating workspaces from the H5, Admin, API, and Mobile templates
 - **`apps/webs/wavequant-web`**: complete WaveQuant research workbench migrated from `E:\WorkSpace\股票\web`, plus a Next.js panoramic market dashboard at `/market`
 
+- **`apps/servers/wavequant-api-rs`**: Rust Axum + Tokio local HTTP foundation
+- **`apps/servers/wavequant-quant-rs`**: Rust quantitative batch foundation with domain/application/adapters
+
+Rust 工程目录、命令和迁移边界见 [Rust 后端与量化工程](docs/rust-backend-quant.md)。
+
 ### Packages
 
 - **`packages/wavequant-core`**: Framework-independent Python strategy, research, backtest, data, and operations core

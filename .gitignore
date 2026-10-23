@@ -56,3 +56,6 @@ yarn-error.log*
 # Expo Continuous Native Generation output
 apps/mobiles/mobile/android/
 apps/mobiles/mobile/ios/
+
+# Rust build output
+/target/

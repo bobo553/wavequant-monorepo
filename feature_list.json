@@ -15211,6 +15211,48 @@
                     "summary": "按用户明确规则：已确认轧空且相对前日正量>=2倍时阳线实体/振幅>=45%，仍保留实体/开盘>=2%。资格与买点复用squeeze_bullish_body；非倍量沿用50%。用例覆盖等值、略低、量不足、零基准及短实体。未执行检测。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-361",
+            "name": "rust-backend-quant-foundation",
+            "title": "Rust后端与量化分层工程",
+            "status": "done",
+            "dependencies": [],
+            "description": "按用户要求在apps下新增Rust后端和量化工程，遵循按职责分类与Cargo最佳实践。",
+            "scope": "独立Cargo workspace、Axum后端、量化模块与输入检查入口、目录说明、Rust工程发现与进度记录；不迁移或改变现有交易逻辑。",
+            "acceptanceCriteria": [
+                "apps/servers下独立wavequant-api-rs和wavequant-quant-rs，共用根Cargo配置、固定工具链与依赖锁。",
+                "API包含回环监听、健康探针、结构化日志及有界优雅停机；量化按领域、用例与适配器隔离。",
+                "量化输入有界且校验OHLC和严格时间顺序；不生成策略信号或替代现有Python趋势算法。",
+                "文档、progress与Harness源码发现同步，Harness保持禁用，提交前按风险完成最小验证。"
+            ],
+            "verification": [
+                {
+                    "command": "cargo fmt --all -- --check; cargo check --locked --workspace; cargo clippy --locked --workspace --all-targets -- -D warnings; cargo test --locked --workspace",
+                    "status": "not-run",
+                    "summary": "2026-10-23 开发阶段只编写源码与记录，cargo +stable generate-lockfile 已生成64包依赖锁，不作为验证。未运行格式、lint、类型、测试、构建、探针、浏览器或Git状态/差异检查。独立feat-Rust后端量化工作区；未提交合并推送。"
+                },
+                {
+                    "command": "cargo +stable fmt --all -- --check; cargo +stable clippy --locked --workspace --all-targets -- -D warnings",
+                    "status": "passed",
+                    "summary": "2026-10-23 实际提交阶段：同版本1.98.1 stable完成格式与全部目标编译静态检查，无警告；未更改既有Python产品逻辑。"
+                },
+                {
+                    "command": "cargo +stable test --locked --workspace",
+                    "status": "passed",
+                    "summary": "2026-10-23 完成Rust测试构建及行情领域3项回归；覆盖正常顺序、零量、空集、重复/逆序时间戳与非法OHLC。API无运行测试，不宣称HTTP或停机已验收。"
+                },
+                {
+                    "command": "node --check scripts/harness/validate-state.mjs; git diff --check; source review",
+                    "status": "passed",
+                    "summary": "脚本仅语法检查，Harness仍禁用未执行；复核源码、依赖与文档范围。"
+                },
+                {
+                    "command": "NOT RUN: HTTP runtime/shutdown; release build; browser/E2E; fixed-version rustup installation",
+                    "status": "not-run",
+                    "summary": "本次为工程骨架本地提交，以编译静态检查和领域回归作为最小验证；生产HTTP/停机及release构建未验证。固定工具链首次使用仍可能安装；+stable为已安装同版本。"
+                }
+            ]
         }
     ]
 }

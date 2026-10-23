@@ -81,6 +81,7 @@ if (!existsSync(roadmapPath)) {
 
 const workspacePackagePaths = [];
 const pythonWorkspacePaths = [];
+const rustWorkspacePaths = [];
 const workspaceDirectories = new Set();
 const collectPackages = (directory, remainingDepth) => {
     if (!existsSync(directory) || remainingDepth < 0) return;
@@ -110,6 +111,23 @@ const collectPythonProjects = (directory, remainingDepth) => {
         collectPythonProjects(childDirectory, remainingDepth - 1);
     }
 };
+
+const collectRustProjects = (directory, remainingDepth) => {
+    if (!existsSync(directory) || remainingDepth < 0) return;
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        if (!entry.isDirectory() || [".git", ".venv", "target", "node_modules"].includes(entry.name)) continue;
+        const childDirectory = join(directory, entry.name);
+        const manifestPath = join(childDirectory, "Cargo.toml");
+        if (existsSync(manifestPath)) {
+            rustWorkspacePaths.push(manifestPath);
+            workspaceDirectories.add(childDirectory);
+        }
+        collectRustProjects(childDirectory, remainingDepth - 1);
+    }
+};
+
+collectRustProjects(join(repositoryRoot, "apps"), 2);
+collectRustProjects(join(repositoryRoot, "packages"), 2);
 
 collectPackages(join(repositoryRoot, "apps"), 2);
 collectPackages(join(repositoryRoot, "packages"), 2);
@@ -207,5 +225,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-    `Harness validation passed: ${features.length} feature(s), ${workspacePackagePaths.length} Node workspace(s), ${pythonWorkspacePaths.length} Python workspace(s), ${requiredAgentRules.length} agent rule(s).`,
+    `Harness validation passed: ${features.length} feature(s), ${workspacePackagePaths.length} Node workspace(s), ${pythonWorkspacePaths.length} Python workspace(s), ${rustWorkspacePaths.length} Rust workspace(s), ${requiredAgentRules.length} agent rule(s).`,
 );
