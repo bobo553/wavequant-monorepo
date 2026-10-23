@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping, Sequence, Sized
 from dataclasses import dataclass
+from itertools import chain
 from math import isfinite
 import pickle
 from struct import Struct
@@ -82,10 +83,11 @@ class PreparedGraphHistory:
         return payload.startswith(_MAGIC)
 
     def _token(self, value: object) -> _Token:
-        if type(value) in (int, bool, type(None)):
+        kind = type(value)
+        if kind in (int, bool, type(None)):
             return 'value', value
-        if type(value) is float:
-            if not isfinite(value):
+        if kind is float:
+            if not isfinite(cast(float, value)):
                 raise _NotAdmitted
             return 'value', value
         node = self._objects.get(id(value))
@@ -98,9 +100,7 @@ class PreparedGraphHistory:
         kind = type(value)
         if kind is dict:
             mapping = cast(dict[object, object], value)
-            if any(type(key) not in (str, int, float, bool, type(None)) for key in mapping):
-                raise _NotAdmitted
-            return 'dict', [child for pair in mapping.items() for child in pair]
+            return 'dict', list(chain.from_iterable(mapping.items()))
         if kind in (PointVersion, CertifiedSource):
             if not cast(PointVersion, value)._sealed:
                 raise _NotAdmitted
@@ -149,17 +149,19 @@ class PreparedGraphHistory:
         created: list[_LiveNode] = []
         visiting: set[int] = set()
         planned: set[int] = set()
-        records: list[tuple[object, str, list[object], int]] = []
+        records: list[tuple[object, int, str, list[_Token], int]] = []
         reserved = 0
-        pending: list[tuple[object, tuple[str, list[object], int] | None, bool]] = [(value, None, False)]
+        root_identity = id(value)
+        pending: list[tuple[object, int, tuple[str, list[_Token], int] | None, bool]] = [
+            (value, root_identity, None, False)]
         try:
             while pending:
-                item, leaving, internal_block = pending.pop()
+                item, identity, leaving, internal_block = pending.pop()
                 if leaving is not None:
-                    record_kind, children, charged = leaving
-                    records.append((item, record_kind, children, charged))
-                    planned.add(id(item))
-                    visiting.remove(id(item))
+                    record_kind, edge_tokens, charged = leaving
+                    records.append((item, identity, record_kind, edge_tokens, charged))
+                    planned.add(identity)
+                    visiting.remove(identity)
                     continue
                 kind = type(item)
                 if kind in (int, float, bool, type(None)):
@@ -170,12 +172,12 @@ class PreparedGraphHistory:
                 if kind is _SequenceNode and not internal_block:
                     # 树节点只属于点版本的存储协议，不能扩展外部审计字段白名单。
                     raise _NotAdmitted
-                known = self._objects.get(id(item))
+                known = self._objects.get(identity)
                 if known is not None and known.value is item:
                     continue
-                if id(item) in planned:
+                if identity in planned:
                     continue
-                if id(item) in visiting:
+                if identity in visiting:
                     raise _NotAdmitted
                 # 在枚举容器前检查其直接存储，拒绝巨型外壳时不额外复制它。
                 count = len(cast(Sized, item)) if kind in (dict, list, tuple) else 3 if kind in (
@@ -194,22 +196,32 @@ class PreparedGraphHistory:
                 # 内嵌标量没有独立身份节点，大整数等实际存储仍须纳入父记录。
                 # 同次计费即完成标量准入，不再给每个叶子建立 DFS 帧、查表和
                 # 再次分派；只读生产者保证写出前这些值不会被原位替换。
-                descendants: list[tuple[object, tuple[str, list[object], int] | None, bool]] = []
+                descendants: list[tuple[object, int, tuple[str, list[_Token], int] | None, bool]] = []
+                edge_tokens = [('value', None)] * len(children)
                 for index in range(len(children) - 1, -1, -1):
                     child = children[index]
                     child_type = type(child)
+                    # 键与值共用准入/计费遍历，不再先扫描一次所有字典键。
+                    if (record_kind == 'dict' and index % 2 == 0
+                            and child_type not in (str, int, float, bool, type(None))):
+                        raise _NotAdmitted
                     if child_type in (int, float, bool, type(None)):
                         if child_type is float and not isfinite(cast(float, child)):
                             raise _NotAdmitted
                         charged += getsizeof(child)
+                        edge_tokens[index] = ('value', child)
                     else:
-                        descendants.append((child, None,
+                        child_identity = id(child)
+                        edge_tokens[index] = ('identity', child_identity)
+                        descendants.append((child, child_identity, None,
                             record_kind == 'points' and index == 0 or record_kind == 'block' and index > 0))
                 if self._used + reserved + charged > self._limit:
                     raise _NotAdmitted
                 reserved += charged
-                visiting.add(id(item))
-                pending.append((item, (record_kind, children, charged), internal_block))
+                visiting.add(identity)
+                # 准入时记录边的身份；写出阶段直接连接已准入节点，不再重新
+                # 对每条边取 ID、分派类型和认证一遍。根及记录保持对象存活。
+                pending.append((item, identity, (record_kind, edge_tokens, charged), internal_block))
                 pending.extend(descendants)
             # 整批准入后才写入；超过预算的版本不先写整图再截断文件。
             # records 已按后序排列，写出时只需连接新节点和已有的磁盘 ID。
@@ -218,9 +230,19 @@ class PreparedGraphHistory:
             if records:
                 self._stream.seek(start)
             buffered = bytearray()
-            for item, record_kind, children, charged in records:
-                tokens = tuple(('value', child) if type(child) in (int, float, bool, type(None))
-                               else self._token(child) for child in children)
+            for item, identity, record_kind, edge_tokens, charged in records:
+                token_values: list[_Token] = []
+                references: list[int] = []
+                for token_kind, child in edge_tokens:
+                    token: _Token = (('value', child) if token_kind == 'value'
+                        else ('ref', self._objects[cast(int, child)].reference))
+                    token_values.append(token)
+                    if token[0] == 'ref':
+                        references.append(cast(int, token[1]))
+                tokens = tuple(token_values)
+                del token_values
+                child_ids = tuple(references)
+                del references
                 record = (record_kind, item if record_kind in ('str', 'bytes') else tokens)
                 payload = pickle.dumps(record, protocol=5)
                 reference = self._end
@@ -239,9 +261,8 @@ class PreparedGraphHistory:
                     buffered.extend(header)
                     buffered.extend(payload)
                 self._end += _SIZE.size + len(payload)
-                child_ids = tuple(cast(int, token[1]) for token in tokens if token[0] == 'ref')
                 node = _LiveNode(item, reference, child_ids, charged)
-                self._objects[id(item)] = node
+                self._objects[identity] = node
                 self._references[reference] = node
                 created.append(node)
                 for child in child_ids:
@@ -249,7 +270,7 @@ class PreparedGraphHistory:
                 self._used += charged
             if buffered:
                 self._stream.write(buffered)
-            root = cast(int, self._token(value)[1])
+            root = self._objects[root_identity].reference
             self._references[root].users += 1
             previous = self._root
             self._root = root

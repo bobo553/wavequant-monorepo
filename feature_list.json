@@ -430,6 +430,71 @@
             ],
             "verification": [
                 {
+                    "command": "提交与本地合并：用户明确要求不检查",
+                    "status": "skipped",
+                    "summary": "2026-10-23 用户明确要求“合并到main不要检查”：准备提交本会话累计回测高频调用优化并合并到本地main。本次按用户要求跳过测试、lint、类型检查、格式化、构建和Git钩子；只执行提交与合并所需的Git操作。前述回测记录保留为历史证据，不当作本次提交期验证；接近K线小倍数的性能目标仍未完成。未获本轮推送要求，不推送远端。"
+                },
+                {
+                    "command": "benchmark_root_cause.py: root-cause-20261023-164722",
+                    "status": "passed",
+                    "summary": "2026-10-23 根因复测：现有等长窗口工作量不单调，不能认定指数增长；确认旧共享证据重复计费、已失配备用检查点继续参与扫描、点发布原子预算拒绝未触发通道切换、冷图成功错误清零退避，以及普通发布账本浅复制后重复深计费。正式计费复用消费快照已计费子树，撤销费用单调转回现态并仅超限校准；失配备用点释放；点保存按明确预算原因切图，混合未知/NaN不误切；图只在暖复用成功后解除退避；普通owned账本在生产时累计新壳与标量费用，复用calculate已付的输入证明，公共与正式账本保留原计费。相同2133日离线冻结输入，四个20日窗口全局id4486770→2372332（减少47.13%），相对本轮起点3337046减少28.91%，仍29654.15次/K，未达到K线小倍数目标。正常无采样候选→基线顺序：基线238.463242秒、候选232.204882秒，耗时减少2.62%；CPU237.140625→230.265625秒。仅单组计时，不宣称稳定加速比。账户/研究SHA及分钟来源完全一致。正式预算id1367447→447871；普通预算id682836→519367；历史图窗口id322334→440897，不能把局部窗口调度变化当成全程扫描减少。另补完整2133日图诊断：捕获1966→1957，预算/类型拒绝86→79，成功冷建23→19。首版按coverage_generation变更即全扫已拒绝：formal全扫448→1456，全局id3337046→4024402；改成撤销费用转移后恢复增量。中间两个候选只完成profile，正常计时中止，不作正常耗时比较。加入普通账本新壳计费前的161147候选已完成一组正常计时241.820161→228.212771秒及80日2535801次id；不是最终源码结果。最终证据目录root-cause-20261023-164722。回归源码已补，单元测试/类型/构建待实际提交阶段；本轮未提交、合并或推送。"
+                },
+                {
+                    "command": "benchmark_live_budget.py + time_live_budget.py: live-budget-20261023-151318",
+                    "status": "failed",
+                    "summary": "2026-10-23 用户要求全局id接近K线小倍数，不能仅降百分比。本轮相同2133日冻结离线输入，联合预算账本候选四个20日窗口id4486770→1339093（-70.15%），仍16738.66次/K，验收未达标。总调用27544692→26666405；新LiveBudgetGraph.measure的183071次id已包含在全局总数，不能把原函数减少冒充消除。无采样同机顺序基线→候选：247.999833→268.225722秒，耗时下降-8.16%；CPU246.796875→267.078125秒。账户、研究、分钟来源全部一致。联合账本无采样计时退化，未采用；仅撤销与冻结候选逐字节匹配的本轮账本/标量计费实验，保留identity-20261023-143015版本（全局id4486770→3337046，-25.62%，仍41713.08次/K）。该保留版此前单组正常计时284.185247→246.242058秒，不当作本次联合账本计时或稳定收益。实验源码、采样和完整输出保留在各live-budget目录；不得将1339093作为撤回后工作树的数量。保留失败实验：145029每次更新整扫账本，200日窗口新增672190次id，提前终止；145352完成id3157607/总调用28233936；150127完成id2420963/总调用33728084；150741完成id2130331/总调用33493001。这些含采样运行不与正常计时混比，不宣称已根治。单元测试/类型/构建未运行；未提交、合并或推送。"
+                },
+                {
+                    "command": "benchmark_incremental.py: remaining-20261023-135316",
+                    "status": "failed",
+                    "summary": "2026-10-23 用户要求剩余三项优化回测：同2133交易日冻结输入、禁联网、固定源码，关闭采样候选→基线各一次。墙钟260.407428→277.594696秒，慢17.187268秒（6.60%）；CPU258.203125→272.65625秒。未测出整体提速，单轮不能确认各项改动因果。相同80日窗口调用27742453→27544692，减少197761次（0.71%）。冻结树替换7875→6370（-19.11%）、行情下标47605→27929（-41.33%）、finite直接id18046→11570（-35.89%）。基线计数复用上一轮相同源码及输入的profile，候选本轮重新采样；不把窗口计数当全程。账户SHA a55e938f3ada9afda3155baaf2857d9235c15a67c75b686e736ae380977753a5、研究SHA c4f3d330538b201c261bd40a60bb20c16691de646406df7ca77a23f529a7c17b及分钟来源一致。报告.codex-runtime/confirmation-benchmark/remaining-20261023-135316/REPORT.md。仅运行授权回测，未运行单元测试/类型/构建；未提交合并推送。后续不能以调用次数下降作为合并性能依据。"
+                },
+                {
+                    "command": "待提交验证：remaining_hotspot_work、有限性/映射历史、N形及次高回收回归；待授权新回测",
+                    "status": "not-run",
+                    "summary": "2026-10-23 用户要求继续优化剩余三项：读取既有incremental-20261023-103901/counts-after归因，7875次树写入来自freeze5695、truncate2078、赋值102；行情47605次主要来自次高回收14020、N形观察及三段约束、六态6438；finite1131次实际调用仍对容器出栈重新取id。本轮finite完成帧携带入栈身份，避免出栈再次id/type；FrozenPrefixMap键序列满32项才封存，copy继续复制最多31项尾部、保持历史键顺序和预算计费。次高回收episode保留起点及当前低点Bar，低点严格降低时同步替换，避免每根K线重复读取固定历史点。N形三段结构约束合并单遍，保留讲义外包边界、正反方向及起点→颈线→回撤错误优先级。新增test_remaining_hotspot_work.py覆盖身份单次获取/环拒绝、映射键块边界与快照、正反N形区间单次读取及多约束同时失败优先级。开发阶段未运行测试/类型/构建或新回测；不将旧7875/47605/18046作为本轮结果，也不承诺全部调用可以取消。未提交合并推送。"
+                },
+                {
+                    "command": "benchmark_incremental.py (offline clean A/B and candidate profile)",
+                    "status": "passed",
+                    "summary": "2026-10-23 用户明确要求本轮回测：同冻结2133交易日日线/分钟/策略/执行参数，离线，正常计时顺序候选→上一轮冻结候选基线，各一次。墙钟250.748380→248.766711秒，减少1.981669秒（0.79%）；CPU249.5625→247.53125秒。单轮小幅变化不足以证明稳定显著收益。四个20日相同窗口总调用29033752→27742453，减少1291299次（4.45%）；基线调用使用上一轮相同源码与输入已保存profile，本轮候选重新采样。历史图生成器248540→0、证据图生成器122232→0、finite直接id149051→18046（-87.89%）、冻结树替换12530→7875（-37.15%）、行情下标77279→47605（-38.40%）。生成器消除不等于取消必要的新节点校验，80日采样不冒充全程调用。账户SHA a55e938f3ada9afda3155baaf2857d9235c15a67c75b686e736ae380977753a5、研究SHA c4f3d330538b201c261bd40a60bb20c16691de646406df7ca77a23f529a7c17b以及分钟来源全部一致。报告.codex-runtime/confirmation-benchmark/incremental-20261023-103901/REPORT.md。仅运行用户授权回测，单元测试/类型/构建待提交验证；未提交合并推送。"
+                },
+                {
+                    "command": "待提交验证：增量图遍历/PointVersion/CertifiedSource/历史恢复及交易观察回归；待用户要求同冻结输入回测",
+                    "status": "not-run",
+                    "summary": "2026-10-23 按用户要求继续系统性处理剩余高频调用：基于已保存counts-after调用者归因，历史图248540次生成器均为键预检，证据图122232次来自finite/publish键预检；finite的id退化来自在标量过滤前计算身份。本轮finite先过滤标量，仅容器进行身份及环检测，字典键检查后不再压栈；publish把键约束合并到计费DFS，PreparedGraphHistory把键约束合并到既有子边计费遍历。PointVersion封存只固化完整32项块，最多31项尾部随分支复制，回退先保留修订块前缀再截断整块；CertifiedSource键及费用前缀同步整块固化，保持预算计费、旧快照和知识时钟语义。行情次高回收改pairwise顺序消费，六态观察复用前两根及攻击日行情，事件日志每条只读取一次行情。新增test_incremental_graph_traversal.py覆盖标量无需身份、非法/非有限键原子拒绝、块边界追加/修订、历史别名恢复、证书费用及顺序行情消费。本轮仅代码阅读编辑及既有profile文件分析，未运行测试、类型、构建或新回测；收益待验证，不能沿用前轮4.52%调用下降或声称总耗时改善。未提交、合并或推送。"
+                },
+                {
+                    "command": "hotspots.py --profile (before-source/after-source); compare_counts26.py",
+                    "status": "passed",
+                    "summary": "2026-10-23 用户要求补测调用次数：沿用同一基线及26处候选冻结源码，离线完整回测2133日各一次，在200/800/1400/2000日之后各采样20日。80日窗口总调用30408314→29033752，减少1374562（4.52%），包含生成器恢复与内置函数调用，非全程计数。有限值检查id调用78926→149051，增长88.85%，需继续筛选。账户、研究和分钟来源一致。含采样墙钟320.158665→289.123955秒受采样开销影响，不能替代此前关闭采样280.032238→285.795228秒（慢2.06%）的对照；尚未证明正常运行提速。报告位于.codex-runtime/confirmation-benchmark/batch26-20261023-095922/COUNTS.md；本轮只回测和记录，未提交合并。"
+                },
+                {
+                    "command": "Core venv python .codex-runtime/confirmation-benchmark/benchmark_26.py：无采样、固定输入、基线→候选完整回测",
+                    "status": "failed",
+                    "summary": "2026-10-23 用户明确要求26处改造回测对比：基线HEAD 3d9cccbd3c8e7f5bc8cd1fa206c0084e071f1b16，候选为当前未提交源码，均单独冻结wavequant源码；星网2133交易日同冻结日线、分钟、策略与执行参数，PYTHONHASHSEED=0、禁联网、关闭CPU采样，顺序基线→候选各一次。完整墙钟280.032238→285.795228秒，慢5.762991秒（2.06%）；CPU274.6875→280.640625秒，也未改善。完整账户SHA a55e938f3ada9afda3155baaf2857d9235c15a67c75b686e736ae380977753a5、研究SHA c4f3d330538b201c261bd40a60bb20c16691de646406df7ca77a23f529a7c17b及分钟来源一致。该单次对照未达到整体提速目标，不能把26处改动数量或旧调用量降低当性能收益，也不能只凭一次测量断言每个改动都会退化。报告/源码哈希/完整结果/窗口记录见本worktree .codex-runtime/confirmation-benchmark/batch26-20261023-095922。测试/类型/构建仍待提交时验证；本轮未提交合并推送。下一步需按真实总耗时筛选有净收益的改动，证据图/几何旧前缀重建仍未根治。"
+                },
+                {
+                    "command": "待提交时：test_high_frequency_projection_costs.py、test_high_frequency_container_costs.py及相关持久树/生命周期/投影回归；26项新收益待测",
+                    "status": "not-run",
+                    "summary": "2026-10-23 用户将高频卡点范围扩大为超过25项，本轮在此前未提交16处基础上新增10处，累计26处代码优化。新增：17.polyline_lifecycle.py:PolylineLifecycleSource.advance（已知点命中后不再急切构造备用_Point对象；旧样本36391 _clock calls in producer point loop）；18.trend_lifecycle.py:_pivot（exact dict直接识别，其他Mapping继续原校验；旧样本15563 calls）；19.trend_frozen_state.py:FrozenPrefixList.__eq__（map(eq)保留短路逐点比较，免zip元组与Python生成器恢复；旧样本67682 comparison-generator calls in hot windows）；20.trend_lines.py:_TrendPermissionCache.hierarchy_projection（五字段按原顺序短路比较，不为每点建立生成器；旧样本51962 five-field generator calls in hot windows）；21.trend_frozen_state.py:_leaf（单元素碰撞桶直接计费，免sum生成器；旧样本13869 calls）；22.trend_frozen_state.py:_replace_block（显式路径迭代重建，仅复制原变化树路径；旧样本59982 recursive calls）；23.trend_frozen_state.py:_index_merge（空更新区间直接复用原子树，免递归空调用；旧样本59237 recursive calls）；24.prepared_graph_history.py:_token（同次分派只读取一次exact type；旧样本265163 calls）；25.validated_bars.py:ValidatedBars.__iter__（已认证不可变行情直接用底层tuple迭代器；旧样本119163 inherited per-item __getitem__ calls）；26.trend_lifecycle.py:_StructureProjection.advance（结构事实展开使用chain，保留顺序、去重和真实知识日排序；旧样本31396 flatten-generator calls in hot windows）。26项不是26个独立根因，包含同一调用链上不同重复工作；全部依据旧冻结源码的四个20日CPU采样，不能当最新main的实测调用数或收益。清单在本worktree .codex-runtime/confirmation-benchmark/high-frequency-issues.json。新增test_high_frequency_projection_costs.py覆盖6000行情直接迭代、三级五字段旧点修订/缺失默认值、dict及Mapping知识截止；沿用容器分叉/碰撞/费用、图恢复与序列化回归。开发阶段未运行测试、类型、构建、格式/lint、Git差异或新回测；正确性与实际收益待提交时验证。未提交合并推送本轮；弱版本失效整段重建和证据图费用仍需继续，不能因数量达标宣布P0根治。"
+                },
+                {
+                    "command": "待提交时：test_high_frequency_container_costs.py、test_publication_scalar_lookup.py及相关容器/图/升级检查点回归；当前未运行",
+                    "status": "not-run",
+                    "summary": "2026-10-23 用户要求处理超过15处、重点超过5000次调用卡点。本轮累计实现16处旧采样有5000以上函数或内层调用依据的优化，清单和原始数量见本worktree .codex-runtime/confirmation-benchmark/high-frequency-issues.json：1.trend_publication_cache.py:_PublicationCache._new_graph（exact数值不查询不存在的引用）；2.trend_lines.py:export_owned（上下文读取移出逐点循环）；3.trend_readonly_cache.py:_builtin_size（同次弹出对象只求一次身份）；4.owned_evidence.py:finite（同次入栈出栈共享身份值）；5.owned_evidence.py:publish（整图原子准入期间读取一次稳定额度）；6.prepared_graph_history.py:_children（字典键值展开改C链迭代）；7.prepared_graph_history.py:capture token construction（父记录内单遍构造token）；8.prepared_graph_history.py:capture child reference collection（构造token时同步收集引用，免第二遍）；9.trend_upgrade_checkpoint.py:_new_graph reference（exact数值免无效引用查询）；10.trend_upgrade_checkpoint.py:_new_graph dictionary flatten（快照字典展开改C链迭代）；11.trend_frozen_state.py:FrozenPrefixList.__getitem__（下标归一化与边界共享一次长度）；12.trend_frozen_state.py:FrozenPrefixList._iter_blocks（纯尾区间不创建和弹出冻结树根帧）；13.trend_frozen_state.py:FrozenPrefixMap.__getitem__（可变尾命中免第二次哈希查询）；14.trend_frozen_state.py:_sequence_node（空分支元组费用使用等值常量）；15.trend_point_version.py:append（完整封存和键校验后直接追加，免父包装调用）；16.owned_evidence.py:finite child scheduling（子节点调度zip/repeat替代逐项Python生成器）。另有3处前轮延续和赋值边界优化不混入16项门槛数量。原四窗口数据仅用于定位，调用次数不是冗余次数，优化后消除量及全程收益尚未测量；不得宣称全部高频调用已根治。新增test_high_frequency_container_costs.py覆盖6000项预算原子拒绝、有限值与环、持久树边界/历史分叉、赋值单叶读取、精确空树费用、尾索引单哈希、点版本封存/非法键、图别名与历史恢复；新增publication_scalar测试保留费用/编码字节。按开发节奏未运行测试、类型、格式/lint、构建、Git差异或测速。弱导出版本重建和完整证据图计费仍待继续，预算/交易规则不放宽。仍未提交合并推送本轮。"
+                },
+                {
+                    "command": "待提交时验证 test_publication_scalar_lookup.py、test_weak_export_checkpoints.py及prepared编码回归",
+                    "status": "not-run",
+                    "summary": "2026-10-23 继续优化：_PreparedPickler.persistent_id补齐exact数值叶免引用表查询，新增12000数值叶新旧pickle逐字节及别名对照；export_owned把同请求current_evidence读取移到点循环外。沿用既有数值登记不变量，不改预算/编码协议/弱引用生命周期。弱版本失效后的完整重建仍未根治，不能用强引用保留旧输出掩盖。按开发节奏未运行测试、类型、构建或测速，收益待验证；本轮未提交合并推送。"
+                },
+                {
+                    "command": "待提交时验证 tests/test_publication_scalar_lookup.py；本轮未运行验证",
+                    "status": "not-run",
+                    "summary": "2026-10-23 续查高频卡点：发布检查点_publication_size与_new_graph仍对exact数值叶查询不登记数值的OwnedEvidence引用表；补齐相同标量短路，保留数值费用、预算和图登记语义。新增12000数值叶的原路径/优化路径费用差分回归源码，待提交时验证；未运行测试或测速，不能把上轮138850引用调用数当本轮计数。检查点旧失败夹具从offset100直接save而当前save要求连续offset=len(frames)+1，该失败不足以证明真实路径退化，未修改其断言。证据图计费、弱版本重建及真实新节点序列化继续列为后续重点；未提交合并或推送本轮改动。"
+                },
+                {
                     "command": "git merge main (f2c8814) into feat-回测增量计算根治; source conflict review; user requested direct merge",
                     "status": "not-run",
                     "summary": "2026-10-23 提交11d86ee后发现main已并行合入另一组回测优化f2c8814。协调重复实现：确认缓存保留main slots和实际费用、我方预算超限稳定前缀；私有解析统一main _retain=False；行情只保留main请求范围内认证器并补完全包含窗口快路径；生产者PointVersion直交保留，预算计费结合main数值叶免查优化。双方回归及历史证据保留。用户要求直接合并，组合版本不追加测试/类型/回测，旧327/4和main另一轮395/1均是各自合并前结果，不当作组合验证通过。P0继续in-progress，不推送。"

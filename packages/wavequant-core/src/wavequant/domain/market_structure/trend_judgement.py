@@ -799,6 +799,40 @@ class _CandidateBucket:
     base: list[Mapping[str, object]] = field(default_factory=list)
 
 
+class _OwnedLedgerChanges(list[object]):
+    """普通状态已付输入证明；这里只记录发布账本新分配的外壳和标量。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.new_shell_bytes = 0
+
+    @staticmethod
+    def _scalar_bytes(value: object) -> int:
+        return getsizeof(value) if type(value) in (str, bytes, int, float, bool, type(None)) else 0
+
+    def charge_tuple(self, values: tuple[object, ...]) -> None:
+        self.new_shell_bytes += getsizeof(values) + sum(self._scalar_bytes(value) for value in values)
+
+    def charge_point(self, point: Mapping[str, object] | None) -> None:
+        if point is not None:
+            self.new_shell_bytes += getsizeof(point)
+            self.new_shell_bytes += sum(self._scalar_bytes(key) + self._scalar_bytes(value)
+                                        for key, value in point.items())
+
+    def charge_bucket(self, entry: _CandidateBucket) -> None:
+        attributes = vars(entry)
+        self.new_shell_bytes += getsizeof(entry) + getsizeof(attributes)
+        self.new_shell_bytes += sum(getsizeof(name) for name in attributes)
+        self.new_shell_bytes += sum(getsizeof(value) for value in (
+            entry.ordinary, entry.events, entry.base, entry.merged, entry.candidates,
+        ))
+        for identity in entry.merged:
+            self.charge_tuple(identity)
+        for point in entry.candidates:
+            self.charge_point(point)
+        self.charge_point(entry.point)
+
+
 class _JudgementLedger:
     """按坐标追加候选账本；旧坐标补充结束证明时仅重整该桶及受影响几何后缀。"""
 
@@ -821,7 +855,7 @@ class _JudgementLedger:
                events: Sequence[dict[str, object]], positions: Sequence[int], *, initial: bool,
                level: int) -> tuple[TrendJudgement, list[object]]:
         dirty: set[tuple[int, int]] = set()
-        changed_objects: list[object] = []
+        changed_objects: list[object] = _OwnedLedgerChanges() if self._owned_result else []
 
         def bucket(point: Mapping[str, object]) -> _CandidateBucket:
             order = _order(point)
@@ -837,6 +871,8 @@ class _JudgementLedger:
                         previous.ordinary.copy(), previous.events.copy(), previous.merged.copy(),
                         previous.candidates, previous.point, previous.base.copy())
                 dirty.add(order)
+                if type(changed_objects) is _OwnedLedgerChanges:
+                    changed_objects.charge_tuple(order)
             return self.buckets[order]
 
         for point in ordinary.selected[self.ordinary_count:]:
@@ -863,6 +899,8 @@ class _JudgementLedger:
             canonical = _canonical_points(owned)
             entry.point = canonical[0] if canonical else None
             changed_objects.extend((entry, entry.candidates, entry.point))
+            if type(changed_objects) is _OwnedLedgerChanges:
+                changed_objects.charge_bucket(entry)
         if dirty:
             first = bisect_left(self.orders, min(dirty))
             candidate_change = self.candidate_offsets[first]
@@ -880,6 +918,8 @@ class _JudgementLedger:
                 else:
                     cast(MutableSequence[Mapping[str, object]], self.candidates).extend(bucket_candidates)
                 self.candidate_offsets.append(len(self.candidates))
+                if type(changed_objects) is _OwnedLedgerChanges:
+                    changed_objects.new_shell_bytes += getsizeof(self.candidate_offsets[-1])
             changed_objects.extend(self.candidate_offsets[first + 1:])
             # 新插入点可能拆开此前被同类极值合并的区间，须从前一已保留端点重放。
             preceding = bisect_left(self.geometry_orders, min(dirty))
@@ -911,13 +951,20 @@ class _JudgementLedger:
                 count = (high, low)
                 self.counts.append(count)
                 changed_objects.append(count)
+                if type(changed_objects) is _OwnedLedgerChanges:
+                    changed_objects.charge_tuple(count)
                 labelled = dict(point, state='reversal',
                                 label=f"{point['kind']}{high if point['kind'] == 'H' else low}")
                 self.points.append(labelled if self._owned_result else _frozen_point(labelled, frozen_memo))
+                if type(changed_objects) is _OwnedLedgerChanges:
+                    changed_objects.charge_point(labelled)
             del self.geometry_orders[boundary:]
             new_orders = [_order(point) for point in self.geometry[boundary:]]
             self.geometry_orders.extend(new_orders)
             changed_objects.extend(new_orders)
+            if type(changed_objects) is _OwnedLedgerChanges:
+                for order in new_orders:
+                    changed_objects.charge_tuple(order)
             changed_objects.extend(self.points[boundary:])
         delta = _JudgementDelta(object(), self.revision, point_change, candidate_change)
         self.revision = delta.token
@@ -1339,6 +1386,7 @@ class _TrendJudgementState:
         pending: list[object] = list(roots)
         seen: set[int] = set()
         owner = current_evidence()
+        owned_objects = owner._objects if owner is not None else None
         frozen_owner = _current_frozen_budget_owner()
         size = 0
         state_types = (_TrendJudgementState, _TrendReversalState, _TrendUpgradeState,
@@ -1351,11 +1399,14 @@ class _TrendJudgementState:
             if identity in seen:
                 continue
             seen.add(identity)
+            kind = type(value)
             # 请求池已按完整对象图计费并持有该不可变节点。状态只承担引用，
             # 不在每次追加/容量校准时重新扫描旧证明；池外对象仍完整计费。
-            if owner is not None and type(value) not in _UNINDEXED_SCALAR_TYPES and owner.reference(value) is not None:
-                size += 8
-                continue
+            if owned_objects is not None and kind not in _UNINDEXED_SCALAR_TYPES:
+                owned = owned_objects.get(identity)
+                if owned is not None and owned[0] is value:
+                    size += 8
+                    continue
             if (frozen_owner is not None and type(value) is _FrozenPoint
                     and value._budget_owner is frozen_owner):
                 size += 8
@@ -1417,8 +1468,9 @@ class _TrendJudgementState:
         seen: set[int] = set()
         size = 0
         for container in containers:
-            if id(container) not in seen:
-                seen.add(id(container))
+            identity = id(container)
+            if identity not in seen:
+                seen.add(identity)
                 size += getsizeof(container)
                 if (type(container) is FrozenPrefixList or type(container) is FrozenPrefixMap
                         or type(container) is PointVersion):
@@ -1592,7 +1644,11 @@ class _TrendJudgementState:
         result, changed = self._ledger.update(self._ordinary, self._upgrade, events, positions,
                                               initial=initial, level=self.trend_level)
         self._freeze_prefix()
-        self._payload_upper_bytes += self._owned_value_bytes(changed, _incremental=True)
+        if type(changed) is _OwnedLedgerChanges and events is self._events:
+            # calculate 已计入本状态的来源和事件图；发布阶段只新增浅壳和标量。
+            self._payload_upper_bytes += changed.new_shell_bytes
+        else:
+            self._payload_upper_bytes += self._owned_value_bytes(changed, _incremental=True)
         # 账本含共享来源与可变桶；预留固定对象头余量，临近上限再精确校准。
         observed = self._payload_upper_bytes + self._container_bytes() + 4096
         if observed > self._limit:
@@ -1657,6 +1713,7 @@ class _FormalKeyBreakState:
     def clear(self) -> None:
         self._checkpoint: _FormalKeyBreakState | None = None
         self._consumption.reset()
+        self._retired_upper_bytes = self._consumption.retired_upper_bytes
         self._budget_owner = current_evidence()
         self._frozen_budget_owner = _current_frozen_budget_owner()
         self._source_keys: tuple[bytes, ...] = ()
@@ -1677,24 +1734,30 @@ class _FormalKeyBreakState:
         self._owned_result_mode: bool | None = None
 
     @staticmethod
-    def _value_bytes(roots: Sequence[object], *, _incremental: bool = False) -> int:
+    def _value_bytes(roots: Sequence[object], *, _incremental: bool = False,
+                     _covered_ids: set[int] | None = None) -> int:
         # 入场已拒绝未知审计值；只遍历本地状态和标准容器，不追踪类／函数全局。
         pending = list(roots)
         seen: set[int] = set()
         owner = current_evidence()
+        owned_objects = owner._objects if owner is not None else None
         frozen_owner = _current_frozen_budget_owner()
         size = 0
         while pending:
             value = pending.pop()
             identity = id(value)
-            if identity in seen:
+            if identity in seen or _covered_ids is not None and identity in _covered_ids:
+                # 消费快照保活且已付费的不可变子图在最终总额中只计一次。
                 continue
             seen.add(identity)
+            kind = type(value)
             # 与普通趋势状态共用请求级所有权边界；不得把共享旧证明
             # 再次计入每条严格突破状态，更不能据此触发整段冷重算。
-            if owner is not None and type(value) not in _UNINDEXED_SCALAR_TYPES and owner.reference(value) is not None:
-                size += 8
-                continue
+            if owned_objects is not None and kind not in _UNINDEXED_SCALAR_TYPES:
+                owned = owned_objects.get(identity)
+                if owned is not None and owned[0] is value:
+                    size += 8
+                    continue
             if (frozen_owner is not None and type(value) is _FrozenPoint
                     and value._budget_owner is frozen_owner):
                 size += 8
@@ -1790,25 +1853,31 @@ class _FormalKeyBreakState:
             restored = checkpoint._copy_checkpoint()
             self.__dict__.update(vars(restored))
             self._checkpoint = checkpoint
+        else:
+            # 两个前缀均不匹配时，旧恢复点不能服务当前来源版本。
+            self._checkpoint = None
 
     def _retain(self, *, appended: bool, added: Sequence[object]) -> None:
+        covered = self._consumption._seen
         containers = self._containers()
         container_size = sum(getsizeof(value) + (value.storage_bytes
             if type(value) is FrozenPrefixList or type(value) is FrozenPrefixMap or type(value) is PointVersion else 0)
             + (value.record_metadata_bytes if type(value) is PointVersion else 0)
             for value in {id(value): value for value in containers}.values())
         if appended:
-            # 只为新来源、候选、事件和索引项计费；重复引用形成保守上界。
-            self._payload_upper_bytes += self._value_bytes(added, _incremental=True)
+            # 撤销快照后现态可能仍引用其节点，转移已认证上界即可；不能因
+            # 每日替换末端快照就重新遍历旧图。临界时再按当前覆盖精确校准。
+            self._payload_upper_bytes += self._consumption.retired_upper_bytes - self._retired_upper_bytes
+            self._payload_upper_bytes += self._value_bytes(added, _incremental=True, _covered_ids=covered)
             current = self._payload_upper_bytes + container_size
         else:
-            current = self._value_bytes(containers)
+            current = self._value_bytes(containers, _covered_ids=covered)
             self._payload_upper_bytes = max(0, current - container_size)
-        # 快照独占上界已在新增节点入场时认证，不能每天再次遍历全部旧图。
-        # 与当前图的重复引用保守计费；临界时先丢加速快照再校准原状态。
+        # 快照覆盖的共享图已在新增节点入场时付费，只在此总额中计一次。
+        # 容器容量与历史增量上界仍保守；临界时先校准，再决定是否丢快照。
         observed = current + self._consumption.retained_upper_bytes
         if appended and observed > self._limit:
-            current = self._value_bytes(containers)
+            current = self._value_bytes(containers, _covered_ids=covered)
             self._payload_upper_bytes = max(0, current - container_size)
             observed = current + self._consumption.retained_upper_bytes
         if observed > self._limit and self._consumption.frames:
@@ -1820,7 +1889,7 @@ class _FormalKeyBreakState:
                 if type(value) is FrozenPrefixList or type(value) is FrozenPrefixMap or type(value) is PointVersion else 0)
                 + (value.record_metadata_bytes if type(value) is PointVersion else 0)
                 for value in {id(value): value for value in containers}.values())
-            current = self._value_bytes(containers)
+            current = self._value_bytes(containers, _covered_ids=covered)
             self._payload_upper_bytes = max(0, current - container_size)
             observed = current + self._consumption.retained_upper_bytes
         if observed > self._limit and self._checkpoint is not None:
@@ -1830,13 +1899,14 @@ class _FormalKeyBreakState:
                 if type(value) is FrozenPrefixList or type(value) is FrozenPrefixMap or type(value) is PointVersion else 0)
                 + (value.record_metadata_bytes if type(value) is PointVersion else 0)
                 for value in {id(value): value for value in containers}.values())
-            current = self._value_bytes(containers)
+            current = self._value_bytes(containers, _covered_ids=covered)
             self._payload_upper_bytes = max(0, current - container_size)
             observed = current + self._consumption.retained_upper_bytes
         if observed > self._limit:
             self.clear()
         else:
             self.memory_used = observed
+            self._retired_upper_bytes = self._consumption.retired_upper_bytes
 
     def calculate(self, source: Sequence[Mapping[str, object]], result: TrendJudgement,
                   *, _certified_keys: tuple[bytes, ...] | None = None) -> TrendJudgement | None:

@@ -16,12 +16,13 @@ def _builtin_size(value: object, limit: int) -> int | None:
     total = 0
     while pending:
         current = pending.pop()
-        if id(current) in seen:
+        identity = id(current)
+        if identity in seen:
             continue
         kind = type(current)
         if kind not in (dict, list, tuple, str, bytes, int, float, bool, type(None)):
             return None
-        seen.add(id(current))
+        seen.add(identity)
         total += getsizeof(current)
         if total > limit:
             return None

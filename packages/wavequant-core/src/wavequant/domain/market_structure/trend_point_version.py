@@ -35,7 +35,14 @@ class PointVersion(FrozenPrefixList[dict[str, object]]):
         if previous is not None:
             previous.seal()
             self._archive, self._capacity, self._stop = previous._archive, previous._capacity, previous._stop
-            self._truncate(start)
+            if start < self._stop:
+                # 修订所在块留在新版本尾部，避免截短后马上重新固化同一叶块。
+                boundary = start // 32 * 32
+                retained = list(previous.iter_range(boundary, start))
+                self._truncate(boundary)
+                self._tail = retained
+            else:
+                self._tail = previous._tail[:start - self._stop]
             self._record_sequence, self._record_store = previous._record_sequence, previous._record_store
             self._record_prefix = min(start, previous._record_prefix)
         self.extend(values)
@@ -76,7 +83,9 @@ class PointVersion(FrozenPrefixList[dict[str, object]]):
 
     def seal(self) -> 'PointVersion':
         if not self._sealed:
-            self.freeze(len(self))
+            # 封存是写权限边界，未满块也已只读；满32项才复制持久树路径。
+            # 每个分支只复制最多31项尾部，不把祖先版本留在引用链中。
+            self.freeze(max(self._stop, len(self) // 32 * 32))
             self._sealed = True
         return self
 
@@ -121,7 +130,7 @@ class PointVersion(FrozenPrefixList[dict[str, object]]):
     def append(self, value: dict[str, object]) -> None:
         self._writeable()
         self._validate(value)
-        super().append(value)
+        self._tail.append(value)
 
     def extend(self, values: Iterable[dict[str, object]]) -> None:
         self._writeable()

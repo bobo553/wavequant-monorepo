@@ -472,7 +472,8 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 'nested_alternation_breakout_confirmed', 'multilevel_squeeze_confirmed')):
             event_attack = fields.get('attack')
             fields = {**(event_sources.get(event_attack, {}) if event_attack is not None else {}), **fields}
-        audit.append(dict(timestamp=bars[i].timestamp.isoformat(), symbol=bars[i].symbol,
+        event_bar = bars[i]
+        audit.append(dict(timestamp=event_bar.timestamp.isoformat(), symbol=event_bar.symbol,
                           bar_index=i, event=kind, **fields))
     def n_identity(origin, neckline, pullback, attack, owner):
         return _qualified_n_identity(origin, neckline, pullback, attack, owner,

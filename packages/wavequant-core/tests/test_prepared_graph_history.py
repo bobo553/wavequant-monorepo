@@ -239,4 +239,9 @@ def test_repeated_oversize_graphs_back_off_and_smaller_graph_recovers() -> None:
         else:
             raise AssertionError('a shrinking graph must recover without a new request')
         assert paths.load_encoded(payload) == dict(value=1)
+        # 冷成功还不能证明下一版可增量容纳，必须再成功替换一个暖根。
+        assert paths._graph_retry_delay == 32
+        payload = _prepared_payload(paths.encode(dict(value=1)))
+        assert payload is not None and PreparedGraphHistory.is_payload(payload)
+        assert paths.load_encoded(payload) == dict(value=1)
         assert paths._graph_retry_delay == 0

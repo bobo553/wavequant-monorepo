@@ -7,7 +7,7 @@ from sys import getsizeof
 from typing import cast
 from weakref import ReferenceType, ref
 
-from .owned_evidence import CertifiedSource, current_evidence
+from .owned_evidence import CertifiedSource, _UNINDEXED_SCALAR_TYPES, current_evidence
 from .trend_frozen_state import FrozenPrefixList, _SequenceNode
 from .trend_market_index import _MarketPrefixIndex
 from .trend_point_version import PointVersion
@@ -98,13 +98,16 @@ def _publication_size(value: object, limit: int) -> int | None:
         return _builtin_size(value, limit)
     pending = [value]
     seen: set[int] = set()
+    owned_objects = owner._objects
     size = 0
     while pending:
         item = pending.pop()
-        if id(item) in seen:
+        identity = id(item)
+        if identity in seen:
             continue
-        seen.add(id(item))
-        if owner.reference(item) is not None:
+        seen.add(identity)
+        owned = owned_objects.get(identity) if type(item) not in _UNINDEXED_SCALAR_TYPES else None
+        if owned is not None and owned[0] is item:
             size += 8
         else:
             kind = type(item)
@@ -484,6 +487,7 @@ class _PublicationCache:
         introduced: set[int] = set()
         size = 0
         owner = current_evidence()
+        owned_objects = owner._objects if owner is not None else None
         while pending:
             value = pending.pop()
             identity = id(value)
@@ -498,7 +502,9 @@ class _PublicationCache:
             # 同一个 ID 整数由 seen 与首次引入元组共享；集合真实容量另计，
             # 元组槽计8字节，其固定外壳由每帧预留覆盖。
             size += getsizeof(value) + getsizeof(identity) + 8
-            if owner is not None and owner.reference(value) is not None:
+            owned = (owned_objects.get(identity) if owned_objects is not None
+                     and kind not in _UNINDEXED_SCALAR_TYPES else None)
+            if owned is not None and owned[0] is value:
                 pass
             elif kind is dict:
                 pending.extend(cast(dict[object, object], value).keys())

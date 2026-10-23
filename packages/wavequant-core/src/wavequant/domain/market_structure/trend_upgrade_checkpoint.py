@@ -3,10 +3,11 @@
 from collections.abc import Mapping, Sequence
 from copy import copy
 from dataclasses import dataclass
+from itertools import chain
 from sys import getsizeof
 from typing import cast
 
-from .owned_evidence import CertifiedSource, current_evidence
+from .owned_evidence import CertifiedSource, _UNINDEXED_SCALAR_TYPES, current_evidence
 from .polyline import LinePoint, PointKind, ReversalPoint
 from .trend_frozen_state import (
     FrozenPrefixList, FrozenPrefixMap, _IndexArchive, _IndexNode, _SequenceNode, _node_children,
@@ -82,12 +83,15 @@ class _UpgradeConsumptionCache:
     def __init__(self, limit: int) -> None:
         self.limit = limit
         self.stats: dict[str, int] = {}
+        self.retired_upper_bytes = 0
+        self.memory_used = 0
         self.reset()
 
     def _count(self, name: str, amount: int = 1) -> None:
         self.stats[name] = self.stats.get(name, 0) + amount
 
     def reset(self) -> None:
+        self.retired_upper_bytes += self.memory_used
         self.frames: list[_ConsumptionCheckpoint] = []
         self._seen: set[int] = set()
         self.memory_used = 0
@@ -182,6 +186,7 @@ class _UpgradeConsumptionCache:
         for frame in reversed(self.frames[position:]):
             self._seen.difference_update(frame.introduced_ids)
             self.memory_used -= frame.charged
+            self.retired_upper_bytes += frame.charged
         del self.frames[position:]
 
     def discard_for_cold(self) -> None:
@@ -270,6 +275,7 @@ class _UpgradeConsumptionCache:
         added: set[int] = set()
         charged = 0
         owner = current_evidence()
+        owned_objects = owner._objects if owner is not None else None
         while pending:
             value = pending.pop()
             identity = id(value)
@@ -278,7 +284,9 @@ class _UpgradeConsumptionCache:
             added.add(identity)
             # ID 集合、每个快照的归属 ID 元组及哈希表空槽也在同一预算内。
             charged += 128
-            if owner is not None and owner.reference(value) is not None:
+            owned = (owned_objects.get(identity) if owned_objects is not None
+                     and type(value) not in _UNINDEXED_SCALAR_TYPES else None)
+            if owned is not None and owned[0] is value:
                 charged += 8
                 if charged > allowance:
                     return None
@@ -288,7 +296,7 @@ class _UpgradeConsumptionCache:
                 return None
             kind = type(value)
             if kind is dict:
-                pending.extend(child for pair in cast(dict[object, object], value).items() for child in pair)
+                pending.extend(chain.from_iterable(cast(dict[object, object], value).items()))
             elif kind in (list, tuple):
                 pending.extend(cast(Sequence[object], value))
             elif kind in (_SequenceNode, _IndexNode):

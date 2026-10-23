@@ -8,6 +8,7 @@ cycles are retained; price confirmation advances once per market date.
 from collections.abc import Iterable, Mapping, Sequence
 from bisect import bisect_left
 from heapq import heappop, heappush
+from itertools import chain
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from math import isfinite
@@ -122,9 +123,10 @@ def _next_structure_clock(value: object, dates: Mapping[str, int], now: int) -> 
             continue
         if type(current) not in (dict, list, tuple, PointVersion, CertifiedSource):
             return False, None
-        if id(current) in visited:
+        identity = id(current)
+        if identity in visited:
             continue
-        visited.add(id(current))
+        visited.add(identity)
         if isinstance(current, dict):
             for field in ('index', 'available_at', 'wave_completed_at'):
                 known = _clock(current.get(field), dates)
@@ -254,7 +256,9 @@ def _clock(value: object, dates: Mapping[str, int]) -> int | None:
 
 
 def _pivot(value: object, dates: Mapping[str, int], now: int) -> _Pivot | None:
-    if not isinstance(value, Mapping) or value.get('state') in ('seed', 'developing') or value.get('display_only'):
+    if type(value) is not dict and not isinstance(value, Mapping):
+        return None
+    if value.get('state') in ('seed', 'developing') or value.get('display_only'):
         return None
     index, ordinal, price, kind = (value.get('index'), value.get('ordinal', 0),
                                     value.get('value'), value.get('kind'))
@@ -422,7 +426,7 @@ class _StructureProjection:
         self.facts.freeze(len(self.facts))
         self.points, self.dates = points, dates
         parsed = tuple(entry for entry in self.parsed if entry is not None)
-        facts = _ordered_facts(fact for values in self.facts for fact in values)
+        facts = _ordered_facts(chain.from_iterable(self.facts))
         return facts, parsed
 
 

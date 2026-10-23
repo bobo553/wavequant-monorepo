@@ -52,6 +52,7 @@ class PreparedPointHistory:
         self._rows = TrendStageRows(_node, payload_cache_bytes=0)
         self._cache: OrderedDict[int, _Node] = OrderedDict()
         self._cache_bytes = 0
+        self.budget_rejected = False
 
     def _write(self, node: _Node) -> int:
         index = self._rows.row_count
@@ -99,9 +100,18 @@ class PreparedPointHistory:
             right = self._replace(right, half, position - half, block)
         return self._write(('branch', left, right))
 
+    def _publish(self, value: object) -> bool:
+        refusals = self.evidence.budget_refusals
+        self.evidence.publish(value)
+        if self.evidence.reference(value) is not None:
+            return True
+        self.budget_rejected = self.evidence.budget_refusals != refusals
+        return False
+
     def pack(self, channel: tuple[str, str], points: Sequence[dict[str, object]], *,
              _owned_previous: Sequence[dict[str, object]] | None = None,
              _changed_from: int | None = None) -> PreparedPointReference | None:
+        self.budget_rejected = False
         previous = self._current.get(channel)
         owned = _changed_from is not None
         parent = self._owned_points.get(channel)
@@ -124,19 +134,16 @@ class PreparedPointHistory:
             if owned:
                 # 固化块以后可能与新尾部共享同一根点；首次写入便建立引用，
                 # 否则后来出现的别名会与旧块中内嵌的根对象分裂。
-                self.evidence.publish(point)
-                if self.evidence.reference(point) is None:
+                if not self._publish(point):
                     return None
             if id(point) in identities:
-                self.evidence.publish(point)
-                if self.evidence.reference(point) is None:
+                if not self._publish(point):
                     return None
             identities.add(id(point))
             for key, value in point.items():
                 for child in (key, value):
                     if type(child) in (dict, list, tuple, str):
-                        self.evidence.publish(child)
-                        if self.evidence.reference(child) is None:
+                        if not self._publish(child):
                             return None
         raw_keys = tuple(owned_signature(point) for point in tail)
         if any(key is None for key in raw_keys):
@@ -153,6 +160,7 @@ class PreparedPointHistory:
         # 保留当前只读数组的引用也属于通道预算。
         charged = costs[-1] + keys.storage_bytes + costs.storage_bytes + len(points) * 16 + 512
         if self._used - (previous[2] if previous is not None else 0) + charged > self._limit:
+            self.budget_rejected = True
             return None
         if previous is not None and not owned:
             while keep < min(len(previous[0]), len(keys)) and previous[0][keep] == keys[keep]:
