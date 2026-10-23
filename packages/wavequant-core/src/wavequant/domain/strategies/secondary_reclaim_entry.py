@@ -3,6 +3,7 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
+from itertools import pairwise
 
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 from ..models.model import Bar
@@ -28,6 +29,8 @@ class _Episode:
     ceiling_index: int
     bottom: int
     observed_peak: float
+    origin_bar: Bar
+    bottom_bar: Bar
 
 
 def secondary_reclaim_history(
@@ -45,12 +48,11 @@ def secondary_reclaim_history(
     proofs: dict[int, dict[str, object]] = {}
     episode: _Episode | None = None
     attacked: set[tuple[int, float, int]] = set()
-    for now in range(1, len(bars)):
-        bar, previous = bars[now], bars[now - 1]
+    for now, (previous, bar) in enumerate(pairwise(bars), 1):
         known = [point for point in highs.get(now - 1, ())
                  if 0 <= point.index <= point.known_index < now]
         key = max(known, key=lambda point: (point.index, point.known_index), default=None)
-        if episode is not None and bar.low < bars[episode.origin].low:
+        if episode is not None and bar.low < episode.origin_bar.low:
             events.append(dict(bar_index=now, event="secondary_reclaim_invalidated",
                                secondary_attack_index=episode.attack, reason="secondary_origin_low_broken"))
             episode = None
@@ -61,19 +63,21 @@ def secondary_reclaim_history(
                 if key.index + 1 >= now:
                     continue
                 origin = min(range(key.index + 1, now), key=lambda index: (bars[index].low, index))
-                if bars[origin].low >= key.price or bar.low < bars[origin].low:
+                origin_bar = bars[origin]
+                if origin_bar.low >= key.price or bar.low < origin_bar.low:
                     continue
                 resisted = observe_resistance(previous, bar, attack_direction=Direction.UP,
                                               shadow_policy=ShadowPolicy(.5)).detected is True
-                episode = _Episode(key, now, origin, resisted, bar.high, now, now, bar.high)
+                episode = _Episode(key, now, origin, resisted, bar.high, now, now, bar.high, origin_bar, bar)
                 events.append(dict(bar_index=now, event="secondary_reclaim_breakout_observed",
                                    secondary_high_date=bars[key.index].timestamp.date().isoformat(),
                                    secondary_high=key.price, secondary_high_known_index=key.known_index,
                                    secondary_attack_index=now))
         if episode is None:
             continue
-        if bar.low < bars[episode.bottom].low:
+        if bar.low < episode.bottom_bar.low:
             episode.bottom = now
+            episode.bottom_bar = bar
         episode.observed_peak = max(episode.observed_peak, bar.high)
         if now == episode.attack + 1:
             episode.resistance |= observe_resistance(
@@ -111,10 +115,10 @@ def secondary_reclaim_history(
             secondary_resistance_date=bars[episode.ceiling_index].timestamp.date().isoformat(),
             secondary_resistance_high=episode.ceiling,
             secondary_resistance_known_date=bars[episode.attack + 1].timestamp.date().isoformat(),
-            secondary_origin_date=bars[episode.origin].timestamp.date().isoformat(),
-            secondary_origin_low=bars[episode.origin].low,
-            secondary_pullback_low_date=bars[episode.bottom].timestamp.date().isoformat(),
-            secondary_pullback_low=bars[episode.bottom].low,
+            secondary_origin_date=episode.origin_bar.timestamp.date().isoformat(),
+            secondary_origin_low=episode.origin_bar.low,
+            secondary_pullback_low_date=episode.bottom_bar.timestamp.date().isoformat(),
+            secondary_pullback_low=episode.bottom_bar.low,
             secondary_reclaim_type="gap" if gap_reclaim else "body",
             secondary_reclaim_body_fraction=float(body / open_price),
             secondary_reclaim_body_range_fraction=(float(body / (Fraction(str(bar.high)) - Fraction(str(bar.low))))
@@ -124,9 +128,9 @@ def secondary_reclaim_history(
             secondary_observed_peak=episode.observed_peak,
             previous_volume=previous.volume, breakout_volume=bar.volume,
             breakout_volume_multiple=bar.volume / previous.volume,
-            stop=bars[episode.bottom].low,
-            counter_ratio=(episode.ceiling - bars[episode.bottom].low)
-            / (episode.ceiling - bars[episode.origin].low),
+            stop=episode.bottom_bar.low,
+            counter_ratio=(episode.ceiling - episode.bottom_bar.low)
+            / (episode.ceiling - episode.origin_bar.low),
         )
         proofs[now] = proof
         events.append(dict(proof, bar_index=now, event="secondary_reclaim_candidate"))

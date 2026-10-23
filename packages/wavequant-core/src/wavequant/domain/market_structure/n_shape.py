@@ -340,16 +340,25 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     # Validate supplied pivot prices against the visible structural legs. We do
     # not choose alternative pivots or invent an intrabar order on the B candle.
     adverse_value = lambda bar: bar.low if up else bar.high
-    forward_value = lambda bar: bar.high if up else bar.low
-    if any(sign*(adverse_value(bars[i])-a)<0 for i in range(setup.origin.index,setup.pullback.index+1)):
-        raise ValueError('origin is not a valid boundary of the supplied structure')
     # The lecture path starts at A's terminal low/high. Its opposite wick
     # belongs to the preceding leg, not the subsequent A-B impulse.
     neckline_start = setup.origin.index + (setup.source == 'lecture_causal')
     neckline_end = setup.pullback.index + (not (outside_close or outside_turn))
-    if any(sign*(forward_value(bars[i])-b)>0 for i in range(neckline_start,neckline_end)):
+    invalid_neckline = invalid_pullback = False
+    # 三段约束共享行情读取；错误仍按原来的起点、颈线、回撤顺序报告。
+    for i in range(setup.origin.index, setup.pullback.index + 1):
+        structural_bar = bars[i]
+        adverse = structural_bar.low if up else structural_bar.high
+        if sign * (adverse - a) < 0:
+            raise ValueError('origin is not a valid boundary of the supplied structure')
+        if not invalid_neckline and neckline_start <= i < neckline_end:
+            forward = structural_bar.high if up else structural_bar.low
+            invalid_neckline = sign * (forward - b) > 0
+        if not invalid_pullback and i > setup.neckline.index:
+            invalid_pullback = sign * (adverse - c) < 0
+    if invalid_neckline:
         raise ValueError('neckline is not the extreme of the supplied A-B-C structure')
-    if any(sign*(adverse_value(bars[i])-c)<0 for i in range(setup.neckline.index+1,setup.pullback.index+1)):
+    if invalid_pullback:
         raise ValueError('C is not the pullback extreme of the supplied structure')
     # C must remain valid until confirmed. Later extension requires a new setup,
     # not silent mutation of C and its equal-wave target.

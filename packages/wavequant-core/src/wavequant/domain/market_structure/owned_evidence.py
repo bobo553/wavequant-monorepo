@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
 from io import BytesIO
+from itertools import repeat
 from math import isfinite
 import pickle
 from sys import getsizeof
@@ -89,6 +90,7 @@ class OwnedEvidence:
         self._nodes: list[object] = []
         self._records: OwnedEvidenceRecords | None = None
         self._record_cache_reserved = 0
+        self.budget_refusals = 0
         # 生产者到历史根的完整接线仍在隔离测量；旧调用默认不进入实验通路。
         self.record_history_enabled = False
         self._closed = False
@@ -121,42 +123,48 @@ class OwnedEvidence:
     def finite(self, value: object, *, _receipts: FiniteSourceReceipts | None = None) -> bool:
         """等价于标准 JSON 的有限值准入，已拥有的节点不再遍历。"""
         receipts = _receipts if type(_receipts) is FiniteSourceReceipts and _receipts.owner is self else None
-        pending: list[tuple[object, bool]] = [(value, False)]
+        pending: list[tuple[object, int | None]] = [(value, None)]
         active: set[int] = set()
         checked: set[int] = set()
         while pending:
             item, leaving = pending.pop()
+            if leaving is not None:
+                active.remove(leaving)
+                checked.add(leaving)
+                continue
             kind = type(item)
-            if leaving:
-                active.remove(id(item))
-                checked.add(id(item))
-                continue
-            if (kind not in _UNINDEXED_SCALAR_TYPES and self.reference(item) is not None or id(item) in checked):
-                continue
-            if (receipts is not None and kind in (dict, list, tuple, PointVersion, CertifiedSource)
-                    and receipts.knows(item, self)):
-                receipts.stats['root_hits' if item is value else 'subtree_skips'] += 1
-                continue
+            # 标量没有图边；只有容器需要身份、环检测和完成帧。
             if kind in (str, int, bool, type(None)):
                 continue
             if kind is float:
                 if not isfinite(cast(float, item)):
                     return False
                 continue
+            identity = id(item)
+            entry = self._objects.get(identity)
+            if entry is not None and entry[0] is item or identity in checked:
+                continue
+            if (receipts is not None and kind in (dict, list, tuple, PointVersion, CertifiedSource)
+                    and receipts.knows(item, self)):
+                receipts.stats['root_hits' if item is value else 'subtree_skips'] += 1
+                continue
             if kind in (PointVersion, CertifiedSource) and not cast(PointVersion, item)._sealed:
                 return False
-            if kind not in (dict, list, tuple, PointVersion, CertifiedSource) or id(item) in active:
+            if kind not in (dict, list, tuple, PointVersion, CertifiedSource) or identity in active:
                 return False
-            active.add(id(item))
-            pending.append((item, True))
+            active.add(identity)
+            pending.append((item, identity))
             if kind is dict:
                 mapping = cast(dict[object, object], item)
-                if any(type(key) not in (str, int, float, bool, type(None))
-                       or type(key) is float and not isfinite(key) for key in mapping):
-                    return False
-                pending.extend((child, False) for pair in mapping.items() for child in pair)
+                for key, child in mapping.items():
+                    key_kind = type(key)
+                    if (key_kind not in (str, int, float, bool, type(None))
+                            or key_kind is float and not isfinite(cast(float, key))):
+                        return False
+                    # 键已经完整检查，无需再次当作值压栈。
+                    pending.append((child, None))
             else:
-                pending.extend((child, False) for child in cast(list[object] | tuple[object, ...], item))
+                pending.extend(zip(cast(list[object] | tuple[object, ...], item), repeat(None)))
         return True
 
     def dumps(self, value: object, *, root: object | None = None,
@@ -184,26 +192,34 @@ class OwnedEvidence:
         """单遍验证并计费新图；整图准入成功后才公开任何节点引用。"""
         if self._closed:
             raise ValueError('owned evidence is closed')
-        if (not self.admission_remaining
-                or type(value) not in _UNINDEXED_SCALAR_TYPES and self.reference(value) is not None):
+        remaining = self.admission_remaining
+        if not remaining:
+            if type(value) in _UNINDEXED_SCALAR_TYPES or self.reference(value) is None:
+                self.budget_refusals += 1
+            return
+        if type(value) not in _UNINDEXED_SCALAR_TYPES and self.reference(value) is not None:
             return
         # 新根会持有完整子图，不能只收外壳费用。验证、计费、后序登记计划
         # 共用一次遍历；额度不足立即拒绝，避免拒绝前仍扫描整段历史证明。
-        pending: list[tuple[object, bool]] = [(value, False)]
+        pending: list[tuple[object, int | None, bool]] = [(value, None, False)]
         active: set[int] = set()
         seen: set[int] = set()
-        admitted: list[object] = []
+        admitted: list[tuple[object, int]] = []
         charged = 0
         while pending:
-            item, leaving = pending.pop()
-            identity = id(item)
-            if leaving:
+            item, leaving, is_key = pending.pop()
+            if leaving is not None:
+                identity = leaving
                 active.remove(identity)
                 seen.add(identity)
-                admitted.append(item)
+                admitted.append((item, identity))
                 continue
+            identity = id(item)
             kind = type(item)
-            if kind not in _UNINDEXED_SCALAR_TYPES and self.reference(item) is not None or identity in seen:
+            if is_key and kind not in (str, int, float, bool, type(None)):
+                return
+            owned = self._objects.get(identity) if kind not in _UNINDEXED_SCALAR_TYPES else None
+            if (owned is not None and owned[0] is item) or identity in seen:
                 continue
             if kind is float and not isfinite(cast(float, item)):
                 return
@@ -223,28 +239,29 @@ class OwnedEvidence:
                 source = cast(CertifiedSource, item)
                 charged += source.signature_bytes + source.keys.storage_bytes + source._costs.storage_bytes
                 charged += len(source._costs) * getsizeof(source.signature_bytes)
-            if charged > self.admission_remaining:
+            if charged > remaining:
+                # 原子拒绝不减少 remaining；消费者不能靠剩余额度识别此结果。
+                self.budget_refusals += 1
                 return
             if kind in (str, int, float, bool, type(None)):
                 seen.add(identity)
                 if indexed:
-                    admitted.append(item)
+                    admitted.append((item, identity))
                 continue
             active.add(identity)
-            pending.append((item, True))
+            pending.append((item, identity, False))
             if kind is dict:
                 mapping = cast(dict[object, object], item)
-                if any(type(key) not in (str, int, float, bool, type(None))
-                       or type(key) is float and not isfinite(key) for key in mapping):
-                    return
-                pending.extend((child, False) for pair in mapping.items() for child in pair)
+                for key, child in mapping.items():
+                    pending.append((key, None, True))
+                    pending.append((child, None, False))
             else:
-                pending.extend((child, False) for child in cast(Sequence[object], item))
+                pending.extend(zip(cast(Sequence[object], item), repeat(None), repeat(False)))
         self._used += charged
-        for item in admitted:
+        for item, identity in admitted:
             reference = len(self._nodes)
             self._nodes.append(item)
-            self._objects[id(item)] = item, reference
+            self._objects[identity] = item, reference
 
     def close(self) -> None:
         self._objects.clear()
@@ -298,8 +315,8 @@ class CertifiedSource(PointVersion):
             self._costs.append(self._costs[-1] + getsizeof(key))
         if len(self.keys) != len(self):
             raise ValueError('each source point requires one certificate')
-        self.keys.freeze(len(self.keys))
-        self._costs.freeze(len(self._costs))
+        self.keys.freeze(max(self.keys.frozen_count, len(self.keys) // 32 * 32))
+        self._costs.freeze(max(self._costs.frozen_count, len(self._costs) // 32 * 32))
         self.signature_bytes = self._costs[-1]
         self.seal()
 

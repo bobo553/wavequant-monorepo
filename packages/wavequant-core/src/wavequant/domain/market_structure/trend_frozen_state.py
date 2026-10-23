@@ -9,6 +9,7 @@ from bisect import bisect_left
 from collections.abc import Iterable, Iterator, MutableMapping, MutableSequence
 from dataclasses import dataclass
 from itertools import chain, islice
+from operator import eq
 from sys import getsizeof
 from typing import Generic, TypeVar, cast, overload
 
@@ -16,6 +17,8 @@ from typing import Generic, TypeVar, cast, overload
 T = TypeVar('T')
 K = TypeVar('K')
 V = TypeVar('V')
+_EMPTY_VALUES: tuple[object, ...] = ()
+_EMPTY_VALUES_BYTES = getsizeof(_EMPTY_VALUES)
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,21 +31,27 @@ class _SequenceNode:
 
 def _sequence_node(values: tuple[object, ...] = (), left: _SequenceNode | None = None,
                    right: _SequenceNode | None = None) -> _SequenceNode:
-    return _SequenceNode(values, left, right, 128 + getsizeof(values)
+    return _SequenceNode(values, left, right, 128 + (_EMPTY_VALUES_BYTES if values is _EMPTY_VALUES else getsizeof(values))
                          + (left.size if left else 0) + (right.size if right else 0))
 
 
 def _replace_block(node: _SequenceNode | None, capacity: int, position: int,
                    values: tuple[object, ...]) -> _SequenceNode:
-    if capacity == 1:
-        return _sequence_node(values)
-    half = capacity // 2
-    left, right = (node.left, node.right) if node is not None else (None, None)
-    if position < half:
-        left = _replace_block(left, half, position, values)
-    else:
-        right = _replace_block(right, half, position - half, values)
-    return _sequence_node(left=left, right=right)
+    path: list[tuple[_SequenceNode | None, _SequenceNode | None, bool]] = []
+    while capacity > 1:
+        half = capacity // 2
+        left, right = (node.left, node.right) if node is not None else (None, None)
+        rightward = position >= half
+        path.append((left, right, rightward))
+        node = right if rightward else left
+        if rightward:
+            position -= half
+        capacity = half
+    replaced = _sequence_node(values)
+    for left, right, rightward in reversed(path):
+        replaced = (_sequence_node(left=left, right=replaced) if rightward else
+                    _sequence_node(left=replaced, right=right))
+    return replaced
 
 
 def _block(node: _SequenceNode | None, capacity: int, position: int) -> tuple[object, ...]:
@@ -143,7 +152,7 @@ class FrozenPrefixList(MutableSequence[T]):
     def _iter_blocks(self, start: int, stop: int | None) -> Iterator[Iterable[T]]:
         start, end, _ = slice(start, stop).indices(len(self))
         frozen_end = min(end, self._stop)
-        pending = [(self._archive, self._capacity, 0)]
+        pending = [(self._archive, self._capacity, 0)] if start < frozen_end else []
         while pending:
             node, capacity, block_start = pending.pop()
             left = block_start * 32
@@ -192,7 +201,7 @@ class FrozenPrefixList(MutableSequence[T]):
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, (list, tuple, FrozenPrefixList)):
             return False
-        return len(self) == len(other) and all(left == right for left, right in zip(self, other))
+        return len(self) == len(other) and all(map(eq, self, other))
 
     @overload
     def __getitem__(self, index: int) -> T: ...
@@ -206,8 +215,9 @@ class FrozenPrefixList(MutableSequence[T]):
             if step != 1:
                 return [self[position] for position in range(start, stop, step)]
             return list(self.iter_range(start, stop))
-        position = index + len(self) if index < 0 else index
-        if position < 0 or position >= len(self):
+        length = len(self)
+        position = index + length if index < 0 else index
+        if position < 0 or position >= length:
             raise IndexError('state sequence index out of range')
         if position >= self._stop:
             return self._tail[position - self._stop]
@@ -233,8 +243,10 @@ class FrozenPrefixList(MutableSequence[T]):
             self._detach(start)
             self._tail[start - self._stop:max(start, stop) - self._stop] = cast(Iterable[T], value)
             return
-        position = index + len(self) if index < 0 else index
-        self[position]
+        length = len(self)
+        position = index + length if index < 0 else index
+        if position < 0 or position >= length:
+            raise IndexError('state sequence index out of range')
         if position >= self._stop:
             self._tail[position - self._stop] = cast(T, value)
         else:
@@ -286,7 +298,8 @@ class _IndexNode:
 
 
 def _leaf(key_hash: int, entries: tuple[tuple[object, object], ...]) -> _IndexNode:
-    return _IndexNode(key_hash, -1, entries, size=192 + getsizeof(entries) + sum(getsizeof(pair) for pair in entries))
+    pairs_size = getsizeof(entries[0]) if len(entries) == 1 else sum(getsizeof(pair) for pair in entries)
+    return _IndexNode(key_hash, -1, entries, size=192 + getsizeof(entries) + pairs_size)
 
 
 def _branch(bit: int, left: _IndexNode, right: _IndexNode) -> _IndexNode:
@@ -375,8 +388,8 @@ def _index_merge(node: _IndexNode | None, updates: list[tuple[int, object, objec
             right = node
         else:
             left = node
-    merged_left = _index_merge(left, updates, hashes, start, middle)
-    merged_right = _index_merge(right, updates, hashes, middle, stop)
+    merged_left = left if start == middle else _index_merge(left, updates, hashes, start, middle)
+    merged_right = right if middle == stop else _index_merge(right, updates, hashes, middle, stop)
     assert merged_left is not None and merged_right is not None
     if node is not None and node.bit == bit and merged_left is left and merged_right is right:
         return node
@@ -433,11 +446,17 @@ class FrozenPrefixMap(MutableMapping[K, V]):
             if root is not self._archive.root:
                 self._archive = _IndexArchive(root)
             self._tail = {}
-        self._keys.freeze(len(self._keys))
+        # copy 已隔离键序列尾部；未满块无需每次索引封存都重建树路径。
+        stop = len(self._keys) // 32 * 32
+        if stop > self._keys.frozen_count:
+            self._keys.freeze(stop)
 
     def __getitem__(self, key: K) -> V:
-        if key in self._tail:
-            return self._tail[key]
+        if self._tail:
+            try:
+                return self._tail[key]
+            except KeyError:
+                pass
         key_hash = hash(key) & ((1 << 64) - 1)
         node = self._archive.root
         while node is not None and node.bit >= 0:

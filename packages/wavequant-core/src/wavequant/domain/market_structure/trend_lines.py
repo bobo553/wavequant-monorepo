@@ -30,7 +30,10 @@ from .trend_judgement import _OwnedPointAdmission, _OwnedTrendJudgement, _Source
 from .trend_judgement import _FrozenPoint, _JudgementDelta, _moment_key
 from .trend_readonly_cache import _ReadonlySnapshotCache, _builtin_size
 from .trend_evidence_reuse import _UncacheableGeometry
-from .owned_evidence import CertifiedSource, current_evidence, finite_evidence, owned_signature as _geometry_signature
+from .owned_evidence import (
+    CertifiedSource, _UNINDEXED_SCALAR_TYPES, current_evidence, finite_evidence,
+    owned_signature as _geometry_signature,
+)
 from .finite_source_receipts import FiniteSourceReceipts
 from .trend_market_index import _MarketPrefixIndex, _MarketRangeIndex, is_owned_market_prefix, market_prefix
 from .trend_prefix_view import _PrefixView
@@ -306,6 +309,7 @@ class _TrendJudgementCache:
                           recorded[1 if channel[2] == 'points' else 2], len(points))
                           if recorded is not None and channel is not None and record_scope is not None else ())
         reusable = True
+        evidence = current_evidence()
         for position, point in enumerate(points[start:], start):
             if record_scope is not None and position < len(source_records):
                 record = source_records[position]
@@ -326,7 +330,6 @@ class _TrendJudgementCache:
                     self._point_exports.put(template, None, exported)
                 else:
                     exported = cached[0]
-            evidence = current_evidence()
             if evidence is not None:
                 # 缓存拥有的导出模板从不写入；标注只修改下面的顶层副本。
                 evidence.publish(exported)
@@ -532,7 +535,8 @@ class _PreparedPickler(pickle.Pickler):
         self._reference = owner.reference if owner is not None else None
 
     def persistent_id(self, value: object) -> int | None:
-        return self._reference(value) if self._reference is not None else None
+        return (self._reference(value)
+                if self._reference is not None and type(value) not in _UNINDEXED_SCALAR_TYPES else None)
 
     def reducer_override(self, value: object) -> tuple[object, ...] | NotImplementedType:
         if value is list:
@@ -818,6 +822,37 @@ class _ClosedPreparedPaths:
             self._record_pending_paths.clear()
             self._record_pending_bytes = 0
 
+    def _encode_graph(self, prepared: dict[str, object]) -> dict[str, object]:
+        if self._graph_history is None and self._point_history is not None:
+            # 原点通道的当前索引预算移交给图身份表；旧点树仍在流中可读。
+            # 点池拒绝当前证据后按当前图复用；图索引仍受同一预算约束。
+            self._point_history.release_current()
+            self._graph_history = PreparedGraphHistory(memory_bytes=self._memory_bytes)
+        self._alias_arrays.clear()
+        self._alias_counts.clear()
+        self._unpublished_aliases.clear()
+        self.begin_row()
+        if self._graph_history is not None:
+            if self._graph_retry_remaining:
+                self._graph_retry_remaining -= 1
+                self.graph_skipped_captures += 1
+                return _NativePrepared(prepared)
+            had_current = self._graph_history.retained_nodes > 0
+            payload = self._graph_history.capture(prepared)
+            if payload is not None:
+                # 冷建成功只证明单图能容纳；下一版仍可能因暂存预算被拒。
+                # 增量成功后再解除退避，避免拒绝与整图冷建逐日交替。
+                if had_current:
+                    self._graph_retry_delay = 0
+                return _StoredPrepared(payload)
+            self._graph_history.release_current()
+            # 非标准审计或图索引超预算均会回退完整行；限制重复准入
+            # 尝试的频率，后续能容纳的标准图仍可恢复增量存储。
+            self._graph_retry_delay = min(32, max(1, self._graph_retry_delay * 2))
+            self._graph_retry_remaining = self._graph_retry_delay - 1
+        # 回退保留完整值及别名，缓存容量不能改变历史结果。
+        return _NativePrepared(prepared)
+
     def encode(self, prepared: dict[str, object]) -> dict[str, object]:
         if self._record_history is not None:
             try:
@@ -830,31 +865,7 @@ class _ClosedPreparedPaths:
                 self.begin_row()
         exhausted = self._evidence is not None and self._evidence.admission_remaining < 4096
         if self._graph_history is not None or exhausted:
-            if self._graph_history is None and self._point_history is not None:
-                # 原点通道的当前索引预算移交给图身份表；旧点树仍在流中可读。
-                # 点池耗尽后尝试按当前图复用；图索引仍受同一预算约束。
-                self._point_history.release_current()
-                self._graph_history = PreparedGraphHistory(memory_bytes=self._memory_bytes)
-            self._alias_arrays.clear()
-            self._alias_counts.clear()
-            self._unpublished_aliases.clear()
-            self.begin_row()
-            if self._graph_history is not None:
-                if self._graph_retry_remaining:
-                    self._graph_retry_remaining -= 1
-                    self.graph_skipped_captures += 1
-                    return _NativePrepared(prepared)
-                payload = self._graph_history.capture(prepared)
-                if payload is not None:
-                    self._graph_retry_delay = 0
-                    return _StoredPrepared(payload)
-                self._graph_history.release_current()
-                # 非标准审计或图索引超预算均会回退完整行；限制重复准入
-                # 尝试的频率，后续能容纳的标准图仍可恢复增量存储。
-                self._graph_retry_delay = min(32, max(1, self._graph_retry_delay * 2))
-                self._graph_retry_remaining = self._graph_retry_delay - 1
-            # 回退保留完整值及别名，缓存容量不能改变历史结果。
-            return _NativePrepared(prepared)
+            return self._encode_graph(prepared)
         result = dict(prepared)
         # 同一当前 stroke 或数组的重复字段必须复用同一个传输引用。
         packed: dict[int, object] = {}
@@ -889,8 +900,13 @@ class _ClosedPreparedPaths:
                     touched[identity] = point
             for identity, point in touched.items():
                 if self._alias_counts[identity] > 1:
+                    refusals = self._evidence.budget_refusals
                     self._evidence.publish(point)
                     if self._evidence.reference(point) is None:
+                        # publish 可先被预算截断；只有完整有限的共享点才能
+                        # 因预算移交通道，未知字段继续走原非缓存回退。
+                        if self._evidence.budget_refusals != refusals and self._evidence.finite(point):
+                            return self._encode_graph(prepared)
                         self._unpublished_aliases[identity] = point
             for identity in tuple(self._unpublished_aliases):
                 if self._alias_counts[identity] < 2 or self._evidence.reference(self._unpublished_aliases[identity]) is not None:
@@ -930,6 +946,10 @@ class _ClosedPreparedPaths:
                                 cast(list[dict[str, object]], points),
                                 _owned_previous=hint[1] if hint is not None and hint[0] is points else None,
                                 _changed_from=hint[2] if hint is not None and hint[0] is points else None)
+                            if sequence is None and self._point_history.budget_rejected:
+                                # 单个证据已超出剩余额度时，旧成功版本不会前进；
+                                # 立即移交通道，避免下一行再次扫描同一失败后缀。
+                                return self._encode_graph(prepared)
                         if sequence is not None:
                             sequences[id(points)] = sequence
                             value = dict(cast(Mapping[str, object], value), **{column: sequence})
@@ -1168,7 +1188,12 @@ class _TrendPermissionCache:
         fields = ('index', 'ordinal', 'kind', 'value', 'available_at')
         for point in permissions:
             prior = next(prefix, None) if matching else None
-            if prior is not None and all(prior[field] == point.get(field, 0) for field in fields):
+            if (prior is not None
+                    and prior['index'] == point.get('index', 0)
+                    and prior['ordinal'] == point.get('ordinal', 0)
+                    and prior['kind'] == point.get('kind', 0)
+                    and prior['value'] == point.get('value', 0)
+                    and prior['available_at'] == point.get('available_at', 0)):
                 start += 1
                 continue
             matching = False

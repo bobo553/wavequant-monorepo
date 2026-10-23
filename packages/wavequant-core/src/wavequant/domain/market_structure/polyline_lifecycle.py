@@ -323,8 +323,10 @@ class PolylineLifecycleSource:
             for raw in projected:
                 native = _Point(cast(int, raw['index']), cast(int, raw.get('ordinal', 0)),
                     cast(str, raw['kind']), cast(float, raw['value']), _clock(raw['available_at'], dates))
-                point = self.known_points.get(native, _Point(native.index, native.ordinal, native.kind,
-                                                       native.value, max(native.known, frame.index)))
+                point = self.known_points.get(native)
+                if point is None:
+                    point = _Point(native.index, native.ordinal, native.kind,
+                                   native.value, max(native.known, frame.index))
                 if points and point.known < points[-1].known:
                     point = _Point(point.index, point.ordinal, point.kind, point.value, points[-1].known)
                 current[native] = point

@@ -139,10 +139,11 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     forward = lambda bar: bar.high if up else bar.low
     adverse = lambda bar: bar.low if up else bar.high
     virtual = lambda bar, prev: min(bar.low, prev.close) if up else max(bar.high, prev.close)
-    record = forward(bars[attack])
+    attack_bar = bars[attack]
+    record = forward(attack_bar)
     resistance_window = policy.local_resistance_failure and up
     attack_resistance = (
-        observe_resistance(bars[attack - 1], bars[attack], attack_direction=setup.direction,
+        observe_resistance(bars[attack - 1], attack_bar, attack_direction=setup.direction,
                            shadow_policy=policy.shadow_policy) if resistance_window
         and (measurement_start is None or attack >= measurement_start) else None
     )
@@ -153,12 +154,17 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     rolling_all_held = True
     last_regime = last_index = None
     frames = [RegimeFrame(
-        attack, bars[attack].timestamp, RegimePhase.AWAIT_RESPONSE, None, attack_resistance,
+        attack, attack_bar.timestamp, RegimePhase.AWAIT_RESPONSE, None, attack_resistance,
         ResistanceOutcome.PENDING if first_resistance is not None else ResistanceOutcome.NOT_OBSERVED,
         first_resistance, unknown, None, None,
         record, False, defense, None, True, None, None)]
+    previous_bar: Bar | None = None
+    prior_bar: Bar | None = None
     for i in range(max(attack + 1, measurement_start or 0), n.asof_index + 1):
-        bar, prev = bars[i], bars[i - 1]
+        bar = bars[i]
+        prev = previous_bar if previous_bar is not None else bars[i - 1]
+        before_previous = prior_bar if prior_bar is not None else bars[i - 2]
+        prior_bar, previous_bar = prev, bar
         first_available = measurement_start == i
         observed_adverse = bar.close if first_available else adverse(bar)
         resistance = observe_resistance(prev, bar, attack_direction=setup.direction,
@@ -172,7 +178,7 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             first_defense = i
         if first_wave is None and sign * (observed_adverse - boundary) < 0:
             first_wave = i
-        rolling = virtual(prev, bars[i - 2])
+        rolling = virtual(prev, before_previous)
         rolling_held = sign * (observed_adverse - rolling) >= 0
         rolling_all_held &= rolling_held
         uninterrupted &= sign * (bar.close - prev.close) > 0
@@ -188,8 +194,8 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             # A fresh close above the episode record can defeat prior supply
             # even if today's intraday shakeout dipped below the rolling low.
             # The original N defense must remain intact throughout.
-            attack_bar_break = (resistance_window and bar.high > bars[attack].high
-                                and bar.close > bars[attack].close and strong_bullish_candle(bar))
+            attack_bar_break = (resistance_window and bar.high > attack_bar.high
+                                and bar.close > attack_bar.close and strong_bullish_candle(bar))
             record_rebound = (continuation or attack_bar_break) and first_defense is None
             prior_response = (rolling_all_held and rolling_held and prior_resistance
                               and (not resistance_window or frames[-1].bar_index <= attack + 1)
@@ -198,7 +204,7 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             # resistance window beyond its attack and next response session.
             continuation = bool((record_rebound or prior_response)
                                 and sign * (bar.close - prev.close) > 0
-                                and sign * (bar.close - bars[attack].close) > 0
+                                and sign * (bar.close - attack_bar.close) > 0
                                 and sign * (bar.close - bar.open) > 0
                                 and (not resistance_eligible or resistance.detected is False))
         phase = RegimePhase.AWAIT_CONFIRMATION if i == attack + 1 else RegimePhase.PENDING

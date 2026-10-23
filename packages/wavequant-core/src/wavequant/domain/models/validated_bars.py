@@ -1,6 +1,6 @@
 """Provide an immutable, once-validated bar sequence for domain observers."""
 from bisect import bisect_right
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -34,6 +34,9 @@ class ValidatedBars(Sequence):
 
     def __len__(self):
         return len(self._values)
+
+    def __iter__(self) -> Iterator[Bar]:
+        return iter(self._values)
 
     def __getitem__(self, key):
         result = self._values[key]
