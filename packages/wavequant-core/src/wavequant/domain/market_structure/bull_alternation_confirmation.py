@@ -15,7 +15,7 @@ from ..market_state.market_regime import MarketRegime, RegimePolicy, WaveBoundar
 from ..market_state.squeeze_state import observe_squeeze_resumption
 from ..market_state.volume_reversal import volume_reversal_squeeze
 from ..market_state.candle_strength import double_volume_bullish_breakout, volume_high_open_rising
-from ..strategies.attack_quality import medium_bullish_body, squeeze_buy_rejection, v3_positive_n_attack_rejection
+from ..strategies.attack_quality import medium_bullish_body, squeeze_bullish_body, squeeze_buy_rejection, v3_positive_n_attack_rejection
 from ..strategies.n_consolidation import consolidation_gap
 from .alternation_duration import filter_duration_landmarks, short_shallow_pullback
 from .n_shape import BoxAnchorMode, MilestoneBasis, NSetup, PivotRef, observe_n
@@ -93,7 +93,7 @@ def confirm_volume_breakout_alternation(
     bar, previous = bars[now], bars[now - 1]
     doubled = double_volume_bullish_breakout(bar, previous)
     if confirmed_n_squeeze:
-        if (not medium_bullish_body(bar) or bar.volume <= previous.volume
+        if (not squeeze_bullish_body(bar, previous) or bar.volume <= previous.volume
                 or squeeze_buy_rejection(bar, previous) is not None):
             return None
     elif not doubled and not volume_high_open_rising(bar, previous):
@@ -201,7 +201,7 @@ def confirm_double_n_pullback(
         return None
     n_bar, previous, bar = bars[attack], bars[attack - 1], bars[now]
     if (previous.volume <= 0 or n_bar.volume < 2 * previous.volume or n_bar.close <= n_bar.open
-            or bar.close <= n_bar.close or not medium_bullish_body(bar)
+            or bar.close <= n_bar.close or not squeeze_bullish_body(bar, bars[now - 1])
             or squeeze_buy_rejection(bar, bars[now - 1], previous) is not None):
         return None
     bottom = min(range(high.index + 1, now + 1), key=lambda index: (bars[index].low, index))

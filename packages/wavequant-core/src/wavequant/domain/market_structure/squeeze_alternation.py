@@ -8,9 +8,8 @@ promote it into a formal trend vertex. Each attack receives its own prefix.
 from collections.abc import Sequence
 from typing import TypedDict
 
-from ..market_state.candle_strength import medium_bullish_body
 from ..models.model import Bar
-from ..strategies.attack_quality import squeeze_buy_rejection
+from ..strategies.attack_quality import squeeze_buy_rejection, squeeze_bullish_body
 from .abc_candidate import AbcAnchor, tertiary_abc_observations
 
 
@@ -88,7 +87,7 @@ def squeeze_anchors(level, dates, source_level):
 def _volume_squeeze_close(bars: Sequence[Bar], attack: int, now: int) -> bool:
     """资格只使用当前收盘及原 N 自身的量价基准，不要求达到倍量。"""
     return (0 < attack < now < len(bars) and bars[now].close > bars[attack].close
-            and medium_bullish_body(bars[now])
+            and squeeze_bullish_body(bars[now], bars[now - 1])
             and squeeze_buy_rejection(bars[now], bars[now - 1], bars[attack - 1]) is None)
 
 
