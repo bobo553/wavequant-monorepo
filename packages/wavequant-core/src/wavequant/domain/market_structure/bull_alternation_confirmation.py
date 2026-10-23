@@ -225,6 +225,28 @@ def confirm_double_n_pullback(
     ))
 
 
+
+def alternation_n_sources(
+    polyline: Sequence[ConfirmedTurn], *, earliest: int,
+) -> tuple[tuple[ConfirmedTurn, ConfirmedTurn, ConfirmedTurn], ...]:
+    """资格前与资格内复用相同外层 N 枚举，保留原始顶点和知识日期。"""
+    from ..strategies.folded_n import folded_positive_n_candidates
+    from .polyline import LinePoint, PointKind, ReversalPoint
+
+    source = tuple(point for point in polyline if point.index >= earliest)
+    triples = [(a, b, c) for a, b, c in zip(source, source[1:], source[2:])
+               if (a.kind, b.kind, c.kind) == ('L', 'H', 'L')]
+    references = tuple(ReversalPoint(
+        LinePoint(point.index, point.ordinal, PointKind(point.kind), point.price), point.known,
+        'causal_alternation_polyline') for point in source)
+    originals = {reference: point for reference, point in zip(references, source)}
+    for refs, _ in folded_positive_n_candidates(references, earliest=earliest, allow_equal_origin=True):
+        triple = (originals[refs[0]], originals[refs[1]], originals[refs[2]])
+        if triple not in triples:
+            triples.append(triple)
+    return tuple(triples)
+
+
 def confirm_bull_alternation(
     bars: Sequence[Bar], now: int, *, origin: ConfirmedTurn, high: ConfirmedTurn,
     broken: ConfirmedTurn, points: Sequence[ConfirmedTurn], polyline: Sequence[ConfirmedTurn],
@@ -286,7 +308,8 @@ def confirm_bull_alternation(
     anchor = dict(origin=_reference(origin, bars), high=_reference(high, bars),
                   key=_reference(broken, bars), source_path=path, trend_level=level,
                   known_index=max(origin.known, high.known, broken.known))
-    for a, b, c in zip(polyline, polyline[1:], polyline[2:]):
+    for a, b, c in alternation_n_sources(
+            polyline, earliest=max(high.index + 1, now - policy.structure_window)):
         known = max(a.known, b.known, c.known)
         if (a.kind, b.kind, c.kind) != ('L', 'H', 'L') or a.index <= high.index:
             continue
