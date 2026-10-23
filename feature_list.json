@@ -15119,6 +15119,11 @@
                     "command": "待提交：test_squeeze_n_round.py和整段回调/生命周期/实际行情回归",
                     "status": "not-run",
                     "summary": "2026-10-23继续修复：新资格证明缺N三点、路径和级别，joint_squeeze_confirmations仅认旧规则，导致开窗前原N未纳入轮次。补齐身份并允许新规则，保留精确匹配与一次消费；未运行验证。"
+                },
+                {
+                    "command": "待提交：test_double_n_whole_flip.py、资格生命周期与同N买入回归",
+                    "status": "not-run",
+                    "summary": "2026-10-23第三轮：资格前只扫描相邻三点，资格内另识别folded外层N。统一调用既有folded_positive_n_candidates，保留相邻及原始顶点知识日。未运行验证；9/21最终端点与10/9低点及10/16实际拒买原因尚无完整行情证据，不能声称已实际买入。"
                 }
             ]
         }

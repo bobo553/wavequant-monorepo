@@ -64,3 +64,34 @@ def test_exact_two_thirds_is_inclusive():
     proof = confirm_double_n_pullback(bars, 7, attack=4, origin=origin, high=high, polyline=[low])
     assert proof is not None
     assert proof.evidence['retracement_ratio'] == pytest.approx(2 / 3)
+
+
+def test_qualification_scan_keeps_outer_n_and_original_knowledge():
+    from wavequant.domain.market_structure.bull_alternation_confirmation import alternation_n_sources
+
+    origin = Turn(1, 8.0, 'L', 2)
+    neckline = Turn(2, 9.8, 'H', 3)
+    pullback = Turn(3, 8.5, 'L', 4)
+    inside_high = Turn(4, 9.0, 'H', 5)
+    inside_low = Turn(5, 8.7, 'L', 6)
+    sources = alternation_n_sources(
+        [origin, neckline, pullback, inside_high, inside_low], earliest=1)
+    assert (origin, neckline, pullback) in sources
+    assert sources[0][0] is origin
+    assert (pullback, inside_high, inside_low) in sources
+    assert all(point.index >= 3 for triple in alternation_n_sources(
+        [origin, neckline, pullback, inside_high, inside_low], earliest=3) for point in triple)
+
+
+def test_qualification_scan_includes_nonadjacent_outer_neckline():
+    from wavequant.domain.market_structure.bull_alternation_confirmation import alternation_n_sources
+
+    origin = Turn(1, 8.0, 'L', 2)
+    inner_high = Turn(2, 9.0, 'H', 3)
+    inner_low = Turn(3, 8.5, 'L', 4)
+    neckline = Turn(4, 9.8, 'H', 5)
+    pullback = Turn(5, 8.7, 'L', 6)
+    sources = alternation_n_sources([origin, inner_high, inner_low, neckline, pullback], earliest=1)
+    assert (origin, neckline, pullback) in sources
+    assert (inner_low, neckline, pullback) in sources
+    assert next(row for row in sources if row == (origin, neckline, pullback))[0] is origin
