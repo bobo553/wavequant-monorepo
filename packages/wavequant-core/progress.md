@@ -2556,3 +2556,12 @@ MONOREPO-258常驻验收：实现c05d8e4以e6d1e13合并本地main，main真实3
 
 ## 倍量轧空阳线45%实体门槛
 用户明确已确认轧空+倍量阳线可降为实体/振幅>=45%，相对紧邻前日正量>=2倍，保留实体/开盘>=2%。新增共用squeeze_bullish_body连接资格及买点，非倍量仍按50%，不改全局medium_bullish_body。补等值及反例；缓存v170/profile v163。未执行检测、未合并，实股完整资格及订单仍待验证。
+
+## 2026-10-24 MONOREPO-362 Rust 默认 AKShare SDK 数据源
+
+新增 infrastructure/market_data/rust_sdk_worker.py，使用本项目已有 akshare 可选依赖，仅开放日线、复权、分钟、交易日历、股票目录和涨停数据接口；不加载 Python 趋势、策略或账户代码。Rust 内嵌此适配器并提供隔离进程协议、超时回收与输出预算，SDK 版本和适配器源码参与缓存指纹。补充 tests/test_rust_sdk_worker.py 源码覆盖白名单、代码校验与行数限制，未执行测试或 Python 类型/lint/格式检查。
+
+为恢复已授权启动服务，Rust 构建完成并使用主目录 core .venv 的 Python（AKShare1.18.94）。前端代理只读日线读取海洋王2,837根及目录5,577只，均返回实际SDK版本；不代表回测、复权、分钟和涨停完整功能通过。未主动运行回测，未提交合并推送；完整迁移保持in-progress，最新证据见根feature_list.json。
+
+
+- 2026-10-25 按用户要求撤回分支对旧Python工程的源码变更：既有py/pyi及pyproject相对main无差异；仅新增的AKShare桥接及测试移至Rust工程scripts和tests/python，更新嵌入与构建指纹路径，保持脚本内容及Rust业务规则。未执行测试；必要启动编译另记。

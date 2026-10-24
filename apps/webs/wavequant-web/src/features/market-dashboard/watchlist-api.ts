@@ -1,3 +1,4 @@
+import { decodeIndexedDocument } from "../../../public/indexed-document.js";
 import {
     type TWatchlistDocument,
     type TWatchlistMembersMutation,
@@ -23,5 +24,5 @@ export async function requestMarketWatchlists(
     });
     if (!response.ok) throw new Error("自选股保存或读取失败，请重试。");
     const payload: unknown = await response.json();
-    return WatchlistDocumentSchema.parse(payload);
+    return WatchlistDocumentSchema.parse(decodeIndexedDocument(payload));
 }

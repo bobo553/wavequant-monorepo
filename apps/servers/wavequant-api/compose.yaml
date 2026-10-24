@@ -23,8 +23,8 @@ services:
         image: redis:8-alpine
         restart: unless-stopped
         ports:
-            - "127.0.0.1:${WAVEQUANT_REDIS_PORT:-6379}:6379"
-        command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+            - "127.0.0.1:${WAVEQUANT_REDIS_PORT:-6380}:6379"
+        command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "1gb", "--maxmemory-policy", "noeviction"]
         volumes:
             - wavequant_redis:/data
         healthcheck:

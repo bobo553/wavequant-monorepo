@@ -42,9 +42,9 @@ export function MarketHeaderActions({ researchMode = false }: { researchMode?: b
                         type="search"
                         autoComplete="off"
                         aria-label="搜索股票"
-                        aria-controls="stock-list"
+                        aria-controls="watchlist-stock-list"
                         aria-keyshortcuts="Control+K Meta+K"
-                        placeholder="搜索股票 / 代码 / 题材"
+                        placeholder="搜索当前分类自选 / 名称 / 代码"
                         className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-sm outline-none"
                         onFocus={activateResearchSearch}
                         onChange={(event) => updateResearchSearch(event.currentTarget.value)}

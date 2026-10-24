@@ -480,6 +480,9 @@ importers:
 
   apps/webs/wavequant-web:
     dependencies:
+      '@repo/async-ui':
+        specifier: workspace:*
+        version: link:../../../packages/async-ui
       '@repo/contracts':
         specifier: workspace:*
         version: link:../../../packages/contracts
@@ -547,6 +550,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.1.7
         version: 4.1.7(vitest@4.1.7)
+      esbuild:
+        specifier: 0.28.0
+        version: 0.28.0
       eslint:
         specifier: ^10.2.1
         version: 10.10.0(jiti@2.6.1)

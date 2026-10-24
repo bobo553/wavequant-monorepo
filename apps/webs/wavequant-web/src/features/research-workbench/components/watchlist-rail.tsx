@@ -18,7 +18,7 @@ export function WatchlistRail(): JSX.Element {
                 </span>
                 <div className="watchlist-rail-heading">
                     <strong>自选股</strong>
-                    <small id="watchlist-count">0 只</small>
+                    <span id="watchlist-count">0 只</span>
                 </div>
                 <button
                     id="watchlist-rail-toggle"
@@ -45,10 +45,12 @@ export function WatchlistRail(): JSX.Element {
             </header>
             <div id="watchlist-rail-body" className="watchlist-rail-body">
                 <div className="watchlist-group-toolbar">
-                    <label htmlFor="watchlist-group-select">
-                        分类
-                        <select id="watchlist-group-select" aria-label="自选股分类" disabled />
-                    </label>
+                    <div id="watchlist-group-first-paint">
+                        <label htmlFor="watchlist-group-select">
+                            分类
+                            <select id="watchlist-group-select" aria-label="自选股分类" disabled />
+                        </label>
+                    </div>
                     <div className="watchlist-group-actions">
                         <button id="watchlist-group-add" type="button" disabled>
                             新建
@@ -99,10 +101,12 @@ export function WatchlistRail(): JSX.Element {
                     role="region"
                     aria-label="滚动浏览自选股"
                 >
-                    <p className="stock-empty">自选股加载中…</p>
+                    <div id="watchlist-first-paint">
+                        <p className="stock-empty">正在读取自选缓存…</p>
+                    </div>
                 </div>
                 <p className="scan-note">
-                    点击股票名称切换；拖动整条自选股（触屏长按），或用上下方向键调整顺序。使用图表标题旁的星标加入或移除当前分类。列表右侧显示当前设置下回测的期末收益率，悬停可查看盈亏金额。
+                    点击股票名称切换；仅拖动左侧手柄排序，或聚焦手柄后用上下方向键调整顺序。使用图表标题旁的星标加入或移除当前分类。列表右侧显示当前设置下回测的期末收益率，悬停可查看盈亏金额。
                 </p>
             </div>
             <span hidden aria-hidden="true">

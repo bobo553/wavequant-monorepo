@@ -1,5 +1,8 @@
 import "./globals.css";
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import type { JSX, ReactNode } from "react";
 
 import type { Metadata } from "next";
@@ -8,16 +11,19 @@ import { WaveQuantShell } from "@/shared/components/wavequant-shell/wavequant-sh
 
 import "../../public/styles.css";
 
+// 内联独立缓存脚本，避免首屏再等待一次脚本下载；仅在服务端读取静态源码。
+const watchlistFirstPaintScript = readFileSync(join(process.cwd(), "public/watchlist-first-paint.js"), "utf8");
+
 // 必须在首屏内容解析前执行，避免浅色偏好等待客户端脚本时先绘制深色页面。
 const themeInitScript = `(() => {
     try {
         const payload = JSON.parse(localStorage.getItem("wavequant.market.v2") || "null");
         if (payload?.version !== 2 || !payload.state || typeof payload.state !== "object") return;
         const saved = payload.state;
-        const light = saved.theme === "light";
+        const light = saved.theme !== "dark";
         document.documentElement.classList.toggle("light", light);
         document.documentElement.classList.toggle("dark", !light);
-        document.documentElement.dataset.theme = saved.colorTheme === "market-blue" ? "market-blue" : "wavequant-teal";
+        document.documentElement.dataset.theme = saved.colorTheme === "wavequant-teal" ? "wavequant-teal" : "market-blue";
         document.documentElement.dataset.palette = saved.palette === "accessible" ? "accessible" : "classic";
         document.documentElement.dataset.density = saved.density === "compact" ? "compact" : "comfortable";
     } catch {
@@ -58,18 +64,19 @@ const mainRevisionScript = `(() => {
 
 export const metadata: Metadata = {
     title: "WaveQuant · 主控量化研究",
+    icons: { icon: "/icon.svg" },
     description: "WaveQuant 本地日线研究、回测、证据复盘与全景市场工作台。",
 };
 
-/** WaveQuant 根布局，首屏绘制前恢复本地主题偏好。 */
+/** 单一启动脚本保留主题与缓存首屏，避免扩展插入节点打断多脚本hydration序列。 */
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>): JSX.Element {
     return (
-        <html lang="zh-CN" className="dark" data-theme="wavequant-teal" suppressHydrationWarning>
+        <html lang="zh-CN" className="light" data-theme="market-blue" data-palette="classic" data-density="comfortable" suppressHydrationWarning>
             <head>
-                <script id="wavequant-theme-init">{themeInitScript}</script>
-                {process.env.NODE_ENV === "development" && (
-                    <script id="wavequant-main-revision">{mainRevisionScript}</script>
-                )}
+                <script id="wavequant-theme-init">{
+                    [themeInitScript, watchlistFirstPaintScript,
+                        process.env.NODE_ENV === "development" ? mainRevisionScript : ""].join("\n")
+                }</script>
             </head>
             <body className="min-h-screen antialiased">
                 <WaveQuantShell>{children}</WaveQuantShell>

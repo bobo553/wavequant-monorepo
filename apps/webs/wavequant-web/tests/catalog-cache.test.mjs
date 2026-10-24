@@ -405,3 +405,55 @@ test("old or opposite-option cache cannot serve a failed N-option request", asyn
         );
     }
 });
+
+
+test("cached catalog is delivered while validation is still pending", async () => {
+    const storage = memoryStorage({ source: "akshare", etag: '"old"',
+        catalog: { available: true, stocks: [{ symbol: "sz.000978", name: "旧名称" }], with_daily: 1 } });
+    let finishRequest;
+    let receiveRefresh;
+    const network = new Promise((resolve) => { finishRequest = resolve; });
+    const refreshed = new Promise((resolve) => { receiveRefresh = resolve; });
+    const initial = await loadStockCatalog("akshare", "/catalog", {
+        storage, staleWhileRevalidate: true, fetcher: () => network, onRefresh: receiveRefresh,
+    });
+    assert.equal(initial.catalog_cache, "stale-while-revalidate");
+    assert.equal(initial.stocks[0].name, "旧名称");
+    finishRequest(new Response(JSON.stringify({ available: true,
+        stocks: [{ symbol: "sz.000978", name: "新名称" }], with_daily: 1 }),
+        { headers: { ETag: '"new"' } }));
+    const updated = await refreshed;
+    assert.equal(updated.stocks[0].name, "新名称");
+    assert.equal(storage.current().etag, '"new"');
+});
+
+test("background validation failure keeps the delivered catalog available", async () => {
+    const storage = memoryStorage({ source: "akshare", etag: '"old"',
+        catalog: { stocks: [{ symbol: "sz.000978" }], with_daily: 1 } });
+    let receiveRefresh;
+    const refreshed = new Promise((resolve) => { receiveRefresh = resolve; });
+    const initial = await loadStockCatalog("akshare", "/catalog", {
+        storage, staleWhileRevalidate: true,
+        fetcher: async () => { throw new TypeError("offline"); }, onRefresh: receiveRefresh,
+    });
+    const fallback = await refreshed;
+    assert.equal(initial.stocks[0].symbol, fallback.stocks[0].symbol);
+    assert.equal(fallback.catalog_cache, "offline");
+    assert.equal(storage.current().etag, '"old"');
+});
+
+test("catalog cache never crosses data sources", async () => {
+    const storage = memoryStorage({ source: "tdx", etag: '"wrong"',
+        catalog: { stocks: [{ symbol: "sh.600000" }], with_daily: 1 } });
+    let headers;
+    const result = await loadStockCatalog("akshare", "/catalog", {
+        storage, staleWhileRevalidate: true,
+        fetcher: async (_path, options) => {
+            headers = options.headers;
+            return new Response(JSON.stringify({ stocks: [{ symbol: "sz.000978" }], with_daily: 1 }));
+        },
+    });
+    assert.equal(headers["If-None-Match"], undefined);
+    assert.equal(result.stocks[0].symbol, "sz.000978");
+    assert.equal(result.catalog_cache, "updated");
+});

@@ -2,7 +2,7 @@
 
 import type { JSX } from "react";
 
-import { marketTabs } from "@/features/market-dashboard/market-data";
+import { marketTabs } from "@/features/market-dashboard/market-tabs-data";
 import { useMarketWorkspace } from "@/features/market-dashboard/market-workspace-context";
 
 /** 在壳层同步展示当前页签、日期、时点与筛选范围。 */

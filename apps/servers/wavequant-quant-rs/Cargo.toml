@@ -1,6 +1,6 @@
 [package]
 name = "wavequant-quant-rs"
-description = "WaveQuant Rust research and batch computation foundation"
+description = "WaveQuant native trend analysis, execution and research"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,6 +10,22 @@ publish.workspace = true
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+
+rust_decimal.workspace = true
+chrono.workspace = true
+sha2.workspace = true
+encoding_rs.workspace = true
+rusqlite.workspace = true
+
+reqwest.workspace = true
+json5.workspace = true
+flate2.workspace = true
+crc32fast.workspace = true
+calamine.workspace = true
+csv.workspace = true
+
+[build-dependencies]
+sha2.workspace = true
 
 [lints]
 workspace = true

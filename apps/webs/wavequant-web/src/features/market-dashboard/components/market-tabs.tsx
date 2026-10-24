@@ -1,6 +1,6 @@
 import type { JSX, KeyboardEvent } from "react";
 
-import { marketTabs } from "@/features/market-dashboard/market-data";
+import { marketTabs } from "@/features/market-dashboard/market-tabs-data";
 import type { TMarketTabId } from "@/features/market-dashboard/market-types";
 
 interface IMarketTabsProps {

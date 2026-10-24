@@ -3,19 +3,23 @@
 import { useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 
-import dynamic from "next/dynamic";
+import { defineAsyncView } from "@repo/async-ui";
+import { AsyncFeatureFallback } from "@/shared/components/async-feature";
 
 import { useResearchPage } from "@/shared/components/wavequant-shell/wavequant-shell-state";
 
 import { topologyFlows, topologyProfileNotes } from "./topology-data";
+import { TopologyPreview } from "./topology-preview";
 
-const TopologyCanvas = dynamic(() => import("./topology-canvas").then((module) => module.TopologyCanvas), {
-    ssr: false,
-    loading: () => <div className="panel topology-canvas-loading">正在准备策略画布…</div>,
+const TopologyCanvas = defineAsyncView({
+    id: "research-topology-canvas", source: "src/features/research-workbench/topology/topology-canvas.tsx",
+    loader: () => import(/* webpackChunkName: "research-topology-canvas" */ "./topology-canvas").then((module) => ({ default: module.TopologyCanvas })),
+    fallback: AsyncFeatureFallback,
 });
 
 export function StrategyTopologyPage(): JSX.Element {
     const activePage = useResearchPage();
+    const [canvasOpen, setCanvasOpen] = useState(false);
     const [flowId, setFlowId] = useState(topologyFlows[0].id);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const flow = topologyFlows.find((item) => item.id === flowId) ?? topologyFlows[0];
@@ -91,8 +95,14 @@ export function StrategyTopologyPage(): JSX.Element {
 
                     <div id="topology-stage-panel" role="tabpanel" aria-labelledby={`topology-tab-${flow.id}`}>
                         <p className="topology-stage-description">{flow.description}</p>
+                        <div className="mb-3 flex justify-end">
+                            <button type="button" className="border-border rounded-md border px-3 py-2 text-sm"
+                                aria-pressed={canvasOpen} onClick={() => setCanvasOpen((open) => !open)}>
+                                {canvasOpen ? "返回轻量规则预览" : "打开高级画布（按需加载）"}
+                            </button>
+                        </div>
                         <div className="topology-workspace">
-                            <TopologyCanvas key={flow.id} flow={flow} selectedId={selectedId} />
+                            {canvasOpen ? <TopologyCanvas key={flow.id} flow={flow} selectedId={selectedId} /> : <TopologyPreview flow={flow} selectedId={selectedId} onSelect={setSelectedId} />}
                             <aside className="panel topology-inspector" aria-label="判断与源码依据">
                                 <div className="topology-panel-header">
                                     <div>

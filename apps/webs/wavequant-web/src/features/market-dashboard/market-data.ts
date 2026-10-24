@@ -3,21 +3,11 @@ import type {
     ILadderLevel,
     IMarketEvent,
     IMarketMetric,
-    IMarketTab,
     ISectorHeat,
     IStockQuote,
 } from "@/features/market-dashboard/market-types";
 
-export const marketTabs: IMarketTab[] = [
-    { id: "overview", label: "市场总览" },
-    { id: "sectors", label: "板块轮动" },
-    { id: "themes", label: "热点题材" },
-    { id: "ladder", label: "涨停阶梯" },
-    { id: "leaders", label: "龙头观察" },
-    { id: "radar", label: "异动雷达", count: 67 },
-    { id: "multi", label: "多股同屏" },
-    { id: "review", label: "盘后复盘" },
-];
+export { marketTabs } from "./market-tabs-data";
 
 export const indexQuotes: IIndexQuote[] = [
     { label: "综合等权", value: "1,060.36", change: "+6.04%", points: [2, 6, 8, 7, 7, 8, 8] },

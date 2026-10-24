@@ -38,40 +38,12 @@
     border-color: #2a655c;
     background: #173b38;
 }
-.stock-picker-toggle {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    min-width: 0;
-    margin-bottom: 8px;
-    text-align: left;
-    background: var(--research-control);
-}
-.stock-picker-toggle strong {
-    min-width: 0;
-    margin-left: auto;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-weight: 500;
-}
-.stock-picker-toggle[aria-expanded="true"] {
-    border-color: var(--research-accent-border);
-}
-.stock-picker-panel {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    margin-bottom: 10px;
-}
 .stock-picker-feedback {
     margin: 0 0 10px;
     color: var(--amber);
     font-size: 11px;
     line-height: 1.5;
 }
-#stock-picker-panel[hidden],
 #stock-picker-feedback[hidden],
 #trade-nodes-tab[hidden],
 #selected-stock-summary[hidden],
@@ -682,7 +654,7 @@
     align-items: center;
     gap: 0;
     padding: 2px 4px 2px 1px;
-    cursor: grab;
+    cursor: auto;
     user-select: none;
     background: var(--research-subtle);
     border: 1px solid transparent;
@@ -715,7 +687,7 @@
     scale: 1.03;
 }
 .watchlist-stock-drag {
-    flex: 0 0 16px;
+    flex: 0 0 24px;
     min-height: 42px;
     padding: 0;
     border: 0;
@@ -884,7 +856,7 @@
 .watchlist-rail-heading strong {
     font-size: 12px;
 }
-.watchlist-rail-heading small {
+.watchlist-rail-heading #watchlist-count {
     color: var(--research-text-faint);
     font-size: 9px;
     white-space: nowrap;
@@ -1014,10 +986,6 @@
     min-height: 100px;
     overflow: auto;
     gap: 5px;
-}
-.workspace-grid .stock-picker-panel .stock-list {
-    min-height: 0;
-    max-height: min(28vh, 230px);
 }
 .workspace-grid .stock-item {
     flex-shrink: 0;

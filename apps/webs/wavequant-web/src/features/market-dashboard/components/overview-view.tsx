@@ -2,28 +2,27 @@
 
 import type { JSX } from "react";
 
-import dynamic from "next/dynamic";
+import { defineAsyncView } from "@repo/async-ui";
+import { AsyncFeatureFallback } from "@/shared/components/async-feature";
+import { AsyncLadder } from "../async-market-views";
 
-import { Badge, Button, Card, CardContent, CardHeader, Skeleton } from "@repo/design-system-web/components";
+import { Badge, Button, Card, CardContent, CardHeader } from "@repo/design-system-web/components";
 import { IconArrowRight, IconChevronRight, IconInfoCircle } from "@tabler/icons-react";
 
 import { BreadthBars } from "@/features/market-dashboard/components/breadth-bars";
-import { LadderView } from "@/features/market-dashboard/components/ladder-view";
 import { MarketPanel } from "@/features/market-dashboard/components/market-panel";
 import { StockTable } from "@/features/market-dashboard/components/stock-table";
 import { marketEvents, marketMetrics, sectorHeat, stockQuotes } from "@/features/market-dashboard/market-data";
 import type { TMarketTabId } from "@/features/market-dashboard/market-types";
 import { useMarketWorkspace } from "@/features/market-dashboard/market-workspace-context";
 
-const MarketBreadthChart = dynamic(
-    () =>
-        import("@/features/market-dashboard/components/market-breadth-chart").then(
-            (module) => module.MarketBreadthChart,
-        ),
-    { ssr: false, loading: () => <Skeleton className="h-48 w-full" /> },
-);
+const MarketBreadthChart = defineAsyncView({
+    id: "market-breadth-chart", source: "src/features/market-dashboard/components/market-breadth-chart.tsx",
+    loader: () => import(/* webpackChunkName: "market-breadth-chart" */ "./market-breadth-chart").then((module) => ({ default: module.MarketBreadthChart })),
+    fallback: AsyncFeatureFallback,
+});
 
-interface IOverviewViewProps {
+export interface IOverviewViewProps {
     onNavigate: (tab: TMarketTabId) => void;
 }
 
@@ -159,7 +158,7 @@ export function OverviewView({ onNavigate }: IOverviewViewProps): JSX.Element {
                             }
                             contentClassName="px-3 pb-1"
                         >
-                            <LadderView compact />
+                            <AsyncLadder compact />
                         </MarketPanel>
                     </div>
 

@@ -1,0 +1,36 @@
+{
+  "entry_policy": "level_ge_1_alternation_then_n_squeeze_two_routes",
+  "channels": [
+    "transition_squeeze",
+    "mature_shallow_squeeze"
+  ],
+  "preferred_channel": "mature_shallow_squeeze",
+  "trend_levels": [
+    1,
+    2,
+    3
+  ],
+  "level_combination": "any_not_all",
+  "first_buy_trend_levels": [
+    2,
+    3
+  ],
+  "alternation": "confirmed_higher_low_above_flip_origin_no_fraction_filter",
+  "maturity": "later_daily_close_above_frozen_flip_high_after_alternation_known",
+  "first_buy": "alternation_then_new_n_then_squeeze_no_counter_ratio_filter",
+  "second_buy": "maturity_then_new_up_leg_shallow_pullback_below_1_3_then_new_n_then_squeeze",
+  "no_same_level_fallback_after_maturity": true,
+  "primary_filters": [
+    "level_ge_1_transition",
+    "squeeze_regime",
+    "type2_only_countermove_below_1_3",
+    "rvol_1_2",
+    "gross_rr_1_5",
+    "next_open_net_rr_1_5"
+  ],
+  "context_only": [
+    "washout",
+    "three_six_fraction_strength"
+  ],
+  "drawing_annotations": "unchanged_legacy_drawing_not_v2_entry_evidence"
+}

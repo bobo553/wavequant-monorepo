@@ -1,3 +1,4 @@
+import { decodeIndexedDocument } from "./indexed-document.js";
 const sources = new Set(["tdx", "akshare"]);
 const timeframes = new Set(["1d", "1w", "1mo", "3mo", "1y"]);
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -89,7 +90,7 @@ export async function loadMarketBarsHistory(
                 cache: "no-store",
                 signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
             });
-            const body = await response.json();
+            const body = decodeIndexedDocument(await response.json());
             signal?.throwIfAborted();
             if (!response.ok) {
                 const error = new Error(body.error || `HTTP ${response.status}`);

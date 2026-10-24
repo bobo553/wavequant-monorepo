@@ -32,7 +32,7 @@ impl BarSource for JsonBarSource {
         if bytes.len() as u64 > MAX_INPUT_BYTES {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "input exceeds 16 MiB").into());
         }
-        let records: Vec<BarRecord> = serde_json::from_slice(&bytes)?;
+        let records: Vec<BarRecord> = crate::indexed_json::from_slice(&bytes)?;
         Ok(records
             .into_iter()
             .map(|record| Bar {

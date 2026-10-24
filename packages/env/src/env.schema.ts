@@ -64,3 +64,14 @@ export const mobileSchema = z.object({
         })
         .describe("URL for the API application"),
 });
+
+export const wavequantDataSchema = z.object({
+    WAVEQUANT_REDIS_URL: z.url().refine((url) => url.startsWith("redis://") || url.startsWith("rediss://")).optional(),
+    WAVEQUANT_REDIS_PREFIX: z.string().regex(/^[A-Za-z0-9:_-]{1,64}$/).default("wavequant"),
+    WAVEQUANT_KLINE_MAX_ENTRIES: z.coerce.number().int().min(1).max(10000).default(2048),
+    WAVEQUANT_KLINE_MAX_MIB: z.coerce.number().int().min(32).max(4096).default(512),
+    WAVEQUANT_KLINE_MAX_ITEM_MIB: z.coerce.number().int().min(1).max(32).default(16),
+    WAVEQUANT_KLINE_INTRADAY_SECONDS: z.coerce.number().int().min(30).max(900).default(60),
+    WAVEQUANT_KLINE_REFRESH_BATCH: z.coerce.number().int().min(1).max(64).default(16),
+    WAVEQUANT_AKSHARE_PYTHON: z.string().min(1).optional().describe("Absolute Python executable path in the AKShare virtual environment"),
+});

@@ -24,7 +24,7 @@ import {
     IconX,
 } from "@tabler/icons-react";
 
-import { MarketWorkspaceOverlay } from "@/features/market-dashboard/components/market-workspace-overlay";
+import { DeferredMarketOverlay } from "@/features/market-dashboard/components/deferred-market-overlay";
 import { MarketWorkspaceProvider } from "@/features/market-dashboard/market-workspace-context";
 
 type TWaveQuantShellVariant = "market" | "research";
@@ -102,10 +102,18 @@ function WaveQuantSidebar({ collapsed, onNavigate, variant }: IWaveQuantSidebarP
                                         ) : (
                                             <Link
                                                 href={item.href}
+                                                prefetch={false}
                                                 className={className}
                                                 title={collapsed ? item.label : undefined}
                                                 aria-current={active ? "page" : undefined}
-                                                onClick={onNavigate}
+                                                onClick={(event) => {
+                                                    onNavigate?.();
+                                                    // 研究运行时持有DOM及定时器，离开时交由完整导航释放。
+                                                    if (variant === "research" && item.href === "/market") {
+                                                        event.preventDefault();
+                                                        window.location.assign(item.href);
+                                                    }
+                                                }}
                                             >
                                                 <ItemIcon size={18} stroke={1.8} aria-hidden="true" />
                                                 {collapsed ? <span className="sr-only">{item.label}</span> : item.label}
@@ -120,10 +128,10 @@ function WaveQuantSidebar({ collapsed, onNavigate, variant }: IWaveQuantSidebarP
             </nav>
             <div className="space-y-3 p-3">
                 <Button asChild variant="outline" size={collapsed ? "icon" : "default"} className="w-full">
-                    <Link href="/wavequant-v2-classic.html" title={collapsed ? "完整 v2 交互原型" : undefined}>
+                    <a href="/wavequant-v2-classic.html" title={collapsed ? "完整 v2 交互原型" : undefined}>
                         <IconExternalLink aria-hidden="true" />
                         {collapsed ? <span className="sr-only">完整 v2 交互原型</span> : "完整 v2 交互原型"}
-                    </Link>
+                    </a>
                 </Button>
                 <div
                     className={`border-sidebar-border bg-background/55 rounded-xl border p-3 ${collapsed ? "text-center" : ""}`}
@@ -342,7 +350,7 @@ export function WaveQuantShell({ children }: IWaveQuantShellProps): JSX.Element 
     return (
         <MarketWorkspaceProvider researchMode={variant === "research"}>
             <DashboardFrame variant={variant}>{children}</DashboardFrame>
-            <MarketWorkspaceOverlay />
+            <DeferredMarketOverlay />
         </MarketWorkspaceProvider>
     );
 }

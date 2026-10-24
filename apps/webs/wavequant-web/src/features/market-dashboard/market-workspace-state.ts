@@ -1,4 +1,3 @@
-import { stockQuotes } from "@/features/market-dashboard/market-data";
 import type {
     TMarketColorTheme,
     TMarketDensity,
@@ -45,20 +44,21 @@ export interface IMarketWorkspaceState {
 
 export const defaultWorkspaceState: IMarketWorkspaceState = {
     activeTab: "overview",
-    colorTheme: "wavequant-teal",
+    colorTheme: "market-blue",
     date: marketDates[2],
     ladderDate: "",
     density: "comfortable",
     favorites: ["SIM001", "SIM009"],
     includeRisk: false,
-    multiCodes: stockQuotes.slice(0, 4).map((stock) => stock.code),
+    // 默认四图的身份无需加载完整演示行情。
+    multiCodes: ["SIM001", "SIM037", "SIM013", "SIM025"],
     note: "",
     palette: "classic",
     radarPaused: false,
     readEvents: [],
     scope: "全样本市场",
     selectedSector: "全部题材",
-    theme: "dark",
+    theme: "light",
     timeIndex: 9,
     watchGroups: { SIM001: ["core"], SIM009: ["verify"] },
 };
@@ -72,7 +72,7 @@ export function restoreWorkspaceState(value: unknown): IMarketWorkspaceState {
     const saved = value.state;
     return {
         ...defaultWorkspaceState,
-        colorTheme: saved.colorTheme === "market-blue" ? "market-blue" : "wavequant-teal",
+        colorTheme: saved.colorTheme === "wavequant-teal" ? "wavequant-teal" : defaultWorkspaceState.colorTheme,
         date:
             typeof saved.date === "string" && marketDates.includes(saved.date as (typeof marketDates)[number])
                 ? saved.date
@@ -94,7 +94,7 @@ export function restoreWorkspaceState(value: unknown): IMarketWorkspaceState {
         scope: typeof saved.scope === "string" ? saved.scope : defaultWorkspaceState.scope,
         selectedSector:
             typeof saved.selectedSector === "string" ? saved.selectedSector : defaultWorkspaceState.selectedSector,
-        theme: saved.theme === "light" ? "light" : "dark",
+        theme: saved.theme === "dark" ? "dark" : defaultWorkspaceState.theme,
         timeIndex:
             typeof saved.timeIndex === "number"
                 ? Math.max(0, Math.min(marketTimes.length - 1, saved.timeIndex))

@@ -100,3 +100,11 @@ Next.js 静态导出位于 `out/`，不提交仓库。构建前会从已锁定�
 天梯股票卡片和明细中的代码、名称可打开 `/research?page=workspace&symbol=sz.001216&asof=2026-09-18&source=akshare`。入口携带股票和天梯日期，以日线进入行情与复盘，优先于默认自选股；刷新链接仍保持定位。
 
 优先读取指定数据源。其目录缺少目标股票时，仅允许回退到另一数据源中的同一股票，并明确提示；两者都无数据时展示错误，不切到默认股票。实际行情早于请求日期时展示实际截止日。页面不会因点击天梯而自动执行回测，可使用既有回测按钮继续分析。
+
+
+### 精简趋势状态响应
+当前仅折线与一级趋势的计算分支返回 `schemaVersion: 1` 的普通 JSON：`symbol`、`timeframe`、`dataVersion`、`complete`、`unavailableRules`、`state`、`timing`。`state` 包含 `version/currentIndex/dynamicDataIndex/enabled/trendState/data`；`data` 是折线、一级、二级、三级的点索引数组。HTTP 不返回内部 `trendData`、K线和 `theory`，也不再包装成通用JSON节点表。后端内部检查点/Worker协议保持不变。
+
+K线通过 `GET /api/trend-bars?data_version=<dataVersion>` 单独读取。该接口读取计算所用的精确复权快照，提供 `ETag` 和私有缓存；快照被有界缓存清理后返回 `410 TREND_BARS_EXPIRED`，需重新计算，不能拼接普通不复权行情。`path` 仅在非零时出现以保留中断；`referenceOnly: true` 是上层需要而本级不绘制的辅助端点。所有数组索引从0开始，`dynamicDataIndex`属于本级数组；确认时钟仍属于K线数组。
+
+权威跨端契约：`packages/contracts/src/modules/market/trend-analysis.schema.ts`。前端只按索引读取并投影坐标；不运行另一套趋势算法。普通行情浏览及封存研究协议不在本次切换范围。

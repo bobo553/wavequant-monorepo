@@ -9,7 +9,7 @@ import { sectorHeat, stockQuotes } from "@/features/market-dashboard/market-data
 import type { TMarketTabId, TSortDirection } from "@/features/market-dashboard/market-types";
 import { useMarketWorkspace } from "@/features/market-dashboard/market-workspace-context";
 
-interface ISectorViewProps {
+export interface ISectorViewProps {
     onNavigate: (tab: TMarketTabId) => void;
 }
 

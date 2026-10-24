@@ -1,4 +1,5 @@
-import { MarketBarsPageSchema, type TMarketBarsPage } from "@repo/contracts";
+import { MarketBarsPageSchema, ResearchConfigurationSchema, type TMarketBarsPage } from "@repo/contracts";
+import { LoadController } from "@repo/async-ui";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -135,7 +136,7 @@ function setupRequests(
         "fetch",
         vi.fn(async (input: string, options: { signal: AbortSignal }) => {
             const url = new URL(input, "http://localhost");
-            if (url.pathname === "/api/catalog")
+            if (["/api/catalog", "/api/research-config"].includes(url.pathname))
                 return json({
                     runs: [{ id: "run", start: "2025-01-01", end: resolvedAsOf, symbols: [] }],
                     variants: { lecture_v3: "V3" },
@@ -182,7 +183,11 @@ beforeEach(() => {
     localStorage.clear();
     window.history.replaceState({}, "", `/?source=tdx&symbol=${symbol}&asof=${requestedAsOf}`);
     document.body.innerHTML = `<h1 id="page-title"></h1><button id="reload">刷新</button>${renderToStaticMarkup(<ResearchWorkbench />)}`;
-    Object.assign(window, { wavequantParseMarketBarsPage: (value: unknown) => MarketBarsPageSchema.parse(value) });
+    Object.assign(window, {
+        wavequantParseMarketBarsPage: (value: unknown) => MarketBarsPageSchema.parse(value),
+        wavequantParseResearchConfiguration: (value: unknown) => ResearchConfigurationSchema.parse(value),
+        wavequantCreateFeatureLoader: <Value,>(loader: () => Promise<Value>) => new LoadController(loader),
+    });
     vi.stubGlobal(
         "navigator",
         Object.assign(Object.create(navigator), { clipboard: { writeText: chartState.clipboard } }),

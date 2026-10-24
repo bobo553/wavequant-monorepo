@@ -17,6 +17,30 @@ tracing-subscriber = { version = "0.3", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+rust_decimal = { version = "1.43", features = ["serde"] }
+chrono = { version = "0.4.45", features = ["serde"] }
+sha2 = "0.10"
+encoding_rs = "0.8"
+rusqlite = { version = "0.40", features = ["bundled", "backup"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+unicode-casefold = "0.2"
+csv = "1"
+serde_urlencoded = "0.7"
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
+regex = "1"
+native-tls = "0.2"
+postgres-native-tls = "0.5"
+
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+json5 = "0.4"
+flate2 = "1"
+crc32fast = "1"
+calamine = "0.37"
+redis = { version = "0.32.7", features = ["tls-native-tls"] }
+tower-http = { version = "0.6", features = ["compression-gzip"] }
+postgres = { version = "0.19.14", features = ["with-serde_json-1", "with-chrono-0_4"] }
+mysql = { version = "26.0.1", default-features = false, features = ["default-rust", "native-tls"] }
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
@@ -27,3 +51,24 @@ expect_used = "deny"
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+# 本地服务保留调试信息和溢出检查，量化及结果编码使用优化后的本包代码。
+[profile.dev.package.wavequant-quant-rs]
+opt-level = 2
+
+[profile.dev.package.wavequant-api-rs]
+opt-level = 2
+
+# 行情和索引状态使用SHA-256识别版本；开发服务也避免散列压缩函数以未优化模式运行。
+[profile.dev.package.sha2]
+opt-level = 3
+
+# Worker管道和产物缓存每次都压缩/解压，开发服务保留同样的优化路径。
+[profile.dev.package.flate2]
+opt-level = 3
+
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+
+[profile.dev.package.serde_json]
+opt-level = 3
