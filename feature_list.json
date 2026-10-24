@@ -1,7 +1,7 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-360",
+    "activeFeature": "MONOREPO-362",
     "features": [
         {
             "id": "MONOREPO-359",
@@ -15164,7 +15164,7 @@
             "id": "MONOREPO-360",
             "name": "double-n-whole-flip-pullback",
             "title": "倍量正N轧空整段回调买点",
-            "status": "in-progress",
+            "status": "backlog",
             "dependencies": [],
             "description": "海洋王2026案例：整段空翻多回撤不超过2/3后倍量正N及阳线轧空确认。",
             "scope": "共用交替确认入口，保持原趋势算法、成交和风险门禁。",
@@ -15251,6 +15251,285 @@
                     "command": "NOT RUN: HTTP runtime/shutdown; release build; browser/E2E; fixed-version rustup installation",
                     "status": "not-run",
                     "summary": "本次为工程骨架本地提交，以编译静态检查和领域回归作为最小验证；生产HTTP/停机及release构建未验证。固定工具链首次使用仍可能安装；+stable为已安装同版本。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-362",
+            "name": "rust-native-trend-analyzer-migration",
+            "title": "Rust原生量化与后端完整迁移",
+            "status": "in-progress",
+            "dependencies": [
+                "MONOREPO-361"
+            ],
+            "description": "按用户草稿迁移Rust；v14将点、证据、调度与交易/资格状态的引用、结构缓存、Worker与HTTP传输、前端读取统一为索引/共享节点。计算结果不重复展开证据树；真实状态变更创建新版本。当前仍只启用折线和一级，二级、三级和交易关闭；Python不修改。启动与数值等价验证证据单独记录，整体迁移保持in-progress。 2026-10-24 修复无账户模式跳过资格及买点：v18按已开启级别逐日运行共用确认/资格/买点逻辑，账户保持为空；精简DTO新增索引化observations，前端恢复区间和signal标识，保留真实确认时钟与结构低点。结果缓存v7隔离旧空结果；Python未修改。新增前端回归用例源码，测试/业务回测/浏览器均待验证；必要启动编译另记，未提交合并。",
+            "scope": "Rust量化主流程、统一多级趋势、资格与买卖规则、行情和持久化适配、Python及NestJS API功能原生迁移；在线数据按用户要求默认调用AKShare Python SDK，Python仅作为数据适配层，不执行趋势、策略或账户逻辑。",
+            "acceptanceCriteria": [
+                "逐K线推进；按用户2026-10-24确认，结构变化推进上层，交易单独判断。折线函数只返回本层data及上一个趋势起点nextOffset，不调用其他级别；主调度将返回的数据和本级数组偏移传给直接上级，从偏移后的来源续算。level 0/1/2/3均属同一timeframe，一级至三级共用核心，不跨周期升级。本轮仅改Rust，不修改Python代码。",
+                "保留版本化缓存、每级趋势起点与动态索引。用户最终澄清：nextOffset、dynamicDataIndex和trendData中的下标分别属于折线/一级/二级/三级自己的数组，取上一个趋势起点在该级data.points中的位置；原K线index只是点的行情坐标，不得直接作为数组偏移。缓存绑定数据身份/规则/配置，拒绝未来数据和失效缓存。",
+                "Python全部判断规则与两个后端功能逐项建立迁移映射；未迁移项明确记录，不能用空结果或占位方法宣称完成。",
+                "遵循用户验证安排：启动请求授权必要编译、启动修复和只读连通确认；不主动运行回测、测试、lint、格式或浏览器。完整行为等价未验收前保持in-progress，本轮不提交合并。"
+            ],
+            "verification": [
+{
+    "command": "cargo test selected indexed_data_flow/market_data/trend_offset; node --import local resolver --test 4 selected files; tsc isolated product/test configuration",
+    "status": "passed",
+    "summary": "2026-10-25 实际提交准备：当前恢复版仅折线及一级，完整Rust迁移继续in-progress。用户授权修复提交检查发现的问题：进度文案采用后端已处理计数覆盖旧文本；自选预览测试隔离额外旧数据迁移；补齐周期缓存TS声明，不改量化规则。Rust索引/行情/偏移定向检查10项与前端DTO/索引/状态/自选定向检查44项通过，前端产品源码及测试严格类型检查通过（隔离映射本worktree共享产物）。原始全量typecheck及lint因依赖链接指向旧产物、缺少工具配置依赖与ESLint构建器无法完成；用户明确允许记录限制后提交合并推送。不运行浏览器/E2E、回测或全套测试。暂存源敏感模式扫描未发现命中，旧Python项目源码及pyproject无差异。当前分支及main均获准推送，无强推。"
+},
+{
+    "command": "用户授权仅一次乐心股份HTTP计算；同任务状态读取",
+    "status": "passed",
+    "summary": "2026-10-25 乐心股份worker退出问题：Worker stderr原先丢弃，改为继承服务日志；无结果退出时记录pid/退出状态，try_wait非阻塞，不改趋势和交易判定。Rust必要编译并重启PID68308/8010。按用户本次授权仅重现一次sz.300562，2018-01-01至2026-10-25、2132根日线，HTTP200约1.847秒，任务12c1cb69-ebb8-4fe3-972e-d2944697d749状态completed；返回折线和一级。未复现原进程异常，历史错误因旧版丢弃stderr无法确定根因，不能宣称趋势崩溃根因已修复。前端未改，无浏览器或整套测试。"
+},
+{
+    "command": "依据会话历史逆向重建；业务验证未运行",
+    "status": "not-run",
+    "summary": "2026-10-25 用户强制恢复周六20:42开始、20:48完成的版本：基于本会话原始编辑记录逆向重建，分析器VERSION14，STRUCTURE_ONLY=true，仅折线/一级数组路径，撤销二三级启用、交易门禁UI、历史资格观察及新增性能探针；Mermaid用该时段原始命令重建。保留随后用户明确要求的旧Python工程零源码改动边界（SDK桥接仍归属Rust），以及备份/审计记录。因此是基于编辑记录的恢复，未持有该时点Git提交或全目录哈希，不宣称逐字节快照一致。必要启动编译与重启单列，不运行回测、浏览器或测试。"
+},
+{
+    "command": "开发阶段仅核对Python差异并迁移Rust专属SDK桥接；启动编译另记",
+    "status": "not-run",
+    "summary": "2026-10-25 旧Python既有源码及pyproject相对main无改动。新增rust_sdk_worker.py及测试移至Rust工程scripts/tests/python，Rust嵌入和源码哈希引用同步，不改变趋势交易与SDK协议。未执行测试或性能验证。"
+},
+{
+    "command": "cargo +stable build -p wavequant-api-rs -p wavequant-quant-rs --bins --example profile_trading; profile_trading.exe trading-profile-input.json full",
+    "status": "passed",
+    "summary": "2026-10-25 按用户明确要求补互斥计时并测量海洋王2133根日线（本地冻结输入，dev构建，无取数/HTTP/浏览器）。分析总计106.650秒，折线12.045、一级55.771、二级16.098、三级7.889、买卖/状态维护3.801秒，额外11.046秒（结构比较5.307、升级调度0.130、未细分5.609）。来源变化重放合计21.924秒，包含在各趋势级别内。样本无有效资格/买点，买卖项主要是连续状态维护，不代表真实成交性能。结果输出及诊断哈希0.002661秒另列。只加计时，未改业务规则/Python；启动编译完成，Rust PID54528已重启。未运行浏览器或全套测试，未提交合并。"
+},
+                {
+                    "command": "SOURCE EDITS ONLY: async-ui view/dialog/native-tool boundaries; startup dependency pnpm --filter @repo/async-ui build; frontend restart and research HTML warmup; NOT RUN functional/performance verification",
+                    "status": "not-run",
+                    "summary": "2026-10-24 MONOREPO-362 前端async-ui拆包：wavequant-web以workspace:*接入@repo/async-ui；九个市场Tab分别defineAsyncView注册，辅助Tab不再静态串引，市场广度ECharts、拓扑/拓扑Tldraw画布分别异步；总览中的可见阶梯预览复用同一异步阶梯模块，不宣称可见预览也不下载。设置/搜索/个股/通知/说明五种弹框正文独立资源，唯一受控外壳保持可关闭、Escape/Tab焦点约束和焦点回归，toast同步轻量显示不加载弹框正文。抽出导航market-tabs-data和默认四图身份，根Provider/状态条不再为少量元数据静态导入整份演示行情；默认四代码值保持原样。绩效/委托/健康页首次访问加载并保留已访问DOM，提交后事件通知原生运行时，缺席页不写DOM；绩效图表实现performance-charts.js首次进入再导入/创建，缓存实例，健康读取按运行ID合并并发。右侧买点/结构与幅度对比工具使用async-ui LoadController的原生ESM桥接；默认可见买点按需准备，结构首次展开、对比首次点击加载，首次有效操作补执行一次并处理超时/失败/重试；数据计算规则未变。首屏自选、K线、轻量导航反馈保持直接加载，不将所有UI机械拆碎。新增页签DOM交接/保留与弹框关闭回归源码，现有市场交互改为等待真实异步内容，年线交互夹具安装配置parser和loader桥接；未执行测试/浏览器/E2E、回测、lint、格式、专项类型检查、产品构建、性能/包大小探针或Git检查。离线pnpm锁解析因缺Playwright元数据失败，未下载外部包，锁文件仅补本地workspace链接；async-ui初次启动构建因C工作树未链接tsup失败，补本机既有依赖junction后生成运行产物成功，库源码未改。专属启动器复制本工作树async-ui dist并alias，最终前端56680/3003完成启动预热，API71344/8010不变。只确认实现与启动，不声称首屏耗时/体积改善已测得；完整迁移仍in-progress，未提交合并推送。"
+                },
+                {
+                    "command": "SOURCE EDITS; startup dependency build: cargo +stable build --locked -p wavequant-api-rs; pnpm --filter @repo/contracts build; restart API/frontend and warm research HTML",
+                    "status": "not-run",
+                    "summary": "2026-10-24 MONOREPO-362 研究配置瘦身与自选独立：新增GET /api/research-config及共享ResearchConfigurationSchema，仅runs(id/start/end)、variants，不返回股票、sessions、rows/completed_at或静态说明；校验日志链、路径、清单摘要与report.json内容摘要，不调用run.daily或扫描其他封存文件，实际分析/完整目录仍保留原封存校验。在线初始化改用新接口；完整/api/catalog仅切换非行情历史scope时按需读取，复用进行中请求，失败保留上一个scope，忽略过期切换。首屏自选脚本删除所有研究配置/目录预取；watchlist-bootstrap自身数据就绪即构造可按需查询的股票投影、启用自身管理、接管搜索/分类/选股，不等待研究配置或图表；正式分析未就绪时保存主动选择，配置失败不清空/禁用列表。自选编辑仍使用服务器确认revision，自动分析任务仍单独需要策略配置，不把它等同列表加载。更新首屏不请求研究接口回归源码，未执行；本轮未跑测试、浏览器/E2E、回测、lint/格式、专项类型检查、Git状态差异或提交合并。按默认重启约定完成必要Rust启动编译2m55s及contracts运行产物生成，最终API71344/8010、前端73460/3003且页面预热结束；未发送新接口探针，不宣称新耗时/体积或故障场景已实测。Python/趋势/交易规则未改，整体in-progress，接口联调及历史切换待提交验证。日志build-research-config.log、build-research-config-contracts.log。"
+                },
+                {
+                    "command": "Chrome DevTools reload: pre-hydration cached stock click/search; remove local preview and observe server cache fallback; queued Guilin selection handoff; clean reload; frontend startup route warmup",
+                    "status": "passed",
+                    "summary": "2026-10-24 MONOREPO-362 自选一秒内交互：原2611ms包含React/图表运行时与研究目录等待。首屏Shadow DOM改为原生按钮，分类/搜索/Enter选股独立执行；pendingSymbol/groupId/query交接正式Watchlists，用户期间主动选择优先于默认/链接，编辑revision仍只认服务器确认。正式运行时准备前不撤掉交互层、不换成禁用按钮；选择仅更新pressed/提示，不重建109行。/api/catalog为封存研究ID/日期/策略选项及交易日列表，源码catalog会读取各run.daily；未改其响应或算法，仅移出选股关键路径。新增warm-research.mjs接入dev/dev:web与专属启动器，开发首次HTML编译由启动预热承担，60秒有界、停止时取消，不执行SDK/策略。前端重启PID43444/3003，API51228/8010未改。用户要求1秒目标后Chrome运行时采样：启动预热后本地280ms可选/343ms点击反馈，另一次517/591ms；移除本地预览后服务器缓存370/387ms，cache=only48ms；React前选择桂林322ms可选/404ms反馈，正式selected与pressed均sz.000978；清除诊断普通导航261ms可选，完整运行时2430ms。上述为本机开发样本，不能宣称完整图表或未启动/冷编译服务一秒完成；未经预热冷编译样本10818ms仍明确保留。Console无error/warn，自选109行；仅一个分类，未在浏览器改写分类或服务器顺序。回归源码补齐早期选择/非法symbol/交接门禁/分类搜索，未执行测试套件、Playwright/E2E、lint、格式、类型或生产构建。Python/Rust趋势交易未改，整体in-progress，未提交合并推送。"
+                },
+                {
+                    "command": "Chrome DevTools: reproduce hydration recovery with harmless script insertion; inspect frame/DOM lifecycle; drag/click stock name; search and clear; normal reload after cleanup",
+                    "status": "passed",
+                    "summary": "2026-10-24 MONOREPO-362 React挂载/自选闪屏及交互：用户明确要求自行调试闪屏，Chrome复现扩展在主题脚本后插入节点使RootLayout多脚本hydration失败并整树重建；将主题/缓存首屏/版本轮询合为单一稳定脚本，相同无害脚本插入场景不再报错，帧观察109行未清空、根节点未替换；DocumentFragment准备完整列表后原子交接。拓扑/浮层按需挂载，Schema移出挂载前依赖；研究配置/api/catalog提前并行并消费同一响应。删除右侧stock-picker-panel/toggle与StockList及同步，搜索改为左侧当前分类。pointerdown/点击抑制仅手柄，6px阈值，名称不绑定拖拽，取消恢复顺序，搜索禁用排序。Chrome真实名称拖动顺序未改/无ghost，随后名称点击正常；搜索与恢复正常。调试发现上一轮去目录后asof=undefined导致400，补中国日请求上界交后端解析交易日，显式日期仍优先，最终海洋王正常完成；Python/趋势/交易规则未改。最终清除临时注入正常导航：缓存350ms、React1675ms、原运行时1755ms、交互2611ms；研究配置338ms开始/2269ms且仅一次；不可将缓存可见时间称React挂载耗时，不宣称冷编译/配置等待消除。Console无error/warn，自选109行，两个旧选择节点不存在，前端59112/3003/API51228/8010。未运行Playwright/E2E、测试套件、lint、格式、专项类型检查或生产构建，新增/调整回归源码待提交验证。证据docs/watchlist-hydration-debug.md，整体in-progress，未提交合并。"
+                },
+                {
+                    "command": "cargo +stable build --locked -p wavequant-api-rs; start-backend.ps1; start-frontend-indexed.ps1",
+                    "status": "passed",
+                    "summary": "仅按用户默认重启约定完成必要启动编译1m47s并启动API51228/8010及前端10356/3003；不是功能/性能验收结论。首屏三级缓存实际耗时待测，未运行HTTP探针、浏览器、测试、lint、格式或专项类型检查；日志.codex-runtime/rust-startup/build-watchlist-first-paint.log。"
+                },
+                {
+                    "command": "SOURCE EDITS ONLY: pre-hydration local/server/database watchlist cache; startup cargo build completed (1m47s), API PID51228; NOT RUN tests/browser/performance probes",
+                    "status": "not-run",
+                    "summary": "2026-10-24 MONOREPO-362 自选股首屏三级缓存：源码确认旧本地缓存仍在ResearchRuntime.useEffect后读取，必然等待hydration及模块加载；截图并非证明慢在数据库或已测得具体分摊。新增head经典脚本先于React读取256KiB有界preview.v2（兼容v1），独立Shadow DOM显示名称/顺序/状态，不修改React拥有的light DOM；runtime渲染后交还，失败保留预览。服务器WatchlistStore在启动预热共享内存快照，cache=only普通JSON直接取内存，无SQLite/通用计算门禁；增删保存迁移提交后发布，版本单调防并发旧读覆盖。cache=refresh走独立4路有界数据库通道并更新内存，无参数GET保留原索引协议。首屏本地→服务器缓存→数据库，缓存回退的首次数据库Promise供运行时复用；缓存不作为提交revision依据，编辑仍等服务器确认。未引入Redis额外往返，未修改Python/趋势/交易。新增hydration前显示、React DOM边界、缓存回退/Promise复用、空列表、版本保护及Rust缓存一致性回归源码，未运行测试/浏览器/性能探针/lint/格式/专项类型检查，真实3–5秒改善待测；仅按既有重启约定进行必要启动编译。设计见API-rs/docs/watchlist-first-paint.md，性能标记wavequant:watchlist-preview-visible仅新增未采样。整体in-progress，未提交合并。"
+                },
+                {
+                    "command": "SOURCE EDITS ONLY: move whole-market catalog into market view with explicit loading; NOT RUN checks/browser",
+                    "status": "not-run",
+                    "summary": "2026-10-24 MONOREPO-362 全市场目录移至市场看盘并手动请求：移除研究页自选栏全市场入口和启动/恢复设置/切源时的全目录请求，研究选股列表仅由服务器自选与显式股票链接投影，保留选中股票并去重，实际日线可用性由单股接口确认，不再以全目录查验作前置条件。研究页仍读取原研究运行目录/api/catalog（非全市场股票目录）。市场看盘新增全市场股票页签，挂载、切换来源均不请求，仅点击加载目录/刷新目录后调用既有来源隔离IndexedDB+ETag加载器；支持AkShare/TDX、查询、每批100只、加载/空/错误/缓存提示、取消过期请求及不预取的单股研究链接。未混入演示报价，无全市场行情预取。补充按需请求/来源切换/链接与研究自选投影回归源码，未运行测试/浏览器/类型/lint/格式/构建/性能探针，交互及单股边界待验证。Python/Rust算法及交易规则未改，前端按约定重启，未提交合并，整体in-progress。"
+                },
+                {
+                    "command": "SOURCE EDITS ONLY: explicit all-market catalog entry; NOT RUN checks/browser",
+                    "status": "not-run",
+                    "summary": "2026-10-24 MONOREPO-362 全市场目录入口：现有目录已在研究页右侧选择股票/股票列表中，并由顶部搜索框筛选；本轮在自选栏增加共享设计系统全市场股票按钮，折叠时保留图标和可访问名称。显式点击展开既有右侧目录并清除搜索、滚动到目录及聚焦顶部搜索，复用现有来源目录/缓存/每批100只加载逻辑；封存样本下沿用现有AkShare来源切换流程。右侧标题明确全市场股票/封存样本股票，初始来源提示不再写死通达信。未新增目录副本、独立API请求或全量行情预取；Python/Rust算法未改。按开发阶段约束未运行测试/浏览器/类型/lint/格式/构建/运行探针，交互与窄屏待验证；前端按约定重启，未提交合并，整体in-progress。"
+                },
+                {
+                    "command": "SOURCE EDITS ONLY: bounded readonly watchlist preview and early snapshot rendering; NOT RUN tests/browser/performance probes",
+                    "status": "not-run",
+                    "summary": "2026-10-24 MONOREPO-362 自选列表仍加载3–5秒的后续优化：截图证明列表尚未出现，未将这段用户耗时归因成已测定的网络或hydration耗时。源码确认上一轮仅全市场目录有SWR，自选storage.load仍等GET和旧IndexedDB迁移；本轮为已校验的服务器自选文档增加256KiB上限的localStorage只读预览，后续进入先显示名称顺序，服务器GET返回即显示新快照，不再等待迁移。同步完成前编辑/拖拽禁用，预览不成为权威document或写入revision，失败保留预览并提示；所有服务器变更响应更新预览，损坏/超限/不可写缓存不阻断服务器。SSR预加载侧栏模块减少hydration后模块发现串行请求。新缓存首次建立仍需服务器响应；初次无缓存和hydration实际耗时尚未分解测量。新增缓存预览/服务端权威/迁移前展示/存储失败回归源码，未运行测试、浏览器、性能探针、lint、类型、格式或构建；前端按约定重启，未修改Python/Rust/交易，未提交合并，整体in-progress。"
+                },
+                {
+                    "command": "SOURCE EDITS ONLY: independent watchlist bootstrap and catalog stale-while-revalidate; NOT RUN tests/browser/performance probes",
+                    "status": "not-run",
+                    "summary": "2026-10-24 MONOREPO-362 自选股首屏优化：独立模块先读取服务器自选并显示名称，图表库并行加载；app共享侧栏实例及初始化Promise，避免重复绑定/读取/迁移。股票目录有效IndexedDB缓存立即返回，ETag校验后台执行；来源不符或损坏缓存回源，后台失败保留缓存。后台目录更新仅同步股票元数据和来源提示，不切股、不重置图表、不重跑趋势；目录就绪前保留可用性门禁。未修改Python、Rust算法或交易规则。新增延迟校验、离线保留、来源隔离回归源码，按开发阶段约束未运行测试/浏览器/类型/lint/格式/构建/性能探针，新耗时待验证；前端按既有约定重启，完整迁移保持in-progress，未提交合并。"
+                },
+                {
+                    "command": "Read watchlist; freeze 20 stock inputs; HTTP ON/OFF serial comparison; cargo build --example watchlist_offset_audit; production System/indexed-state and incremental kernel differential comparison",
+                    "status": "passed",
+                    "summary": "2026-10-24 MONOREPO-362 自选股偏移差分：用户从全自选收敛为前20只，按自选版本147当前设置、截至2026-10-23核对；最终40个HTTP开关响应均200，20股完整state/行情版本/完成标志一致，直接生产System入口全部索引结果与状态（仅去掉执行开关）一致。冻结Redis原始行情核对真实折线追加、尾部修订、早期修订和冷算，20股均完整KernelFrame一致且走过检查点恢复。当前产品仅折线/一级启用，不宣称二三级及交易验收。初次选定20股中14股关闭偏移时Worker提前退出，未算作一致；冻结核心及串行重试后20股成功，根因未确认，不能宣称修复。原始请求JSON往返探针未发现摘要差异，不做浮点/并发归因。只新增独立审计example和证据文档，生产业务/Python未改，自选设置未写入；cargo build --example watchlist_offset_audit成功20.72秒，未运行全套测试/E2E/浏览器/lint/格式/类型/Git检查，未提交合并。API51616/8010、前端3003运行，自动回测关闭。报告API-rs/docs/watchlist-offset-comparison.md，证据.codex-runtime/rust-startup/watchlist-offset/final-report-20.json。"
+                },
+                {
+                    "command": "Startup cargo builds; cargo +stable test --locked -p wavequant-quant-rs --test trend_offset; fixed-input trend_offset_benchmark; alternating ON/OFF API fresh calculations",
+                    "status": "passed",
+                    "summary": "2026-10-24 MONOREPO-362 偏移续算：KernelOptions.trend_offset_enabled默认true，Rust backtest查询同名参数false可关闭，参与规范化任务/结果缓存身份，@repo/contracts导出TrendExecutionOptionsSchema。直接下级数组全局偏移转换为路径内已确认/已知点偏移；每路径一个偏移前检查点及末尾状态，核对保留前缀后恢复，纯追加从末尾续算，尾部修订从检查点包含起点重算，早期修订/无状态/配置变化/关闭均重建。来源兼容边界只保留相同前缀点号，修订尾部重新导入；三级共用函数。整波前起点不再被六态key覆盖，折线六态单独记录方向起点；桂林偏移1439/120→1417/121，绘图点/六态/行情版本与修改前一致，开关两模式完整state一致。固定1455已确认折线点5次中位数：8次尾部修订15.083→5.300ms少64.9%，修订主循环11640→304点（每次38点）；16次追加36.647→11.970ms但旧代码已有追加游标，不把全部收益算新功能。冷算均1455点，早期修订仍全算。API各3次新计算分析关闭65.326/开启73.767ms，后端662.830/636.315ms，HTTP800.336/795.047ms；首次无续算状态，没有分析提速，不能把网络/保存波动归因偏移。当前API每次新建Analyzer，本轮无跨请求状态缓存，页面首次不获得尾部65%收益。按用户本次要求执行差分检查及基准，三级完整结果等价；未跑完整测试/浏览器/E2E/lint/格式/类型/Git检查，contracts未构建待提交验证。启动构建完成，Windows文件占用排除后差分重试成功并恢复API51616/8010，前端3003继续运行、自动回测关闭；Python未改，未提交合并，完整迁移仍in-progress。设计及证据API-rs/docs/trend-offset.md和.codex-runtime/rust-startup/trend-offset-verification.json。"
+                },
+                {
+                    "command": "Startup build/restart; targeted same-input fresh/cached timing and existing-state comparison",
+                    "status": "passed",
+                    "summary": "2026-10-24 MONOREPO-362 Worker往返与重复快照优化：内部协议schema4改为有界JSON+压缩，取消一次性传输节点表、提交端重复编码/解析和接收端类型回转JSON，仍验证同一请求Value摘要/引擎/周期并保留队列、帧、解压、取消与超时限制；持久化indexed格式未改。同dataVersion行情先校验已有快照可读后复用，损坏/淘汰同步补齐，不异步提前交付；结果缓存仍同步保存。开发依赖serde_json/flate2/miniz_oxide开启优化。Python和算法/交易规则未改。桂林相同行情2135根/1456折线点/124一级点，三次新计算后端637.308–763.086ms，中位668.908ms，相对此前927.633ms约减少27.9%；Worker604.115→361.429ms约减少40.2%，快照79.857→42.497ms。算法75–77ms未变快，完整state及dataVersion逐字段与既有结果一致；结果缓存后端179.398ms/HTTP323.211ms、analysis0为复用。VO约116KB不变，未重测浏览器点击绘制，不声称全面等价或冷启动收益。启动构建及性能请求按用户授权执行；边界回归源码未执行，未运行测试套件/E2E/lint/格式/专项类型/Git检查，未提交合并推送；完整迁移保持in-progress。证据API-rs/docs/visible-latency.md和.codex-runtime/rust-startup/worker-transport-optimization.json。 最终启动产物包含补充的传输回归源码；中间重链接因Windows占用文件报os error 5，范围内停止旧进程后重新启动构建11.64秒成功，已恢复API PID52616/8010，前端3003继续运行。最终服务额外新计算HTTP200：取数29.571ms、分析71.509ms、后端621.416ms、HTTP763.415ms；state及dataVersion仍与原结果一致。此前三次统计保留为独立样本，不将第四次挑选替代中位数。最终启动日志build-worker-transport-start.log，最终采样visible-guilin-final-service.json。"
+                },
+                {
+                    "command": "User-requested current latency profiling (Chrome performance/native phase logs/isolated request), copy alignment and scoped service restart",
+                    "status": "passed",
+                    "summary": "2026-10-24 MONOREPO-362 显示延迟定位及文案修正：用户指出1.357秒取数/0.074秒分析却显示慢，并要求状态文案匹配结构模式。旧SDK785ms排队/419ms因子来自回源日志，旧日志缺少miss原因，不能追溯断言首次或刷新；新日志明确桂林Redis命中42–65ms。新增API阶段/Worker边界及Redis命中刷新原因的有界日志，未改变算法、数据获取或缓存执行策略。将默认成交账本提示改为读取行情/计算趋势，后端STRUCTURE_ONLY进度与前端阶段保持一致，不再硬编码二三级/账户；完成提示按calculation_mode称为趋势计算，并增加已有后端总耗时，去掉首日回测后显示的承诺。Chrome当前页面4实测：切股并发+trace样本取数53.314ms、算法67.281ms、Worker657.804ms、快照586.726ms/结果缓存702.742ms，后端2182ms，点击到完成2732ms；隔离新计算资金100001仅为绕过结果缓存，页面保持100000，取数42.341ms、算法66.114ms、Worker604.115ms、快照79.857ms/结果44.390ms、后端927.633ms/HTTP1073.152ms。同参数缓存复用后端212.286ms/点击到完成611.4ms，分析0代表复用。主要稳定卡点是Worker重复编码/规范化/摘要及协议往返，缓存保存有并发波动，未细分纯磁盘IO；SQLite总载荷25.4MB低于4GiB排除容量淘汰。VO116324字节/gzip9954，独立行情397969/gzip58416（此轮浏览器缓存复用，不等于实际传输），非旧15MB。最终API67168/8010、前端36732/3003，启动构建52.28秒成功，页面已确认“趋势计算已完成/后端总计”生效，临时浏览器包装已恢复。原始trace路径导出受工具范围限制，使用DevTools内存分析及JSON采样留证；未运行Playwright/E2E或测试套件、lint、格式、类型专项、Git检查，未修改Python，未提交合并，性能瓶颈仅定位未宣称优化完成。证据API-rs/docs/visible-latency.md及.codex-runtime/rust-startup/visible-latency-diagnosis.json。"
+                },
+                {
+                    "command": "Startup-only cargo +stable build --locked -p wavequant-api-rs; Docker Redis-only Compose reconfiguration; read startup logs (not cache behavior acceptance)",
+                    "status": "passed",
+                    "summary": "2026-10-24 MONOREPO-362：按用户要求将复权后日线改为Redis market-kline-v2持久缓存，数据键/LRU/大小账本无TTL；按真实交易日历区分盘中60秒逻辑检查、16:10后每60秒最多16项串行收盘对账，启动后从Redis索引恢复。身份包含来源/固定Sina上游/股票/归一化起点/1d/复权规则/Python环境，不含末日、中国日期或二进制引擎；同一快照向历史请求提供可见前缀并重算前缀版本。容量默认512MiB有效载荷、2048身份、单项16MiB，Lua原子LRU和随机令牌有限租期锁、失去所有权不覆盖，后台不加热冷数据且不复活已淘汰身份；因子/历史修订完整重算并替换，旧已知日期缺失拒绝覆盖，上游缺收盘/停牌不造K线，五分钟重试。TDX继续本地文件读取，不混入在线缓存；分钟覆盖沿原流程。Redis连接6380/0、前缀wavequant:rust:local；原Docker命名卷保留，Redis服务独立重建，AOF everysec、1GiB maxmemory/noeviction，避免全局淘汰锁，MySQL未改。环境变量已同步@repo/env/.env.example，设计见API-rs/docs/kline-cache.md。Python源码、复权公式、趋势规则未改。最终启动构建build-redis-kline-active-bound.log成功1分17秒，API66376/8010、前端3003；自然页面启动日志kline_cache_redis_saved记录海洋王811112字节写入，非主动回测/行为探针。未运行测试套件、专项类型/lint/格式、浏览器、性能请求或Git检查；新增日历/尾部/历史版本/LRU回归源码未执行，真实收盘补齐、跨实例锁、容量/故障行为仍待验证。未提交合并，完整迁移保持in-progress。"
+                },
+                {
+                    "command": "User-authorized SDK source-cache optimization, scoped compile/restart and controlled performance requests; catalog disk-cache restart proof",
+                    "status": "passed",
+                    "summary": "2026-10-24 本轮取数性能优化已落地：Rust SDK层为日线/因子添加60秒绝对TTL有界共享缓存，等待管道后复查缓存合并重复请求；统一读取当天原始快照后裁剪各自asof，历史版本只散列可见前缀。来源指纹直接散列协议帧，开发构建sha2开启opt-level=3。OnlineMarket目录新增16MiB本地ArtifactCache、一小时TTL和目录请求合并，保留原始年龄，避免重启重复下载目录阻塞SDK。最终对照桂林预览先100ms：取数2111.9102→1307.4469ms（约38.1%），HTTP3667.348→2321.7948ms；换日期且复权缓存未命中但源数据复用83.6613ms、分析74.2306ms、HTTP1106.1105ms；复权缓存命中9.437ms。独立行情末日2026-10-22/2134根，点数1456/124。目录跨重启命中disk，HTTP381.3219ms；首次无缓存目录下载15.7秒及此前SDK排队12秒证据保留，未承诺冷网络固定耗时。最终API41620/8010，前端3003继续运行；build-catalog-cache.log构建1分43秒成功。Python、复权公式和趋势规则未改；未执行测试套件/lint/格式/类型专项/浏览器E2E或Git检查，未提交合并，完整迁移仍in-progress。证据.codex-runtime/rust-startup/market-source-optimization-verification.json。"
+                },
+                {
+                    "command": "User-requested market profiling: SDK boundary/adjusted-cache timings; isolated miss/hit and controlled concurrent preview experiment",
+                    "status": "passed",
+                    "summary": "实测定位而非性能优化完成：桂林无排队未命中1671.730ms，日线1094.2065/因子529.8346/复权40.98/缓存编码5.5656ms；命中9.4885ms。SDK预热后并行预览导致桂林排队780.8352ms，取数2111.9102ms，随后命中9.594ms；自然页面海洋王排队1500ms/取数2824ms。原2934.986ms无明细不能追溯精确分布。核对SDK日线内部两次HTTP+JS解码+pandas、因子第三次HTTP；未修改Python或规则，仅增加有界结构化计时。最终启动编译3分43秒，API11708。证据market-timing-diagnosis.json；未运行测试套件或Git检查，整体迁移未验收。"
+                },
+                {
+                    "command": "User-requested Guilin invalid-progress diagnosis: current service source review, Chrome fresh computations and independent backend-clock display",
+                    "status": "passed",
+                    "summary": "当前进度99/注册表完成的修复已生效；桂林两次新计算成功，原用户失败任务ID无法追溯。冷数据取数2934.986ms/分析104.7524ms/后端4328.9343ms；热数据新计算取数8.8811ms/分析98.4708ms/HTTP1404.9ms。前端误导的已运行0秒改为独立取数和分析时钟并保留毫秒，重启54556；API33904未改。原10万参数缓存显示正常、一级123个已确认点。新增显示测试源码未运行；favicon404记录，不声称Console全无错误；未改变取数刷新规则或SDK，不运行测试套件/lint/Git检查。证据guilin-progress-verification.json。"
+                },
+                {
+                    "command": "User-requested Chrome frontend: 002724 fresh computation, exact-version bars, rendered chart and reload/cache; scoped compile/restart after regression fixes",
+                    "status": "passed",
+                    "summary": "已实测当前单股结构流程，非完整迁移验收。修复progress100越界导致新计算失败及H/L标签undefined；最终API33904、前端35644。新计算HTTP200，DTO113014字节/gzip9825、行情另400943/gzip72219；分析108.903ms、取数9.3127ms、HTTP1499.3ms。132个已确认一级点及发展尾部显示；刷新缓存正常，测试资金恢复10万，最终Console与Network无错误。更改资金时触发既有禁用自选调度settings503，未改该路径；普通行情预览请求仍存在。证据browser-trend-state-verification.json；未运行测试套件、lint或Git检查，完整交易和全部股票等价仍待验证。"
+                },
+                {
+                    "command": "Startup-only: cargo +stable build --locked -p wavequant-api-rs -p wavequant-quant-rs; pnpm --filter @repo/contracts build; scoped backend/frontend restart",
+                    "status": "passed",
+                    "summary": "2026-10-24 精简趋势DTO最终Rust启动编译成功1分22秒，日志build-trend-state-final.log；API PID46476/8010，前端PID22608/3003启动Ready。contracts首次缺少workspace依赖目录，复用既有安装后生成运行时/DTS成功；专属前端运行目录绑定本worktree契约产物，无新增依赖。保留AKShare、原数据路径及禁用自动回测。此为启动编译记录，未主动发起计算、API性能探针、回测、测试、浏览器、lint或Git检查，未声称响应大小/绘图等价验证完成。"
+                },
+                {
+                    "command": "SOURCE EDITS: compact trend state DTO and versioned independent adjusted bars endpoint; frontend shared contract integration",
+                    "status": "not-run",
+                    "summary": "2026-10-24 按确认结构移除前端trendData与重复行情/theory，保留state.data点索引及必要状态，返回普通JSON。独立trend-bars使用同一内容版本和有界产物缓存，ETag/失效410；前端按来源索引读取坐标，保留路径、辅助端点和首次可知时间。共享契约新增严格校验，回归源码已补未运行。普通行情/封存研究接口仍保持原协议。算法、二三级/交易停用范围和Python不变；实际性能、绘图等价和端到端待验证，启动编译与重启结果另记。"
+                },
+                {
+                    "command": "User-requested v14 overhead comparison: 3 fresh local API computations through3003; 1 cold-data direct8010; process memory snapshot",
+                    "status": "passed",
+                    "summary": "已执行测量，非性能验收通过。2133根海洋王，仅折线+一级；3次行情内存命中新计算，分析中位106.5868ms、响应1254764字节，较v13分别减少10.59%和35.10%；后端总时1.5444s较1.2989s增加18.90%，Worker往返0.9110s较0.5995s增加51.97%。HTTP中位2.3497s不含浏览器绘图；v13 HTTP直连与本轮代理不直接比较。另一次行情过期取数1.1772s、HTTP3.0484s。API工作集92.36MiB快照、Worker进程峰值约26.61–29.92MiB，旧版无内存基线。3次绘图摘要与历史一致，点数1404/132/0/0。证据index-flow-comparison.json；未改产品代码/重启/浏览器/测试套件/Git检查，完整迁移仍in-progress。"
+                },
+                {
+                    "command": "cargo +stable build --locked -p wavequant-api-rs -p wavequant-quant-rs; scoped restart; /health/live 204; staged worktree Next homepage 200 (indexed flow v14)",
+                    "status": "passed",
+                    "summary": "2026-10-24 按用户默认重启执行必要编译。修复类型迁移边界后，最终API/quant构建成功3分04秒，日志build-index-flow-final.log；后端PID51588/8010，存活204，AKShare数据适配及--no-watchlist-refresh保持。前端首次C盘worktree跨盘复用E盘Next依赖导致next-dev.js路径错误/首页500；改将本会话src/public及配置复制到E盘忽略的专属运行目录并复用同盘依赖，PID56580/3003，首页200。源码仍位于原worktree，main受跟踪源码未编辑。Worker消息显式解析共享节点，避免serde标签中间体展开；通用serde边界保留语义兼容。只为编译和启动证据；未执行测试、回测、测速、浏览器、lint、格式或Git检查，未声称完整数值等价及v14性能已确认，未提交合并推送。"
+                },
+                {
+                    "command": "SOURCE EDITS: full indexed references v14, shared JSON DAG, worker/cache/HTTP node tables and lazy frontend reader; regression sources not run",
+                    "status": "not-run",
+                    "summary": "2026-10-24 用户要求全部改成索引。KernelPoint成为共享不可变点版本引用；所有调度/交易/资格/历史帧克隆复制引用，变更分配新版本。所有Rust证据Value改为带节点编号的共享DAG，JSON字面量和serde转换复用节点，嵌套修改只复制路径上的子引用。Worker schema3、产物缓存schema2、结构缓存v2和HTTP共用wavequant.indexed.v1节点表；前端各API入口按需解析只读视图，IndexedDB保留节点表，旧缓存可读。新增共享契约和未运行的Rust/JS回归源码。保留判定规则及折线+一级启用范围，不改Python。启动编译修复中，未运行测试、回测、浏览器、lint、格式或Git检查。"
+                },
+                {
+                    "command": "User-requested v13 performance comparison: 3 uncached local API computations; indexed structure/drawing SHA256 vs saved v12 sample",
+                    "status": "passed",
+                    "summary": "2026-10-24 用户明确要求对比提升。002724、2018-01-01至2026-10-23、2133根、相同结构配置；仅改变未启用交易模式下的资金参数绕过完整结果缓存。三次cache=computed，行情缓存命中；纯分析166.0297/114.8492/119.2155ms，中位119.2155ms，与保存的v12单次411.6012ms相比耗时减少71.036%、约3.453倍。一级内核中位0.8114ms vs216.0827ms，折线收尾0.7989ms vs29.3483ms。三次均1404/132/0/0，结构点与绘图SHA256均等于原基线。直连接口1.805–2.458s，行情9.075–11.866ms，未测浏览器渲染；旧版为历史样本，并非同轮重新编译的A/B基准。无源码修改、无重启、无测试套件或浏览器；证据index-kernel-comparison.json，整体迁移仍in-progress。"
+                },
+                {
+                    "command": "cargo +stable build --locked -p wavequant-api-rs -p wavequant-quant-rs; restart scoped API/quant; GET /health/live (indexed kernel v13)",
+                    "status": "passed",
+                    "summary": "2026-10-24 为落实用户默认重启执行启动编译。首次Windows旧进程占用API/quant可执行文件导致拒绝访问；仅停止本worktree路径匹配的API/quant进程后，最终构建成功3分00秒，重启PID45520、8010存活204，保留AKShare与禁用自动回测参数。日志build-index-kernel-final.log。此为编译与启动证据；未执行单元测试、回测、测速、浏览器、lint、格式或Git状态/差异，不声称数值等价或具体提速幅度。"
+                },
+                {
+                    "command": "SOURCE EDITS: indexed polyline/trend/six-state core v13; regression sources added, not run",
+                    "status": "not-run",
+                    "summary": "2026-10-24 用户要求改为索引提高性能。PointArena保存行情引用和不可变版本；RefFrame/PathState/关键位/整波证明保存PointId，严格突破历史以证明链引用保存。折线与趋势while推进，分组与续算复制的仅为下标；不重复构造时间/价格体/JSON证明树。三个等级共享同一核心；当前数组入口直接导出IndexedAnalysis，旧接口按需展开KernelFrame。新增未执行的来源/时钟及三级兼容用例；未执行测试、回测、测速、浏览器或Git状态差异。启动编译与重启结果另记。"
+                },
+                {
+                    "command": "cargo +stable build --locked -p wavequant-api-rs -p wavequant-quant-rs; Start-Process wavequant-api-rs.exe --no-watchlist-refresh; GET /health/live",
+                    "status": "passed",
+                    "summary": "2026-10-24 用户要求以后每次修改默认重启，已记录本分支AGENTS.md。为使v8本级数组偏移、单层返回及结构续算代码生效，编译API和quant成功（1分51秒），日志.codex-runtime/rust-startup/build-offset-v8.log；Rust重启为PID45864/8010，存活接口204，前端3003继续运行。保留AKShare环境和禁用自动回测设置。未运行测试、回测、测速、lint、格式、浏览器或Git操作；仅为编译与启动证据，结构/账户数值等价及加速幅度仍待验收。"
+                },
+                {
+                    "command": "cargo +stable build --locked -p wavequant-api-rs -p wavequant-quant-rs; restart; GET /health/live (polyline array v10)",
+                    "status": "passed",
+                    "summary": "2026-10-24 按用户一次传入数组并while推进要求，v10仅折线入口绕开逐日账户框架与历史前缀复制，中途仅计数进度，结束才生成一次快照；Python未改。API/quant构建成功，结果标记补充后重编译并重启，最终PID1576/8010，存活204，前端3003继续运行。构建有增量缓存目录拒绝访问提示，但退出0，未清目录。日志build-polyline-array-final.log。新增回归源码未执行，未发起新回测/测速/浏览器，不宣称实际耗时已确认。"
+                },
+                {
+                    "command": "cargo +stable build --locked -p wavequant-api-rs -p wavequant-quant-rs; restart; GET /health/live (polyline-only projection fix)",
+                    "status": "passed",
+                    "summary": "2026-10-24 修复仅折线结果被theory::project强制要求daily_trading的错误。独立project_polyline直接投影最终折线，跳过三级与资格投影，不补造交易观察；新增未执行的Rust回归源码。API构建成功43.58秒，服务PID52764/8010、health204，日志build-polyline-projection.log。Python未改，未运行测试/回测/测速，完整用户任务完成结果未确认。"
+                },
+                {
+                    "command": "cargo +stable build --locked -p wavequant-api-rs -p wavequant-quant-rs; restart; GET /health/live (empty frontend contract)",
+                    "status": "passed",
+                    "summary": "2026-10-24 按用户返回空数据不影响前端的要求，仅折线结果保留标准三级结构字段，停用内容为空数组/空状态及enabled=false，不因缺少daily_trading报错。新增未执行回归源码验证数组字段。API编译成功26.62秒，重启PID26340/8010，health204，日志build-polyline-empty-contract.log；前端3003继续运行。未修改Python/前端，未运行回测、测试或浏览器，未宣称用户完整任务通过。"
+                },
+                {
+                    "command": "Read existing job e50e2013-6d96-45cc-a275-6e729404b589; cargo +stable build --locked -p wavequant-api-rs -p wavequant-quant-rs; restart; GET /health/live",
+                    "status": "passed",
+                    "summary": "2026-10-24 用户报告海洋王显示失败。现有任务实际completed/8.3秒，结果缺前端直接读取的backtest.strategy/counts/open_positions/start/end与sessions。API补齐真实配置和数据对应的兼容字段、来源/日线元数据；结果缓存schema升v3避免缺字段旧缓存。构建成功30.60秒，服务PID12652/8010、health204，日志build-stock-view-contract.log。未改Python/前端，未发起新回测，未执行测试或浏览器；仅确认代码修复与启动，页面实际渲染仍未验证。"
+                },
+                {
+                    "command": "Historical implementation observations recorded during Rust migration",
+                    "status": "not-run",
+                    "summary": "2026-10-24 用户指出回测299/2133日运行4分钟，要求按草稿且不改Python；确认结构变化推进上层、交易独立，进一步明确折线只返回本层与上一个趋势起点，上级从偏移读取。Rust新增PolylineCursor及三级共用TrendCursor/PathState；保留包含来向、活动端点、已闭合点、整波key/极值和路径状态，追加时只处理新输入，来源修订重建相关路径。execute_polyline_function不再触发prepare_structure或交易；execute_level_from显式接受父级data和本级数组offset，只计算自身；主调度逐层接收返回值，再统一确认和交易。原始结构缓存去掉asof，市场许可仍按当天刷新；分析器v8失效旧缓存。新增未执行的Rust回归源码，涵盖单层隔离、三级续算、偏移与修订及不依赖交易的传播。Python文件未修改。未编译、测试、回测、测速、重启或Git操作；当前服务仍为此前版本，不宣称速度或结果等价已确认。确认/许可仍存在历史扫描，显式兼容pivot模式保留旧计算；首次初始化或冻结来源修订可重建，不能宣称所有路径已线性化。 历次记录：Analysis measured 679ms: level-one 454ms includes kernel 200ms, unused publication 95ms, fingerprint 51ms, duplicate copies 67ms; one-shot structure path now borrows parent and stores core frame once without unused publication/cache/return copies; startup build completed, PID 56828; actual analysis 411.6ms vs 679ms, structure/drawing SHA256 unchanged; 132 level-one points rendered; object/evidence kernel still not fully indexed；Adjusted market cache: bounded 256 entries/64MiB memory LRU and optional Redis; TTL 60s active/300s closed with jitter and midnight invalidation; refetch daily+factors and replace on expiry; metadata/metrics exposed; startup build completed PID 40208; Chrome source then memory hit 0.0096437s with unchanged analysis/geometry; different cutoff misses; actual TTL expiry reload confirmed (source loads 2 to 3, new creation time); Redis unconfigured; unit cases not run；Chrome user-authorized backtest workflow confirmed 002724: fresh request 3.6119s (analysis 0.6208713s, data 1.2533881s); cached click-to-display 2.1428s; full indexed analysis and drawing SHA256 unchanged; 132 level-one points rendered; cold request 6.7952s; levels 2/3 and trading disabled; PID 48284；Indexed result types replace nested evidence in structure worker/cache/API; borrowed frame conversion and bar-based chart adapter; v12; internal rule engine still object based; startup build completed, PID 8388, health/live 204; no tests/backtests run；Chrome measured 002724 fresh request 15.8174s vs analysis 1.2934s; payload 15MB; worker roundtrip 3.742s includes analysis, preparation 1.851s, synchronous cache 3.347s, download 1.738s, parse 0.075s; diagnosis only；Result latency: cache executable identity per file version; bounded background Windows memory sampling; expose worker roundtrip/preparation/cache timing; build completed, restarted PID 54676, health/live 204; no measured latency claim；Level one enabled via shared trend core after polyline array; levels two/three and trading disabled; analyzer v11; startup build completed, PID 46272, health/live 204; no tests/backtests run；Backend timing: analysis measured in quant process; data request and total durations exposed separately; SDK resident reused PID 57856 for two read-only data requests; no backtest run；SOURCE EDITS ONLY: Rust single-level returns, offset handoff and persistent structure cursors; NOT RUN build/tests/backtests/runtime probes"
+                },
+                {
+                    "command": "NOT RUN: tests/backtests/typecheck/lint/format/build/runtime probes",
+                    "status": "not-run",
+                    "summary": "2026-10-23 用户明确只实现代码；功能保留回测但禁止执行。旧MONOREPO-361验证不代表本轮。"
+                },
+                {
+                    "command": "SOURCE EDITS ONLY: native Rust migration; all verification not run",
+                    "status": "not-run",
+                    "summary": "2026-10-24 以packages/wavequant-core/src/wavequant为具体方法来源，编写并接入统一四层结构、方向证书、资格/交易、完整账户与冻结信号、原生行情、研究/治理CLI、Python与Nest接口、持久读模型、worker和24项步骤缓存。用户进一步明确level与timeframe独立，已写入调度和接口文档。新增受信任结构前缀缓存，命中同身份/配置/引擎/可见前缀时复用完整四层结构，账户和交易仍逐根推进，区别于诊断块复用。代码覆盖映射见docs/rust-migration-inventory.md；尚无编译、运行、数值或协议等价结论。"
+                },
+                {
+                    "command": "NOT RUN: functional verification after dependency lock resolution",
+                    "status": "not-run",
+                    "summary": "2026-10-24 只执行依赖锁解析并生成333包Cargo.lock；未编译或运行产品代码，构建期源码指纹脚本尚未执行。此记录不作为功能验证通过证据，本功能保持in-progress。"
+                },
+                {
+                    "command": "cargo +stable build --locked -p wavequant-api-rs -p wavequant-quant-rs; Start-Process wavequant-api-rs.exe --no-watchlist-refresh; WAVEQUANT_API_PORT=8010 pnpm --filter wavequant-web dev:web; HTTP GET startup endpoints",
+                    "status": "passed",
+                    "summary": "2026-10-24 用户明确要求启动 Rust 与前端后执行。修复首次编译的宏深度、SQLite整数、类型推断和API语法错误，最终构建成功。北交所目录旧浏览器标识触发同地址307，改用原生标识并严格拒绝非成功响应。Rust worktree API在8010运行（PID23964），主目录前端在3003运行（启动器PID47744）；前端首页200、Rust /health/live 204、研究目录/自选读取200、前端代理 /api/docs-json 与 /api/akshare-catalog 200。仅为构建和启动证据，不等于业务或Python数值等价；未主动提交回测，最终进程关闭自选自动回测，未运行测试/lint/格式/浏览器/Git状态差异，未提交合并推送。日志位于专属worktree .codex-runtime/rust-startup/。"
+                },
+                {
+                    "command": "cargo +stable build --locked -p wavequant-api-rs -p wavequant-quant-rs; Start-Process with WAVEQUANT_AKSHARE_PYTHON; GET /health/live; GET frontend /api/akshare-view?symbol=sz.002724&asof=2026-10-23&timeframe=1d; GET frontend /api/akshare-catalog",
+                    "status": "passed",
+                    "summary": "2026-10-24 用户要求默认使用AKShare Python SDK，保持Rust量化与API。日线、复权、分钟、目录/日历、涨停及旧行情兼容入口接入有界SDK数据进程；版本和源码绑定来源指纹，SDK分钟档案与旧抓取分表。保留的Sina解析器修复尾注释导致quoted string错误，并添加未执行的回归源码。按既有启动授权构建成功，服务PID45452替换旧进程，关闭自动回测。前端3003经代理读取海洋王返回200及2837根日线，目录200及5577只，无日历警告；两者均返回真实SDK1.18.94、python_sdk_process。仅为启动和只读数据入口证据，未执行回测、测试、类型、lint、格式、浏览器、Git状态差异或提交合并推送；复权/分钟/涨停完整行为与Rust/Python数值等价待验收。构建日志为.codex-runtime/rust-startup/build-akshare-sdk.log。"
+                },
+                {
+                    "command": "Next build --webpack (production staging); Chrome DevTools isolated-context resource timing and manual UI interaction",
+                    "status": "passed",
+                    "summary": "2026-10-24 MONOREPO-362 前端JS性能审计：按用户明确要求使用Chrome调试及必要生产构建。3003从next dev切为next start，public原生ESM由esbuild0.28.0合并并保留动态import边界，自选/主运行时共用单例，删除两条零散模块preload；哈希分块长期immutable缓存，稳定入口保持可更新。移除error设计系统整桶依赖；经典HTML链接禁用自动预取；拓扑默认轻量规则预览，高级Tldraw画布点击加载。冷缓存同页本次生产合并前87个JS/68个小于10KiB/455912B传输，合并后22/11/408871B；剩余小文件合计20637B传输，其中5个Next启动路由错误边界、6个原生入口共享与按需买点。单次对比自选交互450→371ms、完整运行时944→903ms，最终独立上下文342/725ms；时间存在波动，不能当长期保证。合并后解压体积1300269→1349140B略增，未把请求减少当作所有指标下降。HTTP/1.1 fetchStart→requestStart累计1630→363ms是并发请求累计值，非页面节省秒数。首屏无绩效/结构/幅度/Tldraw下载；切绩效后按需模块正常；拓扑默认无>1MB脚本；九市场Tab切换、通知及设置弹框可用，目录无自动请求，最终Console无error/warn。构建期间曾在旧页面出现临时chunk500，刷新最新构建后消失；下次启动改用独立轮换构建目录防止覆盖在服资源。用户提供content_main.js完整URL证实属于沉浸式翻译扩展，不计本站HTTP传输。前端PID72280/3003，Rust71344/8010未变。未运行Playwright/E2E、单元套件、lint、格式或额外类型检查；生产Next构建含类型编译完成。新增serve独立暂存启动入口未单独运行，完整弹框/快速切换与长期性能仍待后续提交验证。未提交合并推送；Python及量化交易逻辑未改，整体in-progress。"
+                },
+                {
+                    "command": "开发阅读与编辑；单元/浏览器/E2E/lint/格式/额外类型检查未运行",
+                    "status": "skipped",
+                    "summary": "2026-10-24 MONOREPO-362 默认外观按用户截图调整：浅色light、证券蓝market-blue、红涨绿跌classic、舒适密度comfortable。同步默认workspace状态、SSR根节点及首屏内联主题脚本，缺失/非法缓存字段回退新默认，已保存且合法的深色/青绿/替代配色/紧凑密度仍保留。更新现有状态恢复回归源码，未执行测试、浏览器/E2E、lint、格式或额外类型检查；只按每次修改默认重启的既有约定执行必要生产启动构建。启动结果另附；未提交合并，Python/Rust算法与交易逻辑未改，整体in-progress。 2026-10-24 默认外观启动完成：必要Next生产编译及启动预热结束，前端PID12008/3003，独立运行目录.codex-runtime/rust-production-web-a/wavequant-web；无浏览器或业务验证，未提交合并。"
+                },
+                {
+                    "command": "源码阅读及文档编辑；未运行渲染、测试、浏览器或构建",
+                    "status": "skipped",
+                    "summary": "2026-10-24 MONOREPO-362 趋势流程文档：新增docs/trend-analysis-flow.md，整理当前数组快速路径、共用趋势判断、偏移检查点及六态四张Mermaid，附源码映射、阈值/索引/确认边界、当前二三级及交易停用状态和现存等级分支。根AGENTS.md要求相关逻辑变更同次更新图示、说明、日期与源码入口；quant-rs README增加入口。仅人工维护规则，未新增CI或自动一致性检查；未修改业务源码，未运行渲染/浏览器/测试/lint/类型/构建，服务无需因纯文档重启，未提交合并。完整迁移仍in-progress。"
+                },
+                {
+                    "command": "Rust交易源码阅读与文档编辑；未运行回测、测试、渲染或构建",
+                    "status": "skipped",
+                    "summary": "2026-10-24 MONOREPO-362 买卖点流程文档：在docs/trend-analysis-flow.md新增图五交易入口与资格、图六两类买点及主候选/补充/独立收盘回退、图七卖点来源、图八退出优先级与账户落地。核对day/hierarchy/arbiter/entries/risk/entry_risk/system源码，标注精确阈值、profile覆盖、风险冲突抑制和信号非成交边界；当前STRUCTURE_ONLY交易仍停用。同步根AGENTS.md维护触发范围及quant-rs README。仅文档规则变更，无业务代码或服务配置变化，无需重启；未运行回测、测试、浏览器、Mermaid渲染、lint、类型或构建，未提交合并，整体in-progress。"
+                },
+                {
+                    "command": "代码编辑；启动编译另记，业务验证未运行",
+                    "status": "skipped",
+                    "summary": "2026-10-24 按用户澄清先开启二级：结构上限统一为2，数组和逐日入口依次调用共享趋势函数；二级使用一级点号及一级数组前趋势起点偏移。VERSION升至15以隔离旧计算结果缓存；API enabled=[true,true,true,false]，前端及兼容投影显示二级并继续隐藏交易。同步Mermaid。三级和交易保持关闭；草稿中的买点开关及统一资格买卖入口暂未改动，后续继续处理。未运行测试、回测、浏览器或检查，待提交时验证；本次只执行默认重启所必需的编译。 启动结果：使用本机已完整安装的同版本stable（Rust 1.98.1）完成必要启动编译；Rust服务PID71276/8010，自动自选回测关闭。前端生产服务PID61964/3003。未运行业务验证、回测或浏览器，不据此宣称二级结果已验收；未提交合并。"
+                },
+                {
+                    "command": "开发编辑；业务验证待提交时执行",
+                    "status": "skipped",
+                    "summary": "2026-10-24 买卖入口改造v16：交易执行与买点等级独立，默认不执行交易回测、买点[false,false,true,false]。按最新要求仅开启级别计算资格一次，其他级别始终false并清除旧资格；先结构后汇总资格。各级买点历史隔离，卖出优先，同次账户最多一个买入；无资格撤销待买并全额清仓，保留即时全额退出及实际成交约束。分钟入口与成交前检查同步门禁。前端新增开关，共享契约/参数/缓存/资格区间展示/文档同步；三级保持关闭，自动队列只算结构，Python未改。新增回归源码未运行；本轮不测试、不回测、不浏览器、不lint/格式/额外类型检查，启动编译另记；未提交合并。 最终启动记录：必要共享契约构建、Next生产启动及Rust stable同版本启动编译完成；后端PID67220/8010，前端PID72388/3003，自动回测关闭。补齐跨级分钟确认输入及本级资格上下文隔离、成交前资格复核、退出与买入互斥、待执行清仓禁止加仓。没有运行测试套件/业务回测/浏览器/E2E或独立验证；新增回归源码待提交时执行，不宣称交易结果已验收。未提交或合并。"
+                },
+                {
+                    "command": "开发编辑；业务验证待提交时执行",
+                    "status": "skipped",
+                    "summary": "2026-10-24 开启三级结构v17：STRUCTURE_MAX_LEVEL=3，数组与逐日入口共用趋势函数，三级读取二级PointId及二级数组前趋势起点偏移。更新缓存版本、enabled四级状态、进度及结构模式文案，三级买点可手动选择但默认false，默认买点仍[false,false,true,false]，交易及自动队列策略不变。同步共享契约、配置恢复及Mermaid；Python未改。开发阶段不运行测试、回测、浏览器或检查，必要启动编译另记；未提交合并。 三级结构启动完成：Rust必要启动编译完成，后端PID56240/8010；前端共享契约及生产启动完成，端口3003。自动回测保持关闭。仅启动编译与重启，未运行回测、浏览器、测试或其他业务验证，未提交合并。"
+                },
+                {
+                    "command": "开发阶段仅源码修复；业务验证留待提交阶段",
+                    "status": "skipped",
+                    "summary": "2026-10-24 启动记录：修正启动编译发现的usize日期映射问题，并停止本worktree旧进程解除Windows可执行文件锁；Rust必要启动编译完成，后端PID58276/8010，前端PID71784/3003。自动回测关闭。未运行测试、业务回测、浏览器或性能验证；资格及买点实际股票结果待验证，未提交合并。"
+                },
+                {
+                    "command": "cargo +stable build -p wavequant-api-rs -p wavequant-quant-rs --bins --examples; profile_trading 同数据对照; qualification_gate_smoke",
+                    "status": "passed",
+                    "summary": "2026-10-25 v20：趋势确认返回qualificationIntervals，资格仅计算开启级别；本级enableSecondaryReversal且本级有效区间才搜索买点。区间外维护连续状态/失效和持仓风控，修复重开时二级压力时钟断档。来源指纹改用不可变点版本号，避免每日打包递归证据；Python未改。同1000根原75.669秒→最终14.142秒；2133根最终97.599秒，仍有89.865秒逐日结构开销，未完全解决慢的问题。受控开闭/重开与跨级开关隔离验证完成；默认真实样本无资格，不宣称真实买卖结果已验收。已重启Rust，前端未改。未运行浏览器或整套测试，未提交合并。"
                 }
             ]
         }

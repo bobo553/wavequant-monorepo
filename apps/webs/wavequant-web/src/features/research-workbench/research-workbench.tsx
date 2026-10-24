@@ -6,11 +6,11 @@ import { ResearchEvidence } from "./components/research-evidence";
 import { ResearchHeader } from "./components/research-header";
 import { ResearchLedgers, StockBacktestResults } from "./components/research-ledgers";
 import { ResearchMetrics } from "./components/research-metrics";
-import { HealthPage, OrdersPage, PerformancePage } from "./components/research-secondary-pages";
+import { DeferredResearchPages } from "./components/deferred-research-pages";
 import { StockBrowser } from "./components/stock-browser";
 import { WatchlistRail } from "./components/watchlist-rail";
 import { ResearchRuntime } from "./runtime/research-runtime";
-import { StrategyTopologyPage } from "./topology/strategy-topology-page";
+import { DeferredTopologyPage } from "./topology/deferred-topology-page";
 
 /**
  * 完整的 React 研究工作台页面。
@@ -21,6 +21,7 @@ import { StrategyTopologyPage } from "./topology/strategy-topology-page";
 export function ResearchWorkbench(): JSX.Element {
     return (
         <>
+            <link rel="modulepreload" href="/watchlist-bootstrap.js" />
             <div data-wavequant-react-workbench="true" style={{ display: "contents" }}>
                 <main id="research-main" className="research-content" tabIndex={-1}>
                     <ResearchHeader />
@@ -37,10 +38,8 @@ export function ResearchWorkbench(): JSX.Element {
                     </section>
                     <ResearchControls />
                     <StockBacktestResults />
-                    <PerformancePage />
-                    <StrategyTopologyPage />
-                    <OrdersPage />
-                    <HealthPage />
+                    <DeferredResearchPages />
+                    <DeferredTopologyPage />
                 </main>
             </div>
             <ResearchRuntime />

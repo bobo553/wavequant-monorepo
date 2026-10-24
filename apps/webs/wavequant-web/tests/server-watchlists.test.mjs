@@ -308,3 +308,49 @@ test("durable current results keep metrics after restart; a different strategy v
     assert.equal(subject.state().returns[completion.symbol].amount, 10);
     assert.equal(subject.matchingJobId(completion.path, completion.params), null);
 });
+
+
+test("preview is readable without a server request and never becomes the write revision", async () => {
+    const { subject, preferences } = fixture({ old: snapshot(), doc: document(["sz.000978"]) });
+    await subject.load();
+    let finish;
+    const next = createServerWatchlistStorage({
+        normalize: normalizeWatchlistSnapshot, legacy: { load: async () => snapshot() },
+        parse: cleanDocument,
+        preferences: { getItem: (key) => preferences.get(key), setItem: (key, value) => preferences.set(key, value) },
+        request: () => new Promise((resolve) => { finish = resolve; }),
+    });
+    assert.equal(next.readPreview().memberships[0].symbol, "sz.000978");
+    assert.equal(next.document, null);
+    const loading = next.load();
+    assert.equal(next.readPreview().memberships[0].symbol, "sz.000978");
+    finish(document(["sh.600519"]));
+    await loading;
+    assert.equal(next.readPreview().memberships[0].symbol, "sh.600519");
+});
+
+test("server snapshot is visible before a pending legacy migration finishes", async () => {
+    let finishLegacy;
+    let visible;
+    const old = new Promise((resolve) => { finishLegacy = resolve; });
+    const next = createServerWatchlistStorage({
+        normalize: normalizeWatchlistSnapshot, legacy: { load: () => old },
+        parse: cleanDocument, preferences: null, request: async () => document(["sz.000978"]),
+    });
+    const delivered = new Promise((resolve) => { visible = resolve; });
+    const loading = next.load({ onSnapshot: visible });
+    assert.equal((await delivered).memberships[0].symbol, "sz.000978");
+    finishLegacy(snapshot());
+    await loading;
+});
+
+test("invalid preview is ignored and persistence failure does not block the server", async () => {
+    const next = createServerWatchlistStorage({
+        normalize: normalizeWatchlistSnapshot, legacy: { load: async () => snapshot() },
+        parse: cleanDocument,
+        preferences: { getItem: () => "{broken", setItem: () => { throw new Error("quota"); } },
+        request: async () => document(["sz.000978"]),
+    });
+    assert.equal(next.readPreview(), null);
+    assert.equal((await next.load()).memberships[0].symbol, "sz.000978");
+});

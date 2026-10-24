@@ -341,13 +341,22 @@ export const watchlistStorage = createServerWatchlistStorage({
     legacy: legacyWatchlistStorage,
 });
 
+/** 搜索仅作用于当前分类，保持自选排序不变。 */
+export function filterWatchlistMembers(members, query = "") {
+    const tokens = query.normalize("NFKC").trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return members.filter((member) => tokens.every((token) =>
+        `${member.symbol} ${member.stock?.name || member.name || ""}`.toLowerCase().includes(token)));
+}
+
 export class Watchlists {
     constructor({ onSelect, storage = watchlistStorage }) {
         this.onSelect = onSelect;
+        this.root = document.getElementById("watchlist-rail");
         this.storage = storage;
         this.state = normalizeWatchlistSnapshot(null);
         this.universe = [];
         this.selectedSymbol = "";
+        this.query = "";
         this.selectedGroupId = DEFAULT_WATCHLIST_GROUP.id;
         this.railCollapsed = false;
         this.available = false;
@@ -399,8 +408,25 @@ export class Watchlists {
             // 折叠偏好不可用不影响自选数据。
         }
         this.renderRailState();
+        const showSnapshot = (snapshot, message) => {
+            if (!snapshot || (this.root && document.getElementById("watchlist-rail") !== this.root)) return;
+            this.state = snapshot;
+            try {
+                const saved = localStorage.getItem(SELECTED_GROUP_KEY);
+                if (saved && snapshot.groups.some((group) => group.id === saved)) this.selectedGroupId = saved;
+            } catch {
+                // 分类偏好不可用仍可显示默认分类。
+            }
+            this.render();
+            globalThis.window?.wavequantWatchlistBoot?.release();
+            this.announce(message);
+        };
+        showSnapshot(this.storage.readPreview?.(), "已显示上次自选列表，正在同步服务器…");
         try {
-            this.state = await this.storage.load();
+            this.state = await this.storage.load({
+                onSnapshot: (snapshot) => showSnapshot(snapshot, "已读取服务器自选，正在完成初始化…"),
+            });
+            if (this.root && document.getElementById("watchlist-rail") !== this.root) return;
             this.available = true;
             try {
                 const saved = localStorage.getItem(SELECTED_GROUP_KEY);
@@ -410,16 +436,32 @@ export class Watchlists {
             }
             this.announce("自选股已从服务器加载");
         } catch (error) {
+            if (this.root && document.getElementById("watchlist-rail") !== this.root) return;
             this.available = false;
-            this.announce(`自选股存储不可用：${error.message}`);
+            showSnapshot(this.storage.readPreview?.(), "已保留自选缓存");
+            this.announce(`自选股同步失败，当前列表仅供预览：${error.message}`);
         }
         this.render();
+        globalThis.window?.wavequantWatchlistBoot?.release();
     }
 
     setUniverse(stocks, selectedSymbol) {
         this.universe = Array.isArray(stocks) ? stocks : [];
         this.selectedSymbol = selectedSymbol || "";
         this.render();
+    }
+
+    setQuery(query) {
+        this.query = query;
+        this.render();
+    }
+
+    selectFirstMatch() {
+        const first = filterWatchlistMembers(orderedMembers(this.state, this.selectedGroupId, this.universe), this.query)
+            .find((member) => member.stock && member.stock.has_data !== false);
+        if (!first) return false;
+        this.onSelect(first.symbol);
+        return true;
     }
 
     setSelected(symbol) {
@@ -683,7 +725,7 @@ export class Watchlists {
 
     bindOrderHandle(handle, row, list) {
         let suppressClick = false;
-        row.addEventListener(
+        handle.addEventListener(
             "click",
             (event) => {
                 if (!suppressClick) return;
@@ -696,7 +738,7 @@ export class Watchlists {
         handle.addEventListener("keydown", (event) => {
             if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
             event.preventDefault();
-            if (this.reordering) return;
+            if (!this.available || this.reordering || this.query?.trim()) return;
             const rows = [...list.querySelectorAll(".watchlist-stock-row")];
             const currentIndex = rows.indexOf(row);
             const nextIndex = currentIndex + (event.key === "ArrowUp" ? -1 : 1);
@@ -710,6 +752,7 @@ export class Watchlists {
             );
         });
         const startDrag = (startY) => {
+            if (!this.available) return;
             const initialOrder = [...list.querySelectorAll(".watchlist-stock-row")].map((item) => item.dataset.symbol);
             let moved = false;
             let ghost = null;
@@ -731,7 +774,7 @@ export class Watchlists {
             };
             const move = (clientY, moveEvent) => {
                 if (!row.isConnected) return;
-                if (Math.abs(clientY - startY) < 4 && !moved) return;
+                if (Math.abs(clientY - startY) < 6 && !moved) return;
                 if (!moved) {
                     moved = true;
                     suppressClick = true;
@@ -785,9 +828,9 @@ export class Watchlists {
             };
             return { move, finish };
         };
-        row.addEventListener("pointerdown", (event) => {
-            if (!event.isPrimary || event.button !== 0 || this.reordering || list.childElementCount < 2) return;
-            if (event.pointerType === "touch" && !handle.contains(event.target)) return;
+        handle.addEventListener("pointerdown", (event) => {
+            if (!this.available || this.query?.trim() || !event.isPrimary || event.button !== 0 ||
+                this.reordering || list.childElementCount < 2) return;
             const drag = startDrag(event.clientY);
             const cleanup = () => {
                 window.removeEventListener("pointermove", move);
@@ -810,45 +853,6 @@ export class Watchlists {
             window.addEventListener("pointermove", move);
             window.addEventListener("pointerup", up);
             window.addEventListener("pointercancel", cancel);
-        });
-        row.addEventListener("touchstart", (event) => {
-            if (event.touches.length !== 1 || this.reordering || list.childElementCount < 2) return;
-            if (handle.contains(event.target)) return;
-            const touch = event.touches[0];
-            const startY = touch.clientY;
-            let drag = null;
-            const findTouch = (touches) => [...touches].find((item) => item.identifier === touch.identifier);
-            const cleanup = () => {
-                window.clearTimeout(timer);
-                window.removeEventListener("touchmove", move);
-                window.removeEventListener("touchend", end);
-                window.removeEventListener("touchcancel", cancel);
-            };
-            const move = (moveEvent) => {
-                const current = findTouch(moveEvent.changedTouches);
-                if (!current) return;
-                if (!drag && Math.abs(current.clientY - startY) >= 4) {
-                    cleanup();
-                    return;
-                }
-                if (!drag) return;
-                moveEvent.preventDefault();
-                drag.move(current.clientY);
-            };
-            const end = (endEvent) => {
-                if (!findTouch(endEvent.changedTouches)) return;
-                cleanup();
-                drag?.finish(true);
-            };
-            const cancel = (cancelEvent) => {
-                if (!findTouch(cancelEvent.changedTouches)) return;
-                cleanup();
-                drag?.finish(false);
-            };
-            const timer = window.setTimeout(() => (drag = startDrag(startY)), 300);
-            window.addEventListener("touchmove", move, { passive: false });
-            window.addEventListener("touchend", end);
-            window.addEventListener("touchcancel", cancel);
         });
     }
 
@@ -915,6 +919,9 @@ export class Watchlists {
     }
 
     render() {
+        // 首屏交互层持续接收选股，直到图表运行时具备接管条件；避免中途换成禁用按钮。
+        const boot = globalThis.window?.wavequantWatchlistBoot;
+        if (boot && !boot.runtimeReady) return;
         const group = this.selectedGroup;
         const select = this.$("watchlist-group-select");
         const previous = select.value;
@@ -949,17 +956,20 @@ export class Watchlists {
         star.title = alreadyAdded ? `已在“${group.name}”中，点击移除` : `加入“${group.name}”`;
         setWatchlistStarIcon(star, alreadyAdded);
 
-        const members = orderedMembers(this.state, group.id, this.universe);
-        this.$("watchlist-count").textContent = `${members.length} 只`;
+        const allMembers = orderedMembers(this.state, group.id, this.universe);
+        const members = filterWatchlistMembers(allMembers, this.query || "");
+        this.$("watchlist-count").textContent = this.query?.trim()
+            ? `${members.length} / ${allMembers.length} 只` : `${members.length} 只`;
         this.renderRailState();
         const list = this.$("watchlist-stock-list");
         const scrollTop = list.scrollTop;
-        list.replaceChildren();
+        const fragment = document.createDocumentFragment();
         if (!members.length) {
             const empty = document.createElement("p");
             empty.className = "stock-empty";
-            empty.textContent = "当前分类还没有股票，可添加当前股票或从结构结果一键加入。";
-            list.append(empty);
+            empty.textContent = this.query?.trim() ? "当前分类没有匹配的自选股，请更换名称或代码。"
+                : "当前分类还没有股票，可添加当前股票或从结构结果一键加入。";
+            list.replaceChildren(empty);
             return;
         }
         for (const member of members) {
@@ -970,6 +980,7 @@ export class Watchlists {
             const drag = document.createElement("button");
             drag.type = "button";
             drag.className = "watchlist-stock-drag";
+            drag.disabled = !this.available || Boolean(this.query?.trim());
             const dragIcon = document.getElementById("watchlist-drag-icon")?.cloneNode(true);
             if (dragIcon) {
                 dragIcon.removeAttribute("id");
@@ -977,7 +988,7 @@ export class Watchlists {
                 drag.append(dragIcon);
             }
             drag.setAttribute("aria-label", `拖拽调整 ${member.name || member.symbol} 的顺序，或按上下方向键移动`);
-            drag.title = "拖动整行排序；触屏长按后拖动；方向键上下移动";
+            drag.title = "仅拖动此手柄排序；方向键上下移动；搜索时不能排序";
             this.bindOrderHandle(drag, row, list);
             const open = document.createElement("button");
             open.type = "button";
@@ -1017,8 +1028,10 @@ export class Watchlists {
             open.addEventListener("click", () => this.onSelect(member.symbol));
             row.append(drag, open);
             this.renderBacktestStatus(row, member.symbol);
-            list.append(row);
+            fragment.append(row);
         }
+        // 完整列表准备好后一次交接，缓存预览与旧行在此之前一直保留。
+        list.replaceChildren(fragment);
         list.scrollTop = scrollTop;
     }
 }

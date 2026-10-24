@@ -1,17 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
+import { LoadController } from "@repo/async-ui";
 
-import {
-    MarketBarsPageSchema,
-    type TMarketBarsPage,
-    type TWatchlistDocument,
-    WatchlistDocumentSchema,
-} from "@repo/contracts";
-
-type TWatchlistWindow = Window & {
-    wavequantParseWatchlistDocument?: (value: unknown) => TWatchlistDocument;
-    wavequantParseMarketBarsPage?: (value: unknown) => TMarketBarsPage;
+type TFeatureWindow = Window & {
+    wavequantCreateFeatureLoader?: <Value>(loader: () => Promise<Value>) => LoadController<Value>;
 };
 
 function ensureScript(id: string, src: string, type?: "module"): Promise<void> {
@@ -46,23 +39,34 @@ function ensureScript(id: string, src: string, type?: "module"): Promise<void> {
 export function ResearchRuntime(): null {
     useEffect(() => {
         let active = true;
-        const runtimeWindow: TWatchlistWindow = window;
-        runtimeWindow.wavequantParseWatchlistDocument = (value: unknown) => WatchlistDocumentSchema.parse(value);
-        runtimeWindow.wavequantParseMarketBarsPage = (value: unknown) => MarketBarsPageSchema.parse(value);
-
-        void ensureScript("wavequant-lightweight-charts", "/vendor/lightweight-charts.js")
-            .then(() => {
-                if (!active) return;
-                return ensureScript("wavequant-research-runtime", "/app.js", "module");
-            })
-            .catch((error: unknown) => {
-                const message = error instanceof Error ? error.message : String(error);
-                const errorPanel = document.getElementById("error");
-                if (errorPanel) {
-                    errorPanel.hidden = false;
-                    errorPanel.textContent = message;
-                }
-            });
+        const runtimeWindow: TFeatureWindow = window;
+        runtimeWindow.wavequantCreateFeatureLoader = <Value,>(loader: () => Promise<Value>) =>
+            new LoadController(loader, { timeoutMs: 8000, retry: 1 });
+        performance.mark("wavequant:research-hydrated");
+        const parsers = import("./research-parsers").then(({ installResearchParsers }) => {
+            if (active) installResearchParsers();
+        });
+        // 缓存预览已独立显示；Schema与图表并行准备，均不阻塞React挂载。
+        void parsers.then(() => {
+            if (active) return ensureScript("wavequant-watchlist-bootstrap", "/watchlist-bootstrap.js", "module");
+        }).catch((error: unknown) => {
+            if (!active) return;
+            const status = document.getElementById("watchlist-status");
+            if (status) status.textContent = error instanceof Error ? error.message : String(error);
+        });
+        const charts = ensureScript("wavequant-lightweight-charts", "/vendor/lightweight-charts.js");
+        void Promise.all([parsers, charts]).then(() => {
+            if (!active) return;
+            performance.mark("wavequant:research-runtime-start");
+            return ensureScript("wavequant-research-runtime", "/app.js", "module");
+        }).catch((error: unknown) => {
+            if (!active) return;
+            const errorPanel = document.getElementById("error");
+            if (errorPanel) {
+                errorPanel.hidden = false;
+                errorPanel.textContent = error instanceof Error ? error.message : String(error);
+            }
+        });
 
         return () => {
             active = false;

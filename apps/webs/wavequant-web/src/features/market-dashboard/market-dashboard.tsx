@@ -1,12 +1,12 @@
 "use client";
 
 import type { JSX } from "react";
+import { AsyncOverview, AsyncCatalog, AsyncLadder } from "./async-market-views";
+import { AsyncFeatureBoundary } from "@/shared/components/async-feature";
 
 import { IndexStrip } from "@/features/market-dashboard/components/index-strip";
-import { LadderView } from "@/features/market-dashboard/components/ladder-view";
 import { MarketTabs } from "@/features/market-dashboard/components/market-tabs";
 import { MarketHeaderActions, MarketToolbar } from "@/features/market-dashboard/components/market-toolbar";
-import { OverviewView } from "@/features/market-dashboard/components/overview-view";
 import { SupportingView } from "@/features/market-dashboard/components/supporting-view";
 import { useMarketWorkspace } from "@/features/market-dashboard/market-workspace-context";
 
@@ -32,8 +32,8 @@ export function MarketDashboard(): JSX.Element {
                 </div>
             </header>
             <div className="market-sections flex min-w-0 flex-col gap-3">
-                {activeTab !== "ladder" && <MarketToolbar />}
-                {activeTab !== "ladder" && <IndexStrip />}
+                {!["ladder", "catalog"].includes(activeTab) && <MarketToolbar />}
+                {!["ladder", "catalog"].includes(activeTab) && <IndexStrip />}
                 <div className="market-view-bar">
                     <span className="market-view-caption">看盘视图</span>
                     <MarketTabs activeTab={activeTab} onChange={setActiveTab} />
@@ -41,16 +41,20 @@ export function MarketDashboard(): JSX.Element {
                 <div
                     role="tabpanel"
                     aria-label={
-                        activeTab === "overview" ? "市场总览" : activeTab === "ladder" ? "涨停阶梯" : "市场辅助视图"
+                        activeTab === "catalog" ? "全市场股票" : activeTab === "overview" ? "市场总览" : activeTab === "ladder" ? "涨停阶梯" : "市场辅助视图"
                     }
                 >
-                    {activeTab === "overview" ? (
-                        <OverviewView onNavigate={setActiveTab} />
+                    <AsyncFeatureBoundary key={activeTab}>
+                    {activeTab === "catalog" ? (
+                        <AsyncCatalog />
+                    ) : activeTab === "overview" ? (
+                        <AsyncOverview onNavigate={setActiveTab} />
                     ) : activeTab === "ladder" ? (
-                        <LadderView />
+                        <AsyncLadder />
                     ) : (
                         <SupportingView tab={activeTab} onNavigate={setActiveTab} />
                     )}
+                    </AsyncFeatureBoundary>
                 </div>
             </div>
         </main>

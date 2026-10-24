@@ -1,3 +1,5 @@
+2026-10-24 MONOREPO-362 Redis配置：仅compose.yaml的Redis默认宿主端口调整6380，保留原卷与AOF everysec并增加1GiB maxmemory/noeviction；已只重建Redis服务，MySQL及Python源码未改。Rust新K线缓存按命名空间512MiB/2048项LRU淘汰。未运行Python/Compose测试或改变Python接口。
+
 2026-10-22 · 海洋王回测异常提交验证完成
 
 用户要求合并到本地 main，不推送。分支 feat-海洋王回测失败 基于 main 2a8c0d6。生产修复将共同确认候选限定为 whole_wave 正 N，防止倒 N 读取不存在的 n_id；API 将 KeyError/IndexError 明确归类为安全 500，不再误报行情 503。提交类型检查暴露 server.py 既有类型标注缺失，补齐 Handler.server、recent 和 params 类型，不改变运行行为。

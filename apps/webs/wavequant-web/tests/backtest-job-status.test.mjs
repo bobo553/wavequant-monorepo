@@ -7,6 +7,7 @@ import {
     adoptServerBacktestHistory,
     expiredBacktestSnapshot,
     formatBacktestElapsed,
+    formatBacktestTiming,
     formatCompletedBacktestElapsed,
     completedBacktestElapsed,
     formatBacktestProgress,
@@ -319,4 +320,11 @@ test("completed duration belongs to the exact finished request and survives hist
     assert.equal(completedBacktestElapsed({ ...task, status: "running" }, [record]), "");
     assert.equal(completedBacktestElapsed(task, [{ ...record, elapsed_seconds: undefined }]), "");
     assert.equal(completedBacktestElapsed({ ...task, elapsedSeconds: 155 }, []), "回测耗时 2 分钟 35 秒");
+});
+
+
+test("后端取数和分析时钟独立显示且保留亚秒精度", () => {
+    assert.equal(formatBacktestTiming({timing_scope:"analysis",data_request_seconds:2.934986,analysis_elapsed_seconds:0}),"取数 2.935 秒 · 分析 0.000 秒");
+    assert.equal(formatBacktestTiming({timing_scope:"analysis",data_request_seconds:2.934986,analysis_elapsed_seconds:0.1047524}),"取数 2.935 秒 · 分析 0.105 秒");
+    assert.equal(formatBacktestTiming({elapsed_seconds:8.9}),"已运行 8 秒");
 });

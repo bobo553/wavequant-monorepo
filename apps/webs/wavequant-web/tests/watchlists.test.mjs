@@ -10,6 +10,7 @@ import {
     createWatchlistGroup,
     deleteWatchlistGroup,
     firstAvailableWatchlistSymbol,
+    filterWatchlistMembers,
     initialWatchlistSymbol,
     normalizeWatchlistSnapshot,
     removeWatchlistMember,
@@ -56,7 +57,7 @@ test("watchlists retain more than 1000 stocks and deduplicate additions", () => 
     assert.equal(duplicate.state.memberships.length, 1205);
 });
 
-test("dragging from the stock button reorders the row without activating its click", async () => {
+test("stock names remain clickable after pointer movement; only the handle reorders", async () => {
     const dom = new JSDOM(`
         <div id="list">
             <div class="watchlist-stock-row" data-symbol="sh.600001">
@@ -89,6 +90,8 @@ test("dragging from the stock button reorders the row without activating its cli
         const saved = [];
         const subject = {
             reordering: false,
+            available: true,
+            query: "",
             orderAnimation: Promise.resolve(),
             animateOrder(_list, rearrange) {
                 rearrange();
@@ -109,20 +112,20 @@ test("dragging from the stock button reorders the row without activating its cli
         };
 
         pointer(open, "pointerdown", 10);
-        pointer(window, "pointerup", 10);
+        pointer(window, "pointermove", 90);
+        pointer(window, "pointerup", 90);
         open.click();
         assert.equal(clicks, 1);
+        assert.deepEqual([...list.children].map((item) => item.dataset.symbol), ["sh.600001", "sh.600002"]);
+        assert.deepEqual(saved, []);
 
-        pointer(open, "pointerdown", 10);
+        pointer(handle, "pointerdown", 10);
         pointer(window, "pointermove", 90);
         pointer(window, "pointerup", 90);
         open.click();
         await subject.orderAnimation;
-        assert.equal(clicks, 1);
-        assert.deepEqual(
-            [...list.children].map((item) => item.dataset.symbol),
-            ["sh.600002", "sh.600001"],
-        );
+        assert.equal(clicks, 2);
+        assert.deepEqual([...list.children].map((item) => item.dataset.symbol), ["sh.600002", "sh.600001"]);
         assert.deepEqual(saved, [["sh.600002", "sh.600001"]]);
         assert.equal(document.querySelector(".watchlist-stock-ghost"), null);
 
@@ -139,22 +142,17 @@ test("dragging from the stock button reorders the row without activating its cli
         touch(open, "touchstart", 70);
         const scroll = touch(window, "touchmove", 10);
         touch(window, "touchend", 10);
-        assert.equal(scroll.defaultPrevented, false);
-        assert.deepEqual(saved, [["sh.600002", "sh.600001"]]);
-
-        touch(open, "touchstart", 70);
-        await new Promise((resolve) => window.setTimeout(resolve, 320));
-        const dragMove = touch(window, "touchmove", 10);
-        touch(window, "touchend", 10);
         open.click();
+        assert.equal(scroll.defaultPrevented, false);
+        assert.equal(clicks, 3);
+        assert.equal(saved.length, 1);
+
+        pointer(handle, "pointerdown", 70);
+        pointer(window, "pointermove", 10);
+        pointer(window, "pointercancel", 10);
         await subject.orderAnimation;
-        assert.equal(dragMove.defaultPrevented, true);
-        assert.equal(clicks, 1);
-        assert.deepEqual(
-            [...list.children].map((item) => item.dataset.symbol),
-            ["sh.600001", "sh.600002"],
-        );
-        assert.deepEqual(saved[1], ["sh.600001", "sh.600002"]);
+        assert.equal(saved.length, 1);
+        assert.deepEqual([...list.children].map((item) => item.dataset.symbol), ["sh.600002", "sh.600001"]);
     } finally {
         dom.window.close();
         if (previousWindow === undefined) delete globalThis.window;
@@ -388,4 +386,12 @@ test("deleting a category migrates unique members into the protected default cat
     );
     assert.deepEqual(deleted.memberships.map((membership) => membership.symbol).sort(), ["sh.600519", "sz.000001"]);
     assert.throws(() => deleteWatchlistGroup(deleted, "default"), /不能删除/);
+});
+
+
+test("watchlist search preserves order and supports combined name and code tokens", () => {
+    const members = [{ symbol: "sz.002724", name: "海洋王" }, { symbol: "sz.000978", name: "桂林旅游" }];
+    assert.deepEqual(filterWatchlistMembers(members, "海洋 002724"), [members[0]]);
+    assert.deepEqual(filterWatchlistMembers(members, "不存在"), []);
+    assert.deepEqual(filterWatchlistMembers(members, ""), members);
 });

@@ -1,0 +1,47 @@
+{
+  "structure": "same_lecture_reducer_close_confirmed_only",
+  "entry_policy": "bear_flip_then_alternation_then_bull_then_new_n_squeeze",
+  "channels": [
+    "n_continuation",
+    "squeeze_pullback_resume"
+  ],
+  "conditional_tags": {
+    "washout_reattack": "annotation_only_all_entry_gates_still_required",
+    "positive_turn_then_n": "requires_caller_supplied_minor_points_unavailable_in_daily_dashboard"
+  },
+  "primary_filters": [
+    "bullish_transition",
+    "squeeze_regime",
+    "countermove_below_2_3",
+    "rvol_1_2",
+    "gross_rr_1_5",
+    "next_open_net_rr_1_5"
+  ],
+  "context_only": [
+    "level_1_2_3_trends",
+    "washout",
+    "three_six_fraction_strength"
+  ],
+  "not_entry_gates": [
+    "abc_equal_wave",
+    "five_tops_ten_full",
+    "claimed_70_or_80_percent_probabilities"
+  ],
+  "target_policy": "nearest_unhit_equal_wave_then_one_p_then_two_t_no_skipping_to_inflate_rr",
+  "exits": [
+    "inverse_n",
+    "last_rise_low_close_break",
+    "undefined_structure",
+    "stop_observed_then_next_open",
+    "target_observed_then_next_open",
+    "maximum_holding_bars"
+  ],
+  "conditional_exits": {
+    "negative_turn": "requires_caller_supplied_minor_points_unavailable_in_daily_dashboard"
+  },
+  "limitations": [
+    "child_mother_order_is_a_lecture_convention_not_observed_intrabar_path",
+    "same_day_pivots_do_not_form_a_daily_N",
+    "no_profitability_claim"
+  ]
+}

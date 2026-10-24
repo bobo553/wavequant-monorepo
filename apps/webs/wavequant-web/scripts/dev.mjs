@@ -12,6 +12,8 @@ import {
     shouldStartBundledInfrastructure,
 } from "./dev-infrastructure.mjs";
 
+import { startResearchWarmup } from "./warm-research.mjs";
+
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const monorepoRoot = resolve(workspaceRoot, "../../..");
 assertMainRuntime(monorepoRoot);
@@ -42,10 +44,12 @@ const children = new Set();
 const restartTimers = new Set();
 let stopping = false;
 let stopRevisionPublisher;
+let stopWarmup;
 
 function stop(code = 0) {
     if (stopping) return;
     stopping = true;
+    stopWarmup?.();
     stopRevisionPublisher?.();
     for (const timer of restartTimers) clearTimeout(timer);
     for (const child of children) {
@@ -190,7 +194,8 @@ if (resultsRoot) {
     );
 }
 
-runPnpm(["exec", "next", "dev", "--turbopack", "--port", webPort], workspaceRoot, { label: "Next.js" });
+const next = runPnpm(["exec", "next", "dev", "--turbopack", "--port", webPort], workspaceRoot, { label: "Next.js" });
+stopWarmup = startResearchWarmup(next, webOrigin);
 stopRevisionPublisher = startMainRevisionPublisher(monorepoRoot, resolve(workspaceRoot, "public"), () => stop(1));
 
 process.on("SIGINT", () => stop(0));

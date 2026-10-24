@@ -16,30 +16,30 @@ describe("MarketDashboard", () => {
         renderDashboard();
 
         expect(screen.getByRole("heading", { name: "市场看盘" })).toBeInTheDocument();
-        expect(screen.getByText("大盘与市场广度")).toBeInTheDocument();
+        expect(await screen.findByText("大盘与市场广度")).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("tab", { name: "涨停阶梯" }));
 
-        expect(screen.getByRole("heading", { name: "每日涨停天梯" })).toBeInTheDocument();
+        expect(await screen.findByRole("heading", { name: "每日涨停天梯" })).toBeInTheDocument();
         expect(screen.getByLabelText("涨停天梯日期")).toBeInTheDocument();
     });
 
-    it("keeps all eight market views interactive", () => {
+    it("keeps market views interactive after their chunks load", async () => {
         renderDashboard();
 
         fireEvent.click(screen.getByRole("tab", { name: "板块轮动" }));
-        expect(screen.getByRole("heading", { name: "板块轮动 · 同刻横向比较" })).toBeInTheDocument();
+        expect(await screen.findByRole("heading", { name: "板块轮动 · 同刻横向比较" })).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("tab", { name: /异动雷达/ }));
-        fireEvent.click(screen.getByRole("button", { name: "暂停插入" }));
+        fireEvent.click(await screen.findByRole("button", { name: "暂停插入" }));
         expect(screen.getByRole("button", { name: /恢复插入/ })).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("tab", { name: "多股同屏" }));
-        fireEvent.click(screen.getByRole("button", { name: "6 图" }));
+        fireEvent.click(await screen.findByRole("button", { name: "6 图" }));
         expect(screen.getAllByRole("img", { name: /分时百分比走势/ })).toHaveLength(6);
 
         fireEvent.click(screen.getByRole("tab", { name: "盘后复盘" }));
-        fireEvent.change(screen.getByRole("textbox", { name: "人工研究笔记" }), { target: { value: "验证反向证据" } });
+        fireEvent.change(await screen.findByRole("textbox", { name: "人工研究笔记" }), { target: { value: "验证反向证据" } });
         expect(screen.getByDisplayValue("验证反向证据")).toBeInTheDocument();
     });
 });

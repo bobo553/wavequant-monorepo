@@ -1,3 +1,4 @@
+import { decodeIndexedDocument, encodeIndexedDocument } from "./indexed-document.js";
 const DATABASE_NAME = "wavequant-market-data";
 const DATABASE_VERSION = 2;
 const STORE_NAME = "stock-catalogs";
@@ -114,6 +115,7 @@ export const marketTimeframeStorage = {
 };
 
 function cachedCatalog(cached, status, warning) {
+    cached = { ...cached, catalog: decodeIndexedDocument(cached.catalog) };
     const warnings = Array.isArray(cached.catalog.warnings) ? cached.catalog.warnings : [];
     return {
         ...cached.catalog,
@@ -131,13 +133,35 @@ function cachedCatalog(cached, status, warning) {
 export async function loadStockCatalog(
     source,
     path,
-    { fetcher = fetch, storage = stockCatalogStorage, timeoutMs = 30_000 } = {},
+    { fetcher = fetch, storage = stockCatalogStorage, timeoutMs = 30_000, staleWhileRevalidate = false, onRefresh } = {},
 ) {
     let cached = null;
     try {
         cached = await storage.get(source);
     } catch {
         // Private browsing or a damaged database must not prevent a network load.
+    }
+
+    // 来源隔离及结构校验先于复用，损坏缓存不能阻止重新获取目录。
+    if (cached) {
+        try {
+            const catalog = decodeIndexedDocument(cached.catalog);
+            if (cached.source !== source || (catalog.source && catalog.source !== source) ||
+                !Array.isArray(catalog.stocks) || !catalog.stocks.length || !catalog.with_daily) cached = null;
+        } catch {
+            cached = null;
+        }
+    }
+    if (staleWhileRevalidate && cached) {
+        // 下一任务再校验，保证调用方先安装缓存；后台更新不能阻塞首屏。
+        setTimeout(() => {
+            void loadStockCatalog(source, path, {
+                fetcher, storage: { get: async () => cached, put: (entry) => storage.put(entry) }, timeoutMs,
+            }).then((catalog) => onRefresh?.(catalog)).catch(() => {
+                // 缓存已交付，刷新或消费失败不使首屏初始化失败。
+            });
+        }, 0);
+        return cachedCatalog(cached, "stale-while-revalidate");
     }
 
     try {
@@ -150,12 +174,12 @@ export async function loadStockCatalog(
             if (!cached) throw new Error("服务器返回 304，但本地股票目录不存在");
             return cachedCatalog(cached, "validated");
         }
-        const body = await response.json();
+        const body = decodeIndexedDocument(await response.json());
         if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
         const etag = response.headers.get("ETag");
         if (etag && (!cached || cached.etag !== etag)) {
             try {
-                await storage.put({ source, etag, catalog: body, updatedAt: new Date().toISOString() });
+                await storage.put({ source, etag, catalog: encodeIndexedDocument(body), updatedAt: new Date().toISOString() });
             } catch {
                 // The fresh server response remains authoritative if persistence fails.
             }
@@ -289,9 +313,9 @@ export async function loadMarketTimeframeSnapshot(
         if (response.status === 304) {
             if (!cached) throw new Error("服务器返回 304，但本地周期快照不存在");
             signal?.throwIfAborted();
-            return { ...validateIdentity(validatedTimeframeBundle(cached.bundle)), browser_cache: "validated" };
+            return { ...validateIdentity(validatedTimeframeBundle(decodeIndexedDocument(cached.bundle))), browser_cache: "validated" };
         }
-        const body = await response.json();
+        const body = decodeIndexedDocument(await response.json());
         signal?.throwIfAborted();
         if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
         const bundle = validateIdentity(validatedTimeframeBundle(body));
@@ -309,7 +333,7 @@ export async function loadMarketTimeframeSnapshot(
                     dataVersion: bundle.data_version,
                     algorithmVersion: bundle.algorithm_version,
                     etag,
-                    bundle,
+                    bundle: encodeIndexedDocument(bundle),
                     cachedAt: new Date().toISOString(),
                 });
             } catch {

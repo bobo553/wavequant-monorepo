@@ -1,4 +1,4 @@
-export type TMarketTabId = "overview" | "sectors" | "themes" | "ladder" | "leaders" | "radar" | "multi" | "review";
+export type TMarketTabId = "overview" | "catalog" | "sectors" | "themes" | "ladder" | "leaders" | "radar" | "multi" | "review";
 
 export type TMarketTheme = "dark" | "light";
 export type TMarketColorTheme = "market-blue" | "wavequant-teal";

@@ -1,33 +1,9 @@
 import type { JSX } from "react";
 
-/** 选股入口、交易节点与预计算信号查询。 */
+/** 交易节点与预计算信号查询；选股统一由左侧自选栏承载。 */
 export function StockBrowser(): JSX.Element {
     return (
-        <aside className="panel stock-browser" aria-label="股票与回测信息">
-            <button
-                id="stock-picker-toggle"
-                className="stock-picker-toggle"
-                type="button"
-                aria-expanded="true"
-                aria-controls="stock-picker-panel"
-            >
-                <span>选择股票</span>
-                <strong id="stock-picker-current">读取中…</strong>
-                <span aria-hidden="true">⌄</span>
-            </button>
-            <div id="stock-picker-panel" className="stock-picker-panel">
-                <div id="stock-browser-header" className="stock-browser-header">
-                    <div>
-                        <h2>
-                            股票列表 <small id="stock-count">读取中…</small>
-                        </h2>
-                        <p id="stock-source-notice">通达信本地沪深北 A 股目录</p>
-                    </div>
-                </div>
-                <div id="stock-list" className="stock-list">
-                    <p className="stock-empty">正在读取股票列表…</p>
-                </div>
-            </div>
+        <aside className="panel stock-browser" aria-label="交易节点与结构信号">
             <p id="stock-picker-feedback" className="stock-picker-feedback" role="status" hidden />
             <div className="stock-tabs" aria-label="右侧信息类型">
                 <button id="trade-nodes-tab" aria-pressed="false" hidden>

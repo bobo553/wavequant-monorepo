@@ -40,6 +40,11 @@ export const WatchlistSettingsSchema = z.object({
         n_target_trend_confirmation_enabled: z.enum(["true", "false"]).default("false"),
         ordinary_trend_completion_enabled: z.enum(["true", "false"]).default("false"),
         buy_interval_level: BuyIntervalLevelSchema,
+        trading_enabled: z.literal("false").default("false"),
+        enable_secondary_reversal: z.string().default("[false,false,true,false]").refine(raw=>{
+            try { const values:unknown=JSON.parse(raw); return Array.isArray(values)&&values.length===4&&values.every(value=>typeof value==="boolean"); }
+            catch { return false; }
+        }),
         initial_capital: z
             .string()
             .refine((value) => Number.isFinite(Number(value)) && Number(value) > 0 && Number(value) <= 1e9),
@@ -72,3 +77,9 @@ export const WatchlistMembersMutationSchema = z.object({
         .min(1),
 });
 export type TWatchlistMembersMutation = z.infer<typeof WatchlistMembersMutationSchema>;
+
+/** Rust趋势计算执行开关；不改变策略规则，关闭时从零重算趋势状态机。 */
+export const TrendExecutionOptionsSchema = z.object({
+    trend_offset_enabled: z.enum(["true", "false"]).default("true"),
+});
+export type TTrendExecutionOptions = z.infer<typeof TrendExecutionOptionsSchema>;

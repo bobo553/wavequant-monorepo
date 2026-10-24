@@ -127,6 +127,14 @@ export function formatBacktestElapsed(seconds) {
     return `已运行 ${hours} 小时${remainingMinutes ? ` ${remainingMinutes} 分钟` : ""}`;
 }
 
+/** analysis口径不包含取数；直接使用后端时钟，避免把取数等待显示为已运行0秒。 */
+export function formatBacktestTiming(job) {
+    if (job?.timing_scope !== "analysis") return formatBacktestElapsed(job?.elapsed_seconds);
+    const fields = [["取数", job.data_request_seconds], ["分析", job.analysis_elapsed_seconds ?? job.elapsed_seconds], ["后端总计", job.total_elapsed_seconds]];
+    return fields.filter(([, seconds]) => Number.isFinite(seconds) && seconds >= 0)
+        .map(([label, seconds]) => label + " " + seconds.toFixed(3) + " 秒").join(" · ");
+}
+
 export function formatBacktestProgress(percent) {
     return Number.isInteger(percent) && percent >= 0 && percent <= 99 ? `${percent}%` : "";
 }
@@ -158,9 +166,12 @@ export function formatBacktestJobProgress(job) {
 }
 
 export function formatBacktestStage(job) {
-    const stage = Number.isSafeInteger(job?.processed_sessions) && job.total_sessions > 0
-        ? `同日联动：折线 → 一级 → 二级 → 三级 → B/S及账户 · 已处理${job.processed_sessions}/${job.total_sessions}个交易日 · 截至${job.processed_asof}`
-        : typeof job?.progress_stage === "string" ? job.progress_stage.trim() : "";
+    const backendStage = typeof job?.progress_stage === "string" ? job.progress_stage.trim() : "";
+    const detail = Number.isSafeInteger(job?.processed_sessions) && job.total_sessions > 0
+        ? `已处理${job.processed_sessions}/${job.total_sessions}个交易日 · 截至${job.processed_asof}` : "";
+    const stage = detail && /已处理\d+\/\d+个交易日/.test(backendStage)
+        ? backendStage.replace(/已处理\d+\/\d+个交易日(?:\s*·\s*截至[^·]*)?/, detail)
+        : [backendStage, detail].filter(Boolean).join(" · ");
     const progress = backtestProgress(job);
     const percent = progress ? `${progress.scope === "sessions" ? "交易日进度 " : ""}${progress.percent}%` : "";
     return [stage ? `当前步骤：${stage}` : "", percent].filter(Boolean).join(" · ");
@@ -181,5 +192,7 @@ export function completedBacktestElapsed(task, recent) {
         && item.job === task.params.backtest_job && item.path === task.path
         && item.symbol === task.symbol && item.version === task.version
         && backtestArgumentsKey(item.path, item.params || {}) === backtestArgumentsKey(task.path, task.params));
+    if (record?.timing_scope === "analysis") return formatBacktestTiming(record);
+    if (task.result?.performance?.timing_scope === "analysis") return formatBacktestTiming(task.result.performance);
     return formatCompletedBacktestElapsed(record?.elapsed_seconds ?? task.elapsedSeconds);
 }
