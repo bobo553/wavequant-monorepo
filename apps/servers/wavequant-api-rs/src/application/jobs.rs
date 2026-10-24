@@ -93,7 +93,7 @@ impl BacktestJobs {
         job.completed=Some(Instant::now());job.preview=None;
         let mut item=job.details.clone();item["job"]=json!(id);item["status"]=json!(if outcome.is_ok(){"completed"}else{"failed"});item["elapsed_seconds"]=json!(elapsed(job));item["pipeline"]=json!(job.pipeline);item["analysis_elapsed_seconds"]=json!(elapsed(job));item["data_request_seconds"]=json!(data_elapsed(job));item["total_elapsed_seconds"]=json!(total_elapsed(job));item["timing_scope"]=json!("analysis");
         if let Ok(result)=&outcome {
-            let valid=result["calculation_mode"]!="polyline_only"&&result["calculation_mode"]!="first_level_only"&&result["complete"]!=false&&result["result_scope"]=="stock"&&result["backtest"].is_object()&&result["backtest"]["status"]!="data_unavailable";
+            let valid=result["calculation_mode"]!="polyline_only"&&result["calculation_mode"]!="third_level_only"&&result["complete"]!=false&&result["result_scope"]=="stock"&&result["backtest"].is_object()&&result["backtest"]["status"]!="data_unavailable";
             item["result_valid"]=json!(valid);
             if valid {
                 if let Some(orders)=result["orders"].as_array(){item["fill_count"]=json!(orders.iter().filter(|row|row["status"]=="filled").count());}
@@ -167,6 +167,6 @@ impl JobReporter {
         let curve=preview["curve"].as_array().ok_or_else(||ApiError::invalid("preview requires an equity curve"))?;
         if curve.len() as u64!=processed||curve.last().and_then(|row|row["timestamp"].as_str()).and_then(|time|time.get(..10))!=Some(asof){return Err(ApiError::invalid("preview account must finish the same market day"));}
         let mut registry=self.jobs.lock()?;
-        if let Some(job)=registry.jobs.get_mut(&self.id){if job.outcome.is_none()&&revision>job.preview_revision{job.preview_revision=revision;let flow=if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{"折线 → 一级趋势计算"}else{"同日联动：折线 → 一级 → 二级 → 三级 → B/S及账户"};job.stage=format!("{flow} · 已处理{processed}/{total}个交易日 · 截至{asof}{}",job.timing);job.preview=Some(preview);}}Ok(())
+        if let Some(job)=registry.jobs.get_mut(&self.id){if job.outcome.is_none()&&revision>job.preview_revision{job.preview_revision=revision;let flow=if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{"折线 → 一级 → 二级 → 三级趋势计算"}else{"同日联动：折线 → 一级 → 二级 → 三级 → B/S及账户"};job.stage=format!("{flow} · 已处理{processed}/{total}个交易日 · 截至{asof}{}",job.timing);job.preview=Some(preview);}}Ok(())
     }
 }

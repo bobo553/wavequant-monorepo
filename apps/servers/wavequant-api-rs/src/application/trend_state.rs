@@ -56,7 +56,7 @@ pub fn response(indexed:&IndexedAnalysis,bars:&[RuleCandle],source:&str,_asof:&s
     let data_version=super::research::digest(&wavequant_quant_rs::indexed_json::to_vec(&json!(["trend-bars-v1",symbol,timeframe,source,rows]))?);
     let snapshot=json!({"schemaVersion":1,"symbol":symbol,"timeframe":timeframe,"dataVersion":data_version,"source":source,"asof":bars.last().map(|b|b.timestamp.as_str()),"priceBasis":"causal_adjusted_equivalent","bars":rows});
     // 当前启用范围保持不变；不能用配置中的交易开关冒充结构计算开关。
-    let enabled=if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{[true,true,false,false]}else{[true;4]};
+    let enabled=[true;4];
     let dto=StateDto{version:indexed.state.version,current_index:indexed.state.current_index,dynamic_data_index:indexed.state.dynamic_data_index,enabled,trend_state:std::array::from_fn(|i|indexed.levels[i].state),data:PointDataDto{polyline,level1:trend(1)?,level2:trend(2)?,level3:trend(3)?}};
     let value=json!({"schemaVersion":1,"symbol":symbol,"timeframe":timeframe,"dataVersion":data_version,"complete":indexed.complete,"unavailableRules":indexed.unavailable_rules,"state":wavequant_quant_rs::indexed_json::to_value(dto)?,"timing":{"dataRequestMs":data_seconds*1000.0,"analysisMs":analysis_seconds*1000.0,"totalMs":total_seconds*1000.0}});
     Ok((value,snapshot))

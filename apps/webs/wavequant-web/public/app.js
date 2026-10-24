@@ -552,7 +552,7 @@ function renderStockBacktestStatus() {
         running
             ? `${name} · ${stage || current?.message || "正在等待服务器进度…"} ${serverStatus}可继续查看或切换股票。`
             : current?.status === "completed"
-              ? `${name} · ${current.result?.calculation_mode === "first_level_only" ? "折线与一级趋势计算已完成" : "回测已完成"}${completedElapsed ? ` · ${completedElapsed}` : ""}，结果已显示在当前股票。`
+              ? `${name} · ${["first_level_only","second_level_only","third_level_only"].includes(current.result?.calculation_mode) ? "各级趋势计算已完成" : "回测已完成"}${completedElapsed ? ` · ${completedElapsed}` : ""}，结果已显示在当前股票。`
               : current?.status === "failed"
                 ? `${name} · 回测失败：${current.error?.message || "未知错误"}。可修改设置后重试。`
                 : "";
@@ -1601,9 +1601,9 @@ function renderMetrics() {
         setSecondaryText("orders-scope-label", "当前仅行情，无委托");
         return;
     }
-    if (state.view.calculation_mode === "first_level_only") {
+    if (["first_level_only","second_level_only","third_level_only"].includes(state.view.calculation_mode)) {
         document.querySelector(".metric-grid").hidden = true;
-        $("evidence").textContent = "折线与一级趋势索引计算完成，交易判断未运行。";
+        $("evidence").textContent = "各级趋势索引计算完成，交易判断未运行。";
         $("backtest-details").hidden = true;
         setSecondaryText("curve-scope-label", "结构计算未生成净值");
         setSecondaryText("orders-scope-label", "结构计算未执行交易");
@@ -2742,7 +2742,7 @@ async function loadView({
         state.marketPreview = false;
         if (timeframeBundle) state.marketDataVersion = timeframeBundle.data_version;
         marketLoadStatus("");
-        const showTrades = !data.calculation_mode === "first_level_only" && data.result_scope === "stock" && Boolean(data.backtest);
+        const showTrades = !["first_level_only","second_level_only","third_level_only"].includes(data.calculation_mode) && data.result_scope === "stock" && Boolean(data.backtest);
         if (showTrades && (preferTrades || $("trade-nodes-tab").hidden)) {
             state.tradeNodeFilter = "all";
             state.tradeNodeView = "filled";
@@ -2797,8 +2797,8 @@ async function loadView({
         updatePerformance();
         const last = data.bars.at(-1);
         const providerNames = { akshare: "AkShare", tdx: "通达信" };
-        const sourceSummary = data.calculation_mode === "first_level_only"
-            ? "折线与一级趋势已计算，二级、三级及交易未运行。"
+        const sourceSummary = ["first_level_only","second_level_only","third_level_only"].includes(data.calculation_mode)
+            ? "折线及一、二、三级趋势已计算，交易未运行。"
             : data.source_fallback
             ? `首选 ${providerNames[data.data_source] || data.data_source}，已回退到 ${providerNames[data.resolved_source] || data.resolved_source}。`
             : data.supplemented_bars
@@ -2821,7 +2821,7 @@ async function loadView({
                   : " 浏览器周期缓存已同步。"
             : "";
         setSelectedStockSummary(
-            `${backtestMode ? (data.calculation_mode === "first_level_only" ? "当前股票趋势计算已完成 · " : "当前股票回测已完成 · ") : ""}${symbolName(data.symbol)} · ${data.asof} ${data.timeframe_label || "日线"}截面｜原始收盘 ${num(last.raw_close)} 元 · 周期成交量 ${num(last.volume, 0)} 股。${sourceSummary}${cacheSummary}${data.is_partial_last_bar ? " 当前最后一根周期 K 线尚未收完。" : ""}`,
+            `${backtestMode ? (["first_level_only","second_level_only","third_level_only"].includes(data.calculation_mode) ? "当前股票趋势计算已完成 · " : "当前股票回测已完成 · ") : ""}${symbolName(data.symbol)} · ${data.asof} ${data.timeframe_label || "日线"}截面｜原始收盘 ${num(last.raw_close)} 元 · 周期成交量 ${num(last.volume, 0)} 股。${sourceSummary}${cacheSummary}${data.is_partial_last_bar ? " 当前最后一根周期 K 线尚未收完。" : ""}`,
             backtestMode ? "completed" : null);
         $("price-chart").dataset.symbol = data.symbol;
         tradingViewWidget.setLocalSymbol(data.symbol);

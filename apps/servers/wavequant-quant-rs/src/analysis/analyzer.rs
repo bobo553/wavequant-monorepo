@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use super::{kernel::{self, KernelBar, KernelFrame, KernelOptions, TrendState}, trading::{self, RuleCandle, qualification::TradingEligibility, FrameTradeEvaluation}};
 
-pub const VERSION: u32 = 14;
-// 用户临时要求仅计算折线；恢复其他等级时关闭此开关。
+pub const VERSION: u32 = 21;
+// 结构模式计算全部四级；账户交易保持独立停用。
 pub const STRUCTURE_ONLY:bool=true;
 const MAX_BARS: usize = 250_000;
 
@@ -274,7 +274,7 @@ impl TrendAnalyzer {
         self.last_execution.clear();
         self.prepare_structure(asof)?;
         // 结构函数已逐层返回；交易结果只在整条结构链完成后附加一次。
-        for level in 0..=if STRUCTURE_ONLY{1}else{3} {let result=self.describe_execution(level,asof)?;self.last_execution.push(result);}
+        for level in 0..=3 {let result=self.describe_execution(level,asof)?;self.last_execution.push(result);}
         hash_bar(&mut self.prefix_hasher,&self.bars[asof])?;
         self.state.current_index=asof+1;
         Ok(true)
@@ -299,17 +299,18 @@ impl TrendAnalyzer {
         Ok(())
     }
     /// 各层只接收直接下层的点号，偏移为该下层数组内的前趋势起点。
-    pub fn finish_first_level_array(&mut self)->Result<(),String>{
+    pub fn finish_level_array(&mut self,level:usize)->Result<(),String>{
+        if !(1..=3).contains(&level){return Err("trend level must be 1, 2 or 3".into());}
         let Some(asof)=self.state.current_index.checked_sub(1)else{return Ok(());};
-        let Some(frames)=self.array_frames.as_mut()else{self.execute_level_function(1,asof)?;return Ok(());};
-        let offset=frames[0].offset(&self.polyline_cursor.arena,&self.kernel_bars)?;
+        let Some(frames)=self.array_frames.as_mut()else{self.execute_level_function(level,asof)?;return Ok(());};
+        let offset=frames[level-1].offset(&self.polyline_cursor.arena,&self.kernel_bars)?;
         let phase=Instant::now();
-        let frame=self.trend_cursors[1].advance_indices(&mut self.polyline_cursor.arena,&self.kernel_bars,
-            &frames[0].points,offset,1,asof,&self.state.config.kernel)?;
-        *self.phase_timings.entry("level1.trend_kernel".into()).or_default()+=phase.elapsed().as_secs_f64();
-        let phase=Instant::now();self.state.dynamic_data_index[1]=frame.offset(&self.polyline_cursor.arena,&self.kernel_bars)?;
-        self.source_changed[1]=frames[1].points!=frame.points;frames[1]=frame;self.array_compat.take();
-        *self.phase_timings.entry("level1.install".into()).or_default()+=phase.elapsed().as_secs_f64();Ok(())
+        let frame=self.trend_cursors[level].advance_indices(&mut self.polyline_cursor.arena,&self.kernel_bars,
+            &frames[level-1].points,offset,level as u8,asof,&self.state.config.kernel)?;
+        *self.phase_timings.entry(format!("level{level}.trend_kernel")).or_default()+=phase.elapsed().as_secs_f64();
+        let phase=Instant::now();self.state.dynamic_data_index[level]=frame.offset(&self.polyline_cursor.arena,&self.kernel_bars)?;
+        self.source_changed[level]=frames[level].points!=frame.points;frames[level]=frame;self.array_compat.take();
+        *self.phase_timings.entry(format!("level{level}.install")).or_default()+=phase.elapsed().as_secs_f64();Ok(())
     }
     pub fn trading_state(&self)->&trading::day::TradingDayState{&self.trading_state}
     pub fn eligibilities(&self)->&[TradingEligibility;4]{&self.eligibility}
@@ -389,10 +390,9 @@ impl TrendAnalyzer {
     fn prepare_structure(&mut self,asof:usize)->Result<(),String> {
         if self.prepared_at==Some(asof){return Ok(());}
         if STRUCTURE_ONLY {
-            // 当前只开放折线和一级；更高等级及交易继续停用。
+            // 各级沿直接下层来源顺序推进，共用同一个趋势核心。
             self.execute_polyline_function(asof)?;
-            self.execute_level_function(1,asof)?;
-            for level in 2..=3{self.frames[level]=KernelFrame::empty(level as u8);self.source_changed[level]=false;}
+            for level in 1..=3{self.execute_level_function(level,asof)?;}
             let evaluations:Vec<_>=(0..4).map(|_|FrameTradeEvaluation{alternation_ended:false,in_qualification_range:false,
                 trade_point:false,unavailable_rules:Vec::new(),n_observations:Vec::new(),events:Vec::new(),
                 entry_rejections:vec!["polyline_only_mode".into()],exit_decisions:Vec::new()}).collect();
@@ -486,7 +486,7 @@ impl TrendAnalyzer {
         let phase=Instant::now();
         let mut frame=if let Some(cache)=self.caches[level].as_ref().filter(|cache|cache.source_digest==raw_version){cache.frame.clone()}
             else{self.trend_cursors[level].advance_from(&source,offset,level as u8,asof,&self.state.config.kernel)?};
-        *self.phase_timings.entry("level1.trend_kernel".into()).or_default()+=phase.elapsed().as_secs_f64();
+        *self.phase_timings.entry(format!("level{level}.trend_kernel")).or_default()+=phase.elapsed().as_secs_f64();
         let phase=Instant::now();
         self.caches[level]=Some(LevelCache{source_digest:raw_version,frame:frame.clone()});
         self.phase_timings.insert(format!("level{level}.cache_copy"),phase.elapsed().as_secs_f64());
