@@ -124,13 +124,13 @@ fn project_polyline(response:&AnalysisResponse,bars:&[Value],engine:&str)->Resul
     let mut result=json!({"asof":date(bars,cutoff)?,"points":points,
         "polyline_segments":segments.into_iter().map(|(path,points)|json!({"id":format!("epoch-{path}"),"points":points})).collect::<Vec<_>>(),
         "lecture_drawing":drawing,"events":[],"shapes":[],"counts":{"rows":bars.len(),"polyline_points":point_count},"event_counts":{},
-        "trading_applicable":false,"calculation_mode":"first_level_only","computed_from":"rust_polyline_array",
+        "trading_applicable":false,"calculation_mode":"third_level_only","computed_from":"rust_polyline_array",
         "engine_sha256":engine,"complete":response.complete,"unavailable_rules":response.unavailable_rules,
         "interrupted":frame.blocked_at==Some(cutoff),"strategy_pivot_mode":response.state.config.trading.pivot_mode,
-        "note":"计算折线及一级趋势；二级、三级及交易判断已停用。"});
+        "note":"计算折线及一、二、三级趋势；交易判断保持停用。"});
     for (index,field) in ["reversal_trends","secondary_trends","tertiary_trends"].into_iter().enumerate(){
-        let enabled=index==0;
-        let mut empty=if enabled{geometry(&response.levels[1],Some(frame),bars,false)?}else{geometry(&KernelFrame::empty((index+1) as u8),None,bars,false)?};
+        let enabled=true;
+        let mut empty=if enabled{geometry(&response.levels[index+1],Some(&response.levels[index]),bars,false)?}else{geometry(&KernelFrame::empty((index+1) as u8),None,bars,false)?};
         empty["enabled"]=json!(enabled);
         if !enabled{empty["source_strokes"]=json!([]);}
         for(field,developing)in[("strokes",false),("developing_strokes",true)]{if let Some(strokes)=empty[field].as_array_mut(){for stroke in strokes{stroke["kind"]=json!(format!("{}{}",["reversal","secondary","tertiary"][index],if developing{"-developing"}else{""}));if developing{stroke["display_only"]=json!(true);}}}}

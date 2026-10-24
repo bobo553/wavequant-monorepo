@@ -3,9 +3,9 @@
 本文说明当前 Rust 实现，供趋势内核、买卖规则、账户执行、调度、接口与展示逻辑的维护者使用。它是本仓库这些 Mermaid 流程图的唯一维护位置。
 
 - 维护责任：修改相关逻辑的开发者在同一变更中同步维护。
-- 最近源码核对：2026-10-24；`analyzer::VERSION = 14`。
+- 最近源码核对：2026-10-25；`analyzer::VERSION = 21`。
 - 核对方式：阅读下表列出的源码；本次未运行算法测试或 Mermaid 渲染验证。
-- 当前范围：`STRUCTURE_ONLY = true`，主流程启用折线和一级，二级、三级及交易停用。图示保留未启用实现，但不表示它们已通过运行验收。
+- 当前范围：`STRUCTURE_ONLY = true`，主流程启用折线及一、二、三级，交易停用。图示保留未启用实现，但不表示它们已通过运行验收。
 
 ## 源码与图示对应关系
 
@@ -28,30 +28,23 @@
 
 ## 图一：当前主流程
 
-此图描述 `STRUCTURE_ONLY` 且 `pivot_mode = lecture_causal` 的数组快速路径：先逐根推进折线，再汇总并计算一级。`system.rs` 中的结构模式入口调用 `advance_polyline_index`、`finish_polyline_array`、`finish_first_level_array`。其他入口仍可能走逐日 `process_next / prepare_structure`，不得把此快速路径描述成所有入口的唯一调度方式。
+此图描述 `STRUCTURE_ONLY` 且 `pivot_mode = lecture_causal` 的数组快速路径：先逐根推进折线，再汇总并依次计算一级、二级、三级。`system.rs` 中的结构模式入口调用 `advance_polyline_index`、`finish_polyline_array`、`finish_level_array(level)`。其他入口仍可能走逐日 `process_next / prepare_structure`，不得把此快速路径描述成所有入口的唯一调度方式。
 
-实线为当前执行路径，虚线为已实现但当前跳过的后续层级。
+实线为当前结构执行路径，交易保持停用。
 
 ```mermaid
 flowchart TD
-    A["输入同一周期的 K 线数组"] --> B["currentIndex 指向下一根 K 线"]
-    B --> C{"还有未处理 K 线？"}
-    C -->|有| D["推进折线：包含关系、顶底及尾部处理"]
-    D --> E["currentIndex 加一"]
-    E --> C
-    C -->|没有| F["生成折线点数组及折线偏移量"]
-    F --> G["调用共用趋势函数，level = 1"]
-    G --> H["保存一级趋势点、发展尾点、六态及偏移量"]
-    H --> I["返回索引化结果给前端"]
-    H -.->|当前跳过| J["二级：读取一级已结束点"]
-    J -.->|当前跳过| K["三级：读取二级已结束点"]
-    K -.->|当前跳过| L["交易判断及账户处理"]
-    style J fill:#eee,stroke:#999,color:#666
-    style K fill:#eee,stroke:#999,color:#666
-    style L fill:#eee,stroke:#999,color:#666
+    A["输入同周期K线数组"] --> B{"还有未处理K线？"}
+    B -->|有| C["按索引推进折线"] --> B
+    B -->|没有| D["生成折线点与本级前趋势起点偏移"]
+    D --> E["同一核心 level=1，读取折线"]
+    E --> F["同一核心 level=2，读取一级及一级偏移"]
+    F --> G["同一核心 level=3，读取二级及二级偏移"]
+    G --> H["返回四级索引数组、六态和偏移"]
+    H -.->|保持停用| I["交易及账户"]
 ```
 
-`level` 与 `timeframe` 独立：同一份日线、周线或月线，各自形成折线及三级趋势。一级输入折线，二级输入一级，三级输入二级，不在层级之间切换周期。当前前端状态投影的 `enabled` 为 `[true, true, false, false]`。
+`level` 与 `timeframe` 独立：同一份日线、周线或月线，各自形成折线及三级趋势。一级输入折线，二级输入一级，三级输入二级，不在层级之间切换周期。当前前端状态投影的 `enabled` 为 `[true, true, true, true]`。
 
 完整调度实现还保留方向确认、上级严格突破回执及来源版本变化后的收敛重算；这些不在当前数组快速路径中执行。未来启用时，应在此图补充其实际执行顺序，不能只把虚线换成实线。
 

@@ -148,7 +148,7 @@ impl BacktestService {
             let decimal=|value:f64|value.to_string().parse::<Decimal>().map_err(|_|ApiError::invalid("price exceeds decimal range"));
             Ok(wavequant_quant_rs::analysis::trading::RuleCandle{symbol:bar.symbol.clone(),timestamp:bar.timestamp.clone(),open:decimal(bar.open)?,high:decimal(bar.high)?,low:decimal(bar.low)?,close:decimal(bar.close)?,volume:decimal(bar.volume)?,adjustment_factor:decimal(bar.adjustment_factor)?,raw_trading_active:bar.raw_trading_active,raw_is_st:bar.raw_is_st})
         }).collect::<Result<Vec<_>>>()?;
-        reporter.progress(30,if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{"逐日计算折线与一级趋势"}else{"逐日结构、买卖判断与账户同步"})?;
+        reporter.progress(30,if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{"逐日计算折线及一、二、三级趋势"}else{"逐日结构、买卖判断与账户同步"})?;
         let recorder=std::cell::RefCell::new(super::calculation::Recorder::new(self.diagnostics_root.as_deref(),json!({"timeframe":"1d","engine":self.engine_version,"run":request.run,"variant":request.variant,"scenario":request.scenario,"source":request.source,"source_version":loaded.version,"profile":profile}),&sessions,self.record_details)?);
         if let Some(pipeline)=recorder.borrow_mut().pipeline_due(true){reporter.pipeline(pipeline)?;}
         let mut progress_error=None;
@@ -198,7 +198,7 @@ impl BacktestService {
             tracing::info!(symbol=%request.symbol,job=%request.job_id,profile_ms,data_ms=data_request_seconds*1000.0,artifact_lookup_ms,input_preparation_ms,worker_roundtrip_ms=worker_roundtrip_seconds*1000.0,analysis_ms=result.analysis_elapsed_seconds*1000.0,worker_metrics=%computation,final_validation_ms,indexed_view_ms,snapshot_reused,snapshot_write_ms,result_cache_write_ms,total_ms=started.elapsed().as_secs_f64()*1000.0,"backtest_stage_timing");
             value["timing"]["totalMs"]=json!(started.elapsed().as_secs_f64()*1000.0);
             // 100%由任务注册表在接收成功结果后统一发布，运行中进度最高99%。
-            reporter.progress(99,"折线与一级趋势计算完成")?;return Ok(value);
+            reporter.progress(99,"折线及一、二、三级趋势计算完成")?;return Ok(value);
         }
         reporter.progress(91,"分析完成，整理图表结果")?;
         reporter.analysis_timing(result.analysis_elapsed_seconds)?;
@@ -222,7 +222,7 @@ impl BacktestService {
         view["providers"]=json!([request.source]);view["source_fallback"]=json!(false);view["supplemented_bars"]=json!(0);
         view["complete"]=json!(result.unavailable_rules.is_empty());view["unavailable_rules"]=json!(result.unavailable_rules);view["analysis"]=if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{wavequant_quant_rs::indexed_json::to_value(&result.indexed_analysis)?}else{wavequant_quant_rs::indexed_json::to_value(&result.analysis)?};
         view["backtest"]["status"]=json!(if view["complete"]==true{"completed"}else{"incomplete_rules"});view["backtest"]["source"]=loaded.provenance;
-        if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{view["calculation_mode"]=json!("first_level_only");view["backtest"]["status"]=json!("not_run_structure_only");}
+        if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{view["calculation_mode"]=json!("third_level_only");view["backtest"]["status"]=json!("not_run_structure_only");}
         view["backtest"]["requested_start"]=json!(request.start);view["backtest"]["minute_fallbacks"]=json!(result.minute_fallbacks);view["backtest"]["missing_minute_days"]=json!(loaded.missing);
         view["backtest"]["security_spec"]=wavequant_quant_rs::indexed_json::to_value(security)?;
         let indexed_chart=result.indexed_analysis.get(&request.symbol).map(|indexed|indexed.chart_response(bars)).transpose().map_err(ApiError::invalid)?;

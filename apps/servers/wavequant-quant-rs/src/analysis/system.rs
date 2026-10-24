@@ -434,15 +434,17 @@ fn run_polyline_arrays<F:FnMut(&SystemProgress)>(sessions:&[BacktestSession],con
             let percent=(processed.saturating_mul(100)/total).min(100) as u8;
             if last_percent!=Some(percent){last_percent=Some(percent);
                 progress(&SystemProgress{analysis_elapsed_seconds:analysis_started.elapsed().as_secs_f64(),percent,processed,total,symbol:symbol.clone(),asof:bars[index].timestamp.clone(),
-                    stage:format!("折线 → 一级趋势计算 · 已处理{processed}/{total}个交易日 · 截至{}",bars[index].timestamp),
+                    stage:format!("折线 → 一级 → 二级 → 三级趋势计算 · 已处理{processed}/{total}个交易日 · 截至{}",bars[index].timestamp),
                     analysis:None,account:None,audit:Vec::new(),signals:Vec::new()});
             }
         }
         *timings.entry("polyline_scan".into()).or_default()+=phase.elapsed().as_secs_f64();
         let phase=std::time::Instant::now();analyzer.finish_polyline_array()?;
         *timings.entry("polyline_finalize".into()).or_default()+=phase.elapsed().as_secs_f64();
-        let phase=std::time::Instant::now();analyzer.finish_first_level_array()?;
-        *timings.entry("level1_total".into()).or_default()+=phase.elapsed().as_secs_f64();
+        for level in 1..=3{
+            let phase=std::time::Instant::now();analyzer.finish_level_array(level)?;
+            *timings.entry(format!("level{level}_total")).or_default()+=phase.elapsed().as_secs_f64();
+        }
         for(key,seconds)in analyzer.analysis_timings(){*timings.entry(key.clone()).or_default()+=seconds;}
         let phase=std::time::Instant::now();outputs.insert(symbol.clone(),analyzer.indexed_response());market.insert(symbol,bars);
         *timings.entry("indexed_result".into()).or_default()+=phase.elapsed().as_secs_f64();

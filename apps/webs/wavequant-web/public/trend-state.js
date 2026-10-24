@@ -17,8 +17,9 @@ export function trendStateView(raw,snapshotRaw,{parseState=globalThis.window?.wa
     // 向下逐级读取同一引用，不通过日期或价格猜测对应点。
     function levelsSource(level,index){let point=rawLevels[level-1]?.[index];if(!point)throw new Error("趋势来源索引越界");while(--level>0){point=rawLevels[level-1]?.[point.sourceIndex];if(!point)throw new Error("趋势来源索引越界");}return point;}
     const names=["lecture_drawing","reversal_trends","secondary_trends","tertiary_trends"],kinds=["lecture","reversal","secondary","tertiary"];
-    const theory={asof:bars.at(-1)?.time??snapshot.asof,complete:dto.complete,unavailable_rules:dto.unavailableRules,calculation_mode:"first_level_only",trading_applicable:false,
-        computed_from:"rust_trend_state_v1",points:[],polyline_segments:[],events:[],shapes:[],counts:{rows:bars.length},event_counts:{},interrupted:false,note:"仅计算折线和一级趋势，交易未运行。"};
+    const calculationMode=s.enabled[3]?"third_level_only":s.enabled[2]?"second_level_only":"first_level_only";
+    const theory={asof:bars.at(-1)?.time??snapshot.asof,complete:dto.complete,unavailable_rules:dto.unavailableRules,calculation_mode:calculationMode,trading_applicable:false,
+        computed_from:"rust_trend_state_v1",points:[],polyline_segments:[],events:[],shapes:[],counts:{rows:bars.length},event_counts:{},interrupted:false,note:"折线及一、二、三级趋势已计算，交易未运行。"};
     levels.forEach((points,level)=>{
         const groups=new Map();for(const p of points){if(p.referenceOnly)continue;const group=groups.get(p.path)??[];group.push(p);groups.set(p.path,group);}
         const strokes=[],developing=[];
@@ -37,7 +38,7 @@ export function trendStateView(raw,snapshotRaw,{parseState=globalThis.window?.wa
     });
     return {symbol:dto.symbol,asof:bars.at(-1)?.time??snapshot.asof,timeframe:dto.timeframe,timeframe_label:{"1d":"日线","1w":"周线","1mo":"月线","3mo":"季线","1y":"年线"}[dto.timeframe],
         data_version:dto.dataVersion,price_basis:snapshot.priceBasis,bars,sessions:bars.map(b=>b.time),result_scope:"stock",data_source:snapshot.source,resolved_source:snapshot.source,providers:[snapshot.source],source_fallback:false,supplemented_bars:0,
-        complete:dto.complete,unavailable_rules:dto.unavailableRules,calculation_mode:"first_level_only",trendState:dto.state,theory,
+        complete:dto.complete,unavailable_rules:dto.unavailableRules,calculation_mode:calculationMode,trendState:dto.state,theory,
         backtest:{status:"not_run_structure_only",start:bars[0]?.time??null,end:bars.at(-1)?.time??null,source:{provider:snapshot.source}},
         metrics:{},markers:[],signals:[],orders:[],trades:[],audit:[],curve:[],equity:[],open_positions:[],holding_drawdowns:[],counts:{events:{},rejection_reasons:{}},comparison:{},
         performance:{analysis_elapsed_seconds:dto.timing.analysisMs/1000,elapsed_seconds:dto.timing.analysisMs/1000,data_request_seconds:dto.timing.dataRequestMs/1000,total_elapsed_seconds:dto.timing.totalMs/1000,timing_scope:"analysis"}};
