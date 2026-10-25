@@ -200,7 +200,15 @@ impl PolylineCursor {
         let state=super::structure::six_state_indices(pool,bars,&current,0)?;
         frame.state=state.state;frame.structure_direction=state.direction;frame.key=state.key;frame.anchor=state.anchor;
         frame.preceding_start=state.preceding_start;
-        frame.events=state.events;
+        frame.contexts=state.contexts;frame.events=state.events;
+        // 已结束路径的资格仍需自己的历史六态时钟；只补只读上下文，不重连几何。
+        let mut historical=std::collections::BTreeMap::<usize,Vec<_>>::new();
+        for id in &frame.points{let path=pool.view(*id,bars).path;if path!=self.epoch{historical.entry(path).or_default().push(*id);}}
+        for points in historical.values(){
+            let history=super::structure::six_state_indices(pool,bars,points,0)?;
+            frame.contexts.extend(history.contexts);frame.events.extend(history.events);
+        }
+        frame.contexts.sort_by_key(|c|c.known_index);frame.events.sort_by_key(|e|e.known_index);
         Ok(frame)
     }
 }

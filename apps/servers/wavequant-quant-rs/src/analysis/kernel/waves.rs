@@ -278,7 +278,7 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
     frame.anchor=annotated.anchor;
     frame.key=annotated.key.or_else(||origin.and_then(|p|frame.points.iter().copied().find(|id|pool.view(*id,bars).order()==at!(p).order())));
     // 整波前起点由本函数维护，六态的破位key不能覆盖续算边界。
-    frame.events.extend(annotated.events);
+    frame.contexts=annotated.contexts;frame.events.extend(annotated.events);
     Ok((frame,state,checkpoint))
 }
 
@@ -373,11 +373,12 @@ impl TrendCursor {
             if let(Some(left),Some(right))=(result.points.last().copied(),frame.points.first().copied()){
                 if let Some(bridges)=continuity_bridge(pool,bars,left,right,points,level){
                     let path=pool.view(left,bars).path;result.points.extend(bridges);
+                    for context in &mut frame.contexts{context.path=path;}
                     for id in &mut frame.points{let mut node=pool.nodes[id.0].clone();node.path=path;*id=pool.push(node);}
                     if let Some(id)=frame.candidate.as_mut(){let mut node=pool.nodes[id.0].clone();node.path=path;*id=pool.push(node);}
                 }
             }
-            result.points.extend(frame.points);result.events.extend(frame.events);result.candidate=frame.candidate;
+            result.contexts.extend(frame.contexts);result.points.extend(frame.points);result.events.extend(frame.events);result.candidate=frame.candidate;
             result.direction=frame.direction;result.structure_direction=frame.structure_direction;result.state=frame.state;
             result.key=frame.key;result.anchor=frame.anchor;result.preceding_start=frame.preceding_start;
         }

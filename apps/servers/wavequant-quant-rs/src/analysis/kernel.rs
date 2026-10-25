@@ -2,6 +2,8 @@
 //! trend_levels,trend_level_upgrades,trend_structure}.py。
 //! 价格坐标与首次可知坐标独立保存，动态尾点不得作为下级闭合证据。
 pub(crate) mod arena;
+pub(crate) mod eligibility;
+pub use eligibility::QualificationInterval;
 mod drawing;
 mod confirmation;
 mod n_confirmation;

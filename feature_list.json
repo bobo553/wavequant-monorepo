@@ -15272,6 +15272,41 @@
             ],
             "verification": [
                 {
+                    "command": "cargo +stable test --locked -p wavequant-quant-rs --lib analysis::kernel::; --test indexed_data_flow --test trend_offset; cargo +stable test --locked -p wavequant-api-rs --lib application::theory::; pnpm --filter @repo/contracts build; node --import local resolver --test 5 selected files; git diff --check",
+                    "status": "passed",
+                    "summary": "2026-10-25 MONOREPO-362 本轮提交准备：用户要求提交并推送。资格v25共用核心22项、索引/偏移7项、API四级投影1项及前端DTO/资格/边界/索引/时间轴18项定向回归通过；pnpm --filter @repo/contracts build含类型声明完成。API首次测试编译因ApiError缺Debug失败，补cfg_attr(test,derive(Debug))；随后旧仅折线断言与既有四级启用不符，测试改为实际finish一二三级及资格后断言third_level_only、逐级enabled=true，保留无交易观察/空数组/state空断言，修复后通过。两项仅测试变更，不改变生产API或交易规则，独立复核无阻塞。无旧Python源码或pyproject变更，不包含缓存、产物、凭据或F盘迁移配置。未运行全量lint/套件、浏览器或新股票回测；沿用此前允许记录共享工具配置限制后使用最小检查的授权。全市场及完整Python等价未验证，资格性能和既有Worker摘要问题仍留记录，整体in-progress。当前分支提交后按规则同步并合并本地main，用户本次要求推送当前分支；main不自动推送。"
+                },
+                {
+                    "command": "AUTHORIZED SINGLE-STOCK: Chrome page 11; GET /api/akshare-backtest for sh.601086 job 8031260a-e881-48ab-87d8-e0034ded64b9; existing result/snapshot comparison",
+                    "status": "passed",
+                    "summary": "2026-10-25 MONOREPO-362 资格入口通用修复v25：共享six_state_indices补齐旧Python首端无前驱背景回退、无有效关键位时重新初始化及翻多整波起点冻结；适用于所有股票与三级共用函数，无股票/日期/等级专用判定。Python未改。用户授权当前Chrome及国芳集团单股计算一次；实际页面仅发起job 8031260a-e881-48ab-87d8-e0034ded64b9一次，HTTP200、version25、2135根K线，dataVersion及完整四级state.data与v24完全相同。二级资格由空恢复为5条记录：2024-04-26确认当日结束；其余为[2024-09-06,2025-01-10)、[2025-02-27,2025-02-28)、[2025-04-11,2025-07-30)、[2026-10-08,未结束)。页面实际显示4段，Chrome已查看历史和最新图窗淡红区域；零长度记录不涂色，结束日不具资格。临时fetch限额未拦截请求，已恢复并清除。取数50.4829ms、分析6244.8443ms、后端8082.8515ms；旧v24分析72.8171ms时未进入正常资格流程，不能当等价性能对照，资格计算性能仍需后续优化。必要启动编译完成，初次因旧进程占用失败，停止范围内进程后重链接38.18s完成；API最终PID62252/8010运行于保留会话34997，自动自选回测关闭，前端3003沿用。联调中API进程曾退出导致轮询500，重新启动并保持进程后cache=only已恢复200；退出原因未确证。回归源码及Mermaid同步；未执行测试套件/lint/类型/格式/Git检查，跨股票与全部规则等价待提交时验证，未提交合并推送，整体in-progress。既有Worker摘要不匹配不在本轮修复范围。证据保存在.codex-runtime/rust-startup/guofang-v25-job.json和guofang-v25-result.json。"
+                },
+                {
+                    "command": "SOURCE EDITS: shared initial context fallback and frozen bull origin v25; tests not run",
+                    "status": "not-run",
+                    "summary": "国芳集团现有v24任务二级开启却无区间。补齐旧Python的首端无前驱背景回退和翻多整波起点冻结，适用于所有股票及三级共享函数；无股票/日期/级别专用分支。用户已授权当前Chrome和国芳集团单股计算一次，尚未发起；后续记录实际结果。Python未改，回归源码与Mermaid已补，未运行测试套件及Git检查，未提交合并推送。"
+                },
+                {
+                    "command": "STARTUP ONLY: cargo +stable build --locked -p wavequant-api-rs -p wavequant-quant-rs; start-backend.ps1",
+                    "status": "passed",
+                    "summary": "最终v24必要启动编译4m47s，build-qualification-v24-final.log；已启动Rust API PID70692/8010，自动自选回测关闭。空多交替结束确认后才开启资格。仅为编译和启动记录，未运行HTTP/回测/浏览器/测试等验证，业务结果待验证。Python未修改，未提交合并推送。"
+                },
+                {
+                    "command": "SOURCE EDITS: alternation-end confirmation and qualification phase v24; regressions not run",
+                    "status": "not-run",
+                    "summary": "2026-10-25 MONOREPO-362 空多交替结束与资格区间v24：按用户最终纠正拆分等待空翻多、AwaitingAlternationEnd和Active；开启本级开关且本级返回空翻多才进入空多交替结束确认，按旧Python confirm_bull_alternation持续确认回撤/交替是否结束，结束确认日才开启交易资格；六态进入空多交替或多头本身不能替代结束确认。只有Active判断资格结束，开启当日可结束，本级Bear必须强制结束并清除本轮搜索。六态核心只附加已有state的历史快照，连续性桥接同步路径，三个等级复用同一资格实现，不重新判趋势或修改趋势坐标。交替结束与资格结束的具体规则参照旧Python bull_alternation_confirmation、TradingEligibility及source_bear_exit：冻结关键位须在攻击日前已知；缺口回补从资格开启后交易日生效；资格关闭后翻多结构仍成立可重新等待交替结束的新证据，普通确认先过滤旧低点再选新最低点，空头/正式反向/起点路径失效等待新空翻多。DTO与图表协议不变，版本24隔离旧结果；默认二级资格，买卖账户仍关闭，Python未修改。Mermaid同步，新增六态标签不能替代交替结束等回归源码未执行；本轮未运行测试/回测/浏览器/lint/类型/格式/Git检查，必要启动编译和默认重启另记。v23的5段区间为旧版本证据，不能作为本轮正确性结论；Worker摘要不匹配遗留问题仍未解决。MONOREPO-362保持in-progress，未提交合并推送。"
+                },
+                {
+                    "command": "cargo +stable build --locked -p wavequant-api-rs -p wavequant-quant-rs; restart; authorized current Chrome + one successful sz.002724 calculation/read of existing result",
+                    "status": "passed",
+                    "summary": "2026-10-25 MONOREPO-362 资格区间显示联调v23：用户当次明确授权当前Chrome及单股计算。修复共用six_state_indices在待定翻向失败并反破冻结极值时漏发反向翻转事件的问题，与旧Python _annotate反向origin/key及可知时钟对应；不改变趋势几何或资格阈值，不修改Python。v22海洋王二级资格为空；v23成功任务01012d7d-4589-42eb-9ec9-ac70111f47f4返回12条资格记录，其中7条确认当日结束，图表实际显示5段有效红色区域及蓝色边界，日期2020-11-24至2021-01-06、2021-03-16至2021-05-19、2022-07-25至2022-09-30、2023-03-01至2023-03-13、2023-10-10至2024-01-17（结束确认日在次交易日，不属于有效区间）。2133根K线，点数1405/133/19/3，dataVersion与v22相同；未逐点比较完整结构结果。该成功任务分析3088.4335ms、取数12.6623ms、后端3773.6797ms，为含资格确认的新耗时，不能当纯趋势耗时。Rust启动编译2m24s，API PID48676/8010；前端PID44188/3003沿用。页面重启自动请求当前股票，另有任务在计算前报worker request digest mismatch；为不额外计算，展示联调临时将一次当前股票请求指向既有成功job，使用服务器原始真实响应，fetch已恢复且诊断全局已清除。故已确认真实资格数据与显示链路，未宣称自然重试链路或Worker错误根治；控制台503对应失败请求。共享算法回归源码及一二三级资格衔接用例已补，未运行测试套件/lint/类型/格式/Git检查；待实际提交时验证。默认仅二级资格，买卖账户仍停用。Mermaid同步。证据.codex-runtime/rust-startup/qualification-v23-browser-evidence.json；未提交合并推送，362继续in-progress。 验收范围仅本股资格显示，Worker请求错误未解决。"
+                },
+                {
+                    "command": "源码编辑及必要本地启动编译；测试/回测/浏览器/独立检查未运行",
+                    "status": "not-run",
+                    "summary": "2026-10-25 MONOREPO-362 Rust资格确认v22：数组快速路径按本级买点开关与空翻多事实启动独立确认；共用普通严格2/3/重突破/时间门槛及N轧空、量价、跳空规则。确认当日检查结束，结束日无资格，旧证据不能自动重开；复用六态关键位上下文，不重跑四级趋势，不执行买卖或账户。DTO增加启用/当前资格和四级紧凑索引区间，图表从确认日显示有效区域并保留确认/结束边界，历史回放屏蔽未来。现有级别选择映射独立开关，默认仅二级。版本更新隔离旧结果，Python未修改；流程图同步。新增边界回归源码未执行，测试/回测/浏览器/独立类型或lint检查待提交时验证；仅按默认约定进行启动所需编译和重启，启动结果另记。未提交合并或推送，完整迁移仍in-progress。 2026-10-25 MONOREPO-362 资格区间最终启动：Rust 必要启动编译 cargo +stable build --locked -p wavequant-api-rs -p wavequant-quant-rs 完成（2m30s，build-qualification-v22-final.log），已重启 API PID63988 / 8010，自动回测关闭。共享契约运行产物生成及前端生产启动编译完成，前端 PID44188 / 3003。以上仅为启动记录；未运行测试、回测、浏览器、性能或 HTTP 探针，资格结果、Python 等价及图表实际展示仍待验证。Python 未修改，未提交或推送，整体仍 in-progress。"
+                },
+                {
                     "command": "node --test (watchlists,watchlist-first-paint,server-watchlists); pnpm exec tsc -p .codex-runtime/rust-startup/submit/tsconfig.json --noEmit; node --check modified JS; git diff --check",
                     "status": "passed",
                     "summary": "2026-10-25 提交阶段37项相关检查、隔离映射共享产物的严格类型及6个JS语法通过。首次预览夹具缺新增DOM节点失败已补齐，增加标题/星标交接回归，无产品追加行为变化。Python无改动。全量lint缺工具配置依赖沿用此前明确许可记录限制；未全套测试/回测/新增浏览器检查。用户明确授权提交合并main及推送两个分支；完整迁移保持in-progress。"
@@ -15286,46 +15321,46 @@
                     "status": "passed",
                     "summary": "2026-10-25 用户明确授权页面联调。布局偏移累计由0.226104降至0，关键红框容器首帧/完成坐标尺寸一致；缓存与正式自选行名称/代码及行高一致，Console无error/warn。必要启动编译和3003重启完成。只验证本次加载布局；未运行测试/lint/typecheck，不构成完整迁移验收。代码未提交合并推送。"
                 },
-{
-    "command": "cargo +stable test -p wavequant-quant-rs --test indexed_data_flow --test trend_offset; node --import local resolver --test trend-state/indexed-document/backtest-job-status",
-    "status": "passed",
-    "summary": "2026-10-25 本轮实际提交：v21开启同周期二三级，共用核心、直接来源索引及偏移；交易保持关闭。Worker计算前schema/engine/digest/timeframe证书不匹配现在返回明确失败帧，不退出，原不一致分项仍待线上请求日志，不宣称根治。Rust索引及偏移7项、前端投影/解码/状态27项通过；海洋王固定2133根一级/三级配对各10次，20.56275ms/21.14175ms，低两级索引结果一致。Rust及前端启动编译已完成。前次用户已允许记录全量lint/工具配置依赖缺失后按最小充分检查继续，本轮仅Rust与JS/文档变化，不重复不可用工具检查。未运行浏览器/E2E、收益回测或全套测试。旧Python无改动。获准提交、合并main及推送main；功能整体仍in-progress。"
-},
-{
-    "command": "cargo +stable build -p wavequant-quant-rs --example level_timing_comparison; level_timing_comparison.exe trading-profile-input.json",
-    "status": "passed",
-    "summary": "2026-10-25 用户授权二三级开关耗时对比：海洋王2133根冻结日线，相同默认配置和debug二进制，数组路径关闭交易/SDK/Redis/HTTP/前端；每模式预热1次，交替测量10次。仅折线一级总计算中位20.56275ms，四级21.14175ms，差0.57900ms（2.82%）；二级0.088ms，三级0.0175ms。总耗时含初始化及折线扫描，分项中位数不保证相加等于总中位数，差额包含进程调度噪声。结果索引构建另计0.37140/0.41565ms。两模式折线及一级索引摘要全部一致，确认点数量1404/132；开启二三级为18/2。只代表此股票的结构数组路径，不能与旧逐日历史资格路径百秒耗时直接比；无浏览器或收益回测。"
-},
-{
-    "command": "开发阶段源码编辑，未运行业务验证",
-    "status": "not-run",
-    "summary": "2026-10-25 按用户要求开启二级三级趋势，VERSION21；折线/一级/二级/三级同周期直接来源链共用同一趋势核心和本级数组偏移，保留数组快速路径，不启用历史资格或账户。更新精简DTO enabled、兼容图表和结构模式文案及Mermaid。并处理前序状态重试问题：日志已捕获worker request certificate mismatch，拆分schema/engine/digest/timeframe拒绝原因，保持校验严格，通过失败帧回复而非退出进程；具体是哪项不一致仍待新日志，不宣称消除了源头。未运行回测、测试或浏览器，必要启动编译另记；未提交推送本轮修改。"
-},
-{
-    "command": "cargo test selected indexed_data_flow/market_data/trend_offset; node --import local resolver --test 4 selected files; tsc isolated product/test configuration",
-    "status": "passed",
-    "summary": "2026-10-25 实际提交准备：当前恢复版仅折线及一级，完整Rust迁移继续in-progress。用户授权修复提交检查发现的问题：进度文案采用后端已处理计数覆盖旧文本；自选预览测试隔离额外旧数据迁移；补齐周期缓存TS声明，不改量化规则。Rust索引/行情/偏移定向检查10项与前端DTO/索引/状态/自选定向检查44项通过，前端产品源码及测试严格类型检查通过（隔离映射本worktree共享产物）。原始全量typecheck及lint因依赖链接指向旧产物、缺少工具配置依赖与ESLint构建器无法完成；用户明确允许记录限制后提交合并推送。不运行浏览器/E2E、回测或全套测试。暂存源敏感模式扫描未发现命中，旧Python项目源码及pyproject无差异。当前分支及main均获准推送，无强推。"
-},
-{
-    "command": "用户授权仅一次乐心股份HTTP计算；同任务状态读取",
-    "status": "passed",
-    "summary": "2026-10-25 乐心股份worker退出问题：Worker stderr原先丢弃，改为继承服务日志；无结果退出时记录pid/退出状态，try_wait非阻塞，不改趋势和交易判定。Rust必要编译并重启PID68308/8010。按用户本次授权仅重现一次sz.300562，2018-01-01至2026-10-25、2132根日线，HTTP200约1.847秒，任务12c1cb69-ebb8-4fe3-972e-d2944697d749状态completed；返回折线和一级。未复现原进程异常，历史错误因旧版丢弃stderr无法确定根因，不能宣称趋势崩溃根因已修复。前端未改，无浏览器或整套测试。"
-},
-{
-    "command": "依据会话历史逆向重建；业务验证未运行",
-    "status": "not-run",
-    "summary": "2026-10-25 用户强制恢复周六20:42开始、20:48完成的版本：基于本会话原始编辑记录逆向重建，分析器VERSION14，STRUCTURE_ONLY=true，仅折线/一级数组路径，撤销二三级启用、交易门禁UI、历史资格观察及新增性能探针；Mermaid用该时段原始命令重建。保留随后用户明确要求的旧Python工程零源码改动边界（SDK桥接仍归属Rust），以及备份/审计记录。因此是基于编辑记录的恢复，未持有该时点Git提交或全目录哈希，不宣称逐字节快照一致。必要启动编译与重启单列，不运行回测、浏览器或测试。"
-},
-{
-    "command": "开发阶段仅核对Python差异并迁移Rust专属SDK桥接；启动编译另记",
-    "status": "not-run",
-    "summary": "2026-10-25 旧Python既有源码及pyproject相对main无改动。新增rust_sdk_worker.py及测试移至Rust工程scripts/tests/python，Rust嵌入和源码哈希引用同步，不改变趋势交易与SDK协议。未执行测试或性能验证。"
-},
-{
-    "command": "cargo +stable build -p wavequant-api-rs -p wavequant-quant-rs --bins --example profile_trading; profile_trading.exe trading-profile-input.json full",
-    "status": "passed",
-    "summary": "2026-10-25 按用户明确要求补互斥计时并测量海洋王2133根日线（本地冻结输入，dev构建，无取数/HTTP/浏览器）。分析总计106.650秒，折线12.045、一级55.771、二级16.098、三级7.889、买卖/状态维护3.801秒，额外11.046秒（结构比较5.307、升级调度0.130、未细分5.609）。来源变化重放合计21.924秒，包含在各趋势级别内。样本无有效资格/买点，买卖项主要是连续状态维护，不代表真实成交性能。结果输出及诊断哈希0.002661秒另列。只加计时，未改业务规则/Python；启动编译完成，Rust PID54528已重启。未运行浏览器或全套测试，未提交合并。"
-},
+                {
+                    "command": "cargo +stable test -p wavequant-quant-rs --test indexed_data_flow --test trend_offset; node --import local resolver --test trend-state/indexed-document/backtest-job-status",
+                    "status": "passed",
+                    "summary": "2026-10-25 本轮实际提交：v21开启同周期二三级，共用核心、直接来源索引及偏移；交易保持关闭。Worker计算前schema/engine/digest/timeframe证书不匹配现在返回明确失败帧，不退出，原不一致分项仍待线上请求日志，不宣称根治。Rust索引及偏移7项、前端投影/解码/状态27项通过；海洋王固定2133根一级/三级配对各10次，20.56275ms/21.14175ms，低两级索引结果一致。Rust及前端启动编译已完成。前次用户已允许记录全量lint/工具配置依赖缺失后按最小充分检查继续，本轮仅Rust与JS/文档变化，不重复不可用工具检查。未运行浏览器/E2E、收益回测或全套测试。旧Python无改动。获准提交、合并main及推送main；功能整体仍in-progress。"
+                },
+                {
+                    "command": "cargo +stable build -p wavequant-quant-rs --example level_timing_comparison; level_timing_comparison.exe trading-profile-input.json",
+                    "status": "passed",
+                    "summary": "2026-10-25 用户授权二三级开关耗时对比：海洋王2133根冻结日线，相同默认配置和debug二进制，数组路径关闭交易/SDK/Redis/HTTP/前端；每模式预热1次，交替测量10次。仅折线一级总计算中位20.56275ms，四级21.14175ms，差0.57900ms（2.82%）；二级0.088ms，三级0.0175ms。总耗时含初始化及折线扫描，分项中位数不保证相加等于总中位数，差额包含进程调度噪声。结果索引构建另计0.37140/0.41565ms。两模式折线及一级索引摘要全部一致，确认点数量1404/132；开启二三级为18/2。只代表此股票的结构数组路径，不能与旧逐日历史资格路径百秒耗时直接比；无浏览器或收益回测。"
+                },
+                {
+                    "command": "开发阶段源码编辑，未运行业务验证",
+                    "status": "not-run",
+                    "summary": "2026-10-25 按用户要求开启二级三级趋势，VERSION21；折线/一级/二级/三级同周期直接来源链共用同一趋势核心和本级数组偏移，保留数组快速路径，不启用历史资格或账户。更新精简DTO enabled、兼容图表和结构模式文案及Mermaid。并处理前序状态重试问题：日志已捕获worker request certificate mismatch，拆分schema/engine/digest/timeframe拒绝原因，保持校验严格，通过失败帧回复而非退出进程；具体是哪项不一致仍待新日志，不宣称消除了源头。未运行回测、测试或浏览器，必要启动编译另记；未提交推送本轮修改。"
+                },
+                {
+                    "command": "cargo test selected indexed_data_flow/market_data/trend_offset; node --import local resolver --test 4 selected files; tsc isolated product/test configuration",
+                    "status": "passed",
+                    "summary": "2026-10-25 实际提交准备：当前恢复版仅折线及一级，完整Rust迁移继续in-progress。用户授权修复提交检查发现的问题：进度文案采用后端已处理计数覆盖旧文本；自选预览测试隔离额外旧数据迁移；补齐周期缓存TS声明，不改量化规则。Rust索引/行情/偏移定向检查10项与前端DTO/索引/状态/自选定向检查44项通过，前端产品源码及测试严格类型检查通过（隔离映射本worktree共享产物）。原始全量typecheck及lint因依赖链接指向旧产物、缺少工具配置依赖与ESLint构建器无法完成；用户明确允许记录限制后提交合并推送。不运行浏览器/E2E、回测或全套测试。暂存源敏感模式扫描未发现命中，旧Python项目源码及pyproject无差异。当前分支及main均获准推送，无强推。"
+                },
+                {
+                    "command": "用户授权仅一次乐心股份HTTP计算；同任务状态读取",
+                    "status": "passed",
+                    "summary": "2026-10-25 乐心股份worker退出问题：Worker stderr原先丢弃，改为继承服务日志；无结果退出时记录pid/退出状态，try_wait非阻塞，不改趋势和交易判定。Rust必要编译并重启PID68308/8010。按用户本次授权仅重现一次sz.300562，2018-01-01至2026-10-25、2132根日线，HTTP200约1.847秒，任务12c1cb69-ebb8-4fe3-972e-d2944697d749状态completed；返回折线和一级。未复现原进程异常，历史错误因旧版丢弃stderr无法确定根因，不能宣称趋势崩溃根因已修复。前端未改，无浏览器或整套测试。"
+                },
+                {
+                    "command": "依据会话历史逆向重建；业务验证未运行",
+                    "status": "not-run",
+                    "summary": "2026-10-25 用户强制恢复周六20:42开始、20:48完成的版本：基于本会话原始编辑记录逆向重建，分析器VERSION14，STRUCTURE_ONLY=true，仅折线/一级数组路径，撤销二三级启用、交易门禁UI、历史资格观察及新增性能探针；Mermaid用该时段原始命令重建。保留随后用户明确要求的旧Python工程零源码改动边界（SDK桥接仍归属Rust），以及备份/审计记录。因此是基于编辑记录的恢复，未持有该时点Git提交或全目录哈希，不宣称逐字节快照一致。必要启动编译与重启单列，不运行回测、浏览器或测试。"
+                },
+                {
+                    "command": "开发阶段仅核对Python差异并迁移Rust专属SDK桥接；启动编译另记",
+                    "status": "not-run",
+                    "summary": "2026-10-25 旧Python既有源码及pyproject相对main无改动。新增rust_sdk_worker.py及测试移至Rust工程scripts/tests/python，Rust嵌入和源码哈希引用同步，不改变趋势交易与SDK协议。未执行测试或性能验证。"
+                },
+                {
+                    "command": "cargo +stable build -p wavequant-api-rs -p wavequant-quant-rs --bins --example profile_trading; profile_trading.exe trading-profile-input.json full",
+                    "status": "passed",
+                    "summary": "2026-10-25 按用户明确要求补互斥计时并测量海洋王2133根日线（本地冻结输入，dev构建，无取数/HTTP/浏览器）。分析总计106.650秒，折线12.045、一级55.771、二级16.098、三级7.889、买卖/状态维护3.801秒，额外11.046秒（结构比较5.307、升级调度0.130、未细分5.609）。来源变化重放合计21.924秒，包含在各趋势级别内。样本无有效资格/买点，买卖项主要是连续状态维护，不代表真实成交性能。结果输出及诊断哈希0.002661秒另列。只加计时，未改业务规则/Python；启动编译完成，Rust PID54528已重启。未运行浏览器或全套测试，未提交合并。"
+                },
                 {
                     "command": "SOURCE EDITS ONLY: async-ui view/dialog/native-tool boundaries; startup dependency pnpm --filter @repo/async-ui build; frontend restart and research HTML warmup; NOT RUN functional/performance verification",
                     "status": "not-run",

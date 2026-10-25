@@ -21,6 +21,7 @@ pub struct IndexedLevel{
 #[derive(Debug,Clone,Serialize,Deserialize)]
 #[serde(rename_all="camelCase")]
 pub struct IndexedAnalysis{
+    #[serde(default)] pub qualification_intervals:[Vec<super::kernel::QualificationInterval>;4],
     pub schema_version:u32,pub state:TrendAnalyzerState,pub levels:[IndexedLevel;4],pub complete:bool,pub unavailable_rules:Vec<String>,
 }
 fn same(a:&KernelPoint,b:&KernelPoint)->bool{a.index==b.index&&a.ordinal==b.ordinal&&a.kind==b.kind&&a.path==b.path&&a.known_index==b.known_index&&a.state==b.state}
@@ -29,7 +30,8 @@ fn intern<'a>(table:&mut Vec<&'a KernelPoint>,point:&'a KernelPoint)->PointIndex
 }
 impl IndexedAnalysis{
     pub fn from_response(response:&AnalysisResponse)->Self{
-        Self::from_frames(response.state.clone(),&response.levels,response.complete,response.unavailable_rules.clone())
+        let mut value=Self::from_frames(response.state.clone(),&response.levels,response.complete,response.unavailable_rules.clone());
+        value.qualification_intervals=response.qualification_intervals.clone();value
     }
     pub fn from_frames(state:TrendAnalyzerState,frames:&[KernelFrame;4],complete:bool,unavailable_rules:Vec<String>)->Self{
         let mut tables:Vec<Vec<&KernelPoint>>=Vec::new();
@@ -46,7 +48,7 @@ impl IndexedAnalysis{
                 points,candidate,publication,key,anchor,preceding_start,direction:frame.direction,structure_direction:frame.structure_direction,state:frame.state,blocked_at:frame.blocked_at.map(BarIndex)};
             tables.push(table);output
         });
-        Self{schema_version:1,state,levels,complete,unavailable_rules}
+        Self{qualification_intervals:std::array::from_fn(|_|Vec::new()),schema_version:1,state,levels,complete,unavailable_rules}
     }
     /// 内核直接导出平行列；不先展开 KernelPoint 或递归证明。
     pub(crate) fn from_arena(state:TrendAnalyzerState,frames:&[super::kernel::arena::RefFrame;4],pool:&super::kernel::arena::PointArena,
@@ -69,7 +71,7 @@ impl IndexedAnalysis{
             }
             parent_tables.push(coordinates);output
         });
-        Self{schema_version:1,state,levels,complete,unavailable_rules}
+        Self{qualification_intervals:std::array::from_fn(|_|Vec::new()),schema_version:1,state,levels,complete,unavailable_rules}
     }
     /// 仅为旧图表适配器读取坐标，不识别趋势或重建判定证据。
     pub fn chart_response(&self,bars:&[RuleCandle])->Result<AnalysisResponse,String>{
@@ -90,6 +92,6 @@ impl IndexedAnalysis{
             frame.key=data.key.map(get).transpose()?;frame.anchor=data.anchor.map(get).transpose()?;frame.preceding_start=data.preceding_start.map(get).transpose()?;
             frame.direction=data.direction;frame.structure_direction=data.structure_direction;frame.state=data.state;frame.blocked_at=data.blocked_at.map(|i|i.0);frames.push(frame);
         }
-        Ok(AnalysisResponse{state:self.state.clone(),levels:frames.try_into().map_err(|_|"indexed levels differ")?,last_execution:Vec::new(),cache_status:"indexed".into(),complete:self.complete,unavailable_rules:self.unavailable_rules.clone(),daily_trading:None,structure_cache:Default::default()})
+        Ok(AnalysisResponse{qualification_intervals:self.qualification_intervals.clone(),state:self.state.clone(),levels:frames.try_into().map_err(|_|"indexed levels differ")?,last_execution:Vec::new(),cache_status:"indexed".into(),complete:self.complete,unavailable_rules:self.unavailable_rules.clone(),daily_trading:None,structure_cache:Default::default()})
     }
 }

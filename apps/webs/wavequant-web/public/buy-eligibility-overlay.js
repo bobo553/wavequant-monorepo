@@ -15,26 +15,30 @@ function lowerBound(bars, day) {
     return low;
 }
 
-// 确认后展示从交替低点开始的结构区间；可交易日期仍由后端确认时钟决定。
+export function eligibilityLevels(view) {
+    const enabled=view?.trendState?.qualification?.enabled;
+    return Array.isArray(enabled)?enabled.flatMap((value,level)=>value?[level]:[]):[view?.backtest?.strategy?.buy_interval_level??2];
+}
+// 新 DTO 从资格确认日开始画；旧响应保留结构低点起画的兼容语义。
 export function buyEligibilityRanges(view, asof = view?.asof) {
     const bars = view?.bars;
     if (!bars?.length || !Array.isArray(view.audit) || (view.timeframe || "1d") !== "1d") return [];
-    const level = view.backtest?.strategy?.buy_interval_level ?? 2;
+    const levels = eligibilityLevels(view);
     const cutoff = asof && asof < bars.at(-1).time ? asof : bars.at(-1).time;
     const windows = new Map();
     for (const row of view.audit) {
-        if (!row || row.trend_level !== level || (row.symbol && row.symbol !== view.symbol)) continue;
+        if (!row || !levels.includes(row.trend_level) || (row.symbol && row.symbol !== view.symbol)) continue;
         const opened = row.event === "trading_interval_opened";
         if (!opened && row.event !== "trading_interval_closed") continue;
         const day = eventDay(row.timestamp);
         const start = opened ? row.bar_index : row.start_index;
         if (!day || day > cutoff || !Number.isInteger(start) || start < 0 || typeof row.source_path !== "string")
             continue;
-        const key = JSON.stringify([row.source_path, start]);
+        const key = JSON.stringify([row.trend_level, row.source_path, start]);
         const window = windows.get(key) || {};
         if (opened) {
             const lowDay = eventDay(row.start_low_time);
-            window.start = lowDay && lowDay <= day ? lowDay : day;
+            window.start = row.start_basis === "confirmation" ? day : lowDay && lowDay <= day ? lowDay : day;
         } else if (!window.end || day < window.end) {
             window.end = day;
             window.endInclusive = row.display_end_inclusive === true;

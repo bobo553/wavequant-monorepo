@@ -90,16 +90,18 @@ pub struct RefEvent {
     pub title: &'static str, pub known_index: usize, pub point: PointId,
     pub key: Option<PointId>, pub origin: Option<PointId>, pub proof: EventProof,
 }
+#[derive(Debug, Clone, Copy)]
+pub struct RefContext { pub known_index:usize,pub path:usize,pub state:Option<TrendState>,pub direction:Option<Direction>,pub key:Option<PointId>,pub anchor:Option<PointId> }
 #[derive(Debug, Clone)]
 pub struct RefFrame {
     pub level:u8, pub points:Vec<PointId>, pub candidate:Option<PointId>,
     pub direction:Option<Direction>, pub structure_direction:Option<Direction>, pub state:Option<TrendState>,
     pub key:Option<PointId>, pub anchor:Option<PointId>, pub preceding_start:Option<PointId>,
-    pub events:Vec<RefEvent>, pub blocked_at:Option<usize>, pub issues:Vec<String>,
+    pub contexts:Vec<RefContext>, pub events:Vec<RefEvent>, pub blocked_at:Option<usize>, pub issues:Vec<String>,
 }
 impl RefFrame {
     pub fn empty(level:u8)->Self{Self{level,points:Vec::new(),candidate:None,direction:None,structure_direction:None,
-        state:None,key:None,anchor:None,preceding_start:None,events:Vec::new(),blocked_at:None,issues:Vec::new()}}
+        state:None,key:None,anchor:None,preceding_start:None,contexts:Vec::new(),events:Vec::new(),blocked_at:None,issues:Vec::new()}}
     pub fn offset(&self,pool:&PointArena,bars:&[KernelBar])->Result<usize,String>{
         let Some(origin)=self.preceding_start else{return Ok(0);};let origin=pool.view(origin,bars);
         self.points.iter().position(|id|{let p=pool.view(*id,bars);p.order()==origin.order()&&p.kind==origin.kind&&p.value==origin.value})

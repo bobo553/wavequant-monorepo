@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use super::{kernel::{self, KernelBar, KernelFrame, KernelOptions, TrendState}, trading::{self, RuleCandle, qualification::TradingEligibility, FrameTradeEvaluation}};
 
-pub const VERSION: u32 = 21;
+pub const VERSION: u32 = 25;
 // 结构模式计算全部四级；账户交易保持独立停用。
 pub const STRUCTURE_ONLY:bool=true;
 const MAX_BARS: usize = 250_000;
@@ -70,7 +70,7 @@ pub struct AnalyzerConfig {
 }
 
 impl Default for AnalyzerConfig {
-    fn default() -> Self { Self { enable_secondary_reversal:[true;4], kernel:KernelOptions::default(),
+    fn default() -> Self { Self { enable_secondary_reversal:[false,false,true,false], kernel:KernelOptions::default(),
         n_target_trend_confirmation_enabled:false,trading:trading::day::TradingDayConfig::lecture(),risk:Default::default() } }
 }
 
@@ -116,6 +116,7 @@ pub struct TrendExecutionResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnalysisResponse {
+    #[serde(default)] pub qualification_intervals:[Vec<kernel::QualificationInterval>;4],
     pub state: TrendAnalyzerState,
     pub levels: [KernelFrame; 4],
     pub last_execution: Vec<TrendExecutionResult>,
@@ -169,6 +170,7 @@ pub struct TrendAnalyzer {
     array_frames:Option<[kernel::arena::RefFrame;4]>,
     array_compat:std::sync::OnceLock<[KernelFrame;4]>,
     eligibility: [TradingEligibility;4],
+    qualification_intervals: [Vec<kernel::QualificationInterval>;4],
     source_changed: [bool;4],
     last_execution: Vec<TrendExecutionResult>,
     evaluations: [Option<FrameTradeEvaluation>;4],
@@ -229,7 +231,7 @@ impl TrendAnalyzer {
             promotion_receipts:array::from_fn(|_|Vec::new()),level_versions:array::from_fn(|_|None),
             caches:array::from_fn(|_|None),frames:array::from_fn(|level|KernelFrame::empty(level as u8)),
             array_frames:None,array_compat:std::sync::OnceLock::new(),
-            eligibility:array::from_fn(|_|TradingEligibility::default()),
+            eligibility:array::from_fn(|_|TradingEligibility::default()),qualification_intervals:array::from_fn(|_|Vec::new()),
             source_changed:[false;4],last_execution:Vec::new(),evaluations:array::from_fn(|_|None),prepared_at:None,cache_status,
             unavailable_rules:Vec::new(),trading_state,daily_trading:None,
             structure_cache:None,structure_cache_stats:Default::default(),phase_timings:BTreeMap::new(),
@@ -311,6 +313,29 @@ impl TrendAnalyzer {
         let phase=Instant::now();self.state.dynamic_data_index[level]=frame.offset(&self.polyline_cursor.arena,&self.kernel_bars)?;
         self.source_changed[level]=frames[level].points!=frame.points;frames[level]=frame;self.array_compat.take();
         *self.phase_timings.entry(format!("level{level}.install")).or_default()+=phase.elapsed().as_secs_f64();Ok(())
+    }
+    /// 只消费已经完成的四级结构；资格开启与交易执行完全独立。
+    pub fn finish_qualification_arrays(&mut self,cancel:Option<&AtomicBool>)->Result<(),String>{
+        let Some(frames)=&self.array_frames else{return Ok(());};
+        if !self.state.config.enable_secondary_reversal.iter().any(|enabled|*enabled){return Ok(());}
+        let phase=Instant::now();
+        let scalar:[KernelFrame;4]=array::from_fn(|level|kernel::eligibility::scalar_frame(&self.polyline_cursor.arena,&self.kernel_bars,&frames[level]));
+        let pairs=kernel::eligibility::pair_contexts(&self.polyline_cursor.arena,&self.kernel_bars,&frames[0]);
+        for level in 0_usize..4{
+            if !self.state.config.enable_secondary_reversal[level]{continue;}
+            let started=Instant::now();let mut paths=BTreeMap::new();
+            for id in &frames[level].points{
+                let pool=&self.polyline_cursor.arena;let own=pool.view(*id,&self.kernel_bars);
+                let direct=pool.nodes[id.0].source.unwrap_or(*id);let mut base=direct;
+                while let Some(source)=pool.nodes[base.0].source{base=source;}
+                paths.insert((own.path,own.index),(pool.view(direct,&self.kernel_bars).path,pool.view(base,&self.kernel_bars).path));
+            }
+            let states=kernel::eligibility::state_contexts(&frames[level]);
+            self.qualification_intervals[level]=kernel::eligibility::calculate(&scalar[level],&scalar[level.saturating_sub(1)],&scalar[0],&paths,
+                &self.candles[..self.state.current_index],&self.kernel_bars[..self.state.current_index],&self.state.config.trading,&pairs,&states,true,cancel)?;
+            self.phase_timings.insert(format!("level{level}.qualification"),started.elapsed().as_secs_f64());
+        }
+        self.phase_timings.insert("qualification_total".into(),phase.elapsed().as_secs_f64());Ok(())
     }
     pub fn trading_state(&self)->&trading::day::TradingDayState{&self.trading_state}
     pub fn eligibilities(&self)->&[TradingEligibility;4]{&self.eligibility}
@@ -580,17 +605,18 @@ impl TrendAnalyzer {
     pub fn analysis_timings(&self)->&BTreeMap<String,f64>{&self.phase_timings}
     pub fn indexed_response(&self)->super::indexed::IndexedAnalysis{
         let complete=self.state.current_index==self.bars.len()&&self.unavailable_rules.is_empty();
-        match &self.array_frames{
+        let mut response=match &self.array_frames{
             Some(frames)=>super::indexed::IndexedAnalysis::from_arena(self.export_state(),frames,&self.polyline_cursor.arena,&self.kernel_bars,complete,self.unavailable_rules.clone()),
             None=>super::indexed::IndexedAnalysis::from_frames(self.export_state(),&self.frames,complete,self.unavailable_rules.clone()),
-        }
+        };
+        response.qualification_intervals=self.qualification_intervals.clone();response
     }
     pub fn response(&self)->AnalysisResponse {
         let unavailable_rules=self.unavailable_rules.clone();
         // complete 是本次输入处理状态；源码迁移尚未执行的验收记录独立保留在工程状态中。
         let complete=self.state.current_index==self.bars.len()&&unavailable_rules.is_empty();
         AnalysisResponse {
-            state:self.export_state(),levels:self.levels().clone(),last_execution:self.last_execution.clone(),
+            qualification_intervals:self.qualification_intervals.clone(),state:self.export_state(),levels:self.levels().clone(),last_execution:self.last_execution.clone(),
             cache_status:self.cache_status.clone(),complete,unavailable_rules,daily_trading:self.daily_trading.clone(),
             structure_cache:self.structure_cache_stats.clone(),
         }

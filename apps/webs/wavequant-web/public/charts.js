@@ -385,7 +385,7 @@ export class PriceChart {
             }
             if (this.buyEligibilityOverlay.contains(barIndex)) {
                 const eligibility = document.createElement("div");
-                eligibility.textContent = `${["", "一级", "二级", "三级"][this.buyEligibilityOverlay.level]}资格结构区间（淡红背景；确认后可交易，跌破日停止买入）`;
+                eligibility.textContent = this.data.trendState?.qualification ? "已开启级别的有效资格区间（淡红背景；从确认日开始，结束日停止新增买入）" : `${["", "一级", "二级", "三级"][this.buyEligibilityOverlay.level]}资格结构区间（淡红背景；确认后可交易，跌破日停止买入）`;
                 this.tooltip.append(eligibility);
             }
             const previousClose = barIndex > 0 ? marketBars[barIndex - 1].close : undefined;

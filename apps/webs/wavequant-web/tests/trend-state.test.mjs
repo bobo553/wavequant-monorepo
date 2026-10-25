@@ -25,3 +25,28 @@ test("空数据结构可正常读取",()=>{
     const dto=make();dto.state.currentIndex=0;for(const key of Object.keys(dto.state.data))dto.state.data[key]=[];
     const view=trendStateView(dto,{...bars(),bars:[]},parsers);assert.equal(view.bars.length,0);assert.deepEqual(view.theory.points,[]);
 });
+
+import {buyEligibilityRanges} from "../public/buy-eligibility-overlay.js";
+import {eligibilityBoundaryRanges} from "../public/eligibility-boundary-overlay.js";
+test("Rust资格从确认日开始且同日结束只保留边界",()=>{
+    const dto=make();dto.state.qualification={enabled:[false,true,false,false],active:[false,true,false,false],intervals:[[],[
+        {path:0,startIndex:1,lowIndex:0,endIndex:null,confirmationRule:"confirmed_pullback",endReason:null}
+    ],[],[]]};
+    let view=trendStateView(dto,bars(),parsers);
+    assert.deepEqual(buyEligibilityRanges(view),[{from:1,to:1,start:"2020-01-03",end:"2020-01-03"}]);
+    assert.deepEqual(buyEligibilityRanges(view,"2020-01-02"),[]);
+    dto.state.qualification.active[1]=false;
+    Object.assign(dto.state.qualification.intervals[1][0],{endIndex:1,endReason:"source_bear_trend_confirmed"});
+    view=trendStateView(dto,bars(),parsers);
+    assert.deepEqual(buyEligibilityRanges(view),[]);
+    assert.deepEqual(eligibilityBoundaryRanges(view)[0].kinds,["交易资格确认日","交易资格结束日"]);
+    assert.equal(view.orders.length,0);assert.equal(view.signals.length,0);
+});
+test("资格坐标及关闭级别的数据必须由共享契约拒绝",()=>{
+    const dto=make();dto.state.qualification={enabled:[false,false,false,false],active:[false,true,false,false],intervals:[[],[
+        {path:0,startIndex:1,lowIndex:0,endIndex:null,confirmationRule:"confirmed_pullback",endReason:null}
+    ],[],[]]};
+    assert.equal(TrendAnalysisSchema.safeParse(dto).success,false);
+    dto.state.qualification.enabled[1]=true;dto.state.qualification.intervals[1][0].lowIndex=2;
+    assert.equal(TrendAnalysisSchema.safeParse(dto).success,false);
+});

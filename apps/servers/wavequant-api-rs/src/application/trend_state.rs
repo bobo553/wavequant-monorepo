@@ -23,8 +23,14 @@ struct TrendPointDto{source_index:usize,known_index:usize,confirmed:bool,#[serde
 struct PointDataDto{polyline:Vec<PolylinePointDto>,level1:Vec<TrendPointDto>,level2:Vec<TrendPointDto>,level3:Vec<TrendPointDto>}
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
+struct QualificationDto{
+    enabled:[bool;4],active:[bool;4],
+    intervals:[Vec<wavequant_quant_rs::analysis::kernel::QualificationInterval>;4],
+}
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
 struct StateDto{
-    version:u32,current_index:usize,
+    version:u32,current_index:usize,qualification:QualificationDto,
     /// 坐标属于本级结果数组；不得替换为K线位置或来源层位置。
     dynamic_data_index:[usize;4],enabled:[bool;4],trend_state:[Option<TrendState>;4],data:PointDataDto,
 }
@@ -57,7 +63,7 @@ pub fn response(indexed:&IndexedAnalysis,bars:&[RuleCandle],source:&str,_asof:&s
     let snapshot=json!({"schemaVersion":1,"symbol":symbol,"timeframe":timeframe,"dataVersion":data_version,"source":source,"asof":bars.last().map(|b|b.timestamp.as_str()),"priceBasis":"causal_adjusted_equivalent","bars":rows});
     // 当前启用范围保持不变；不能用配置中的交易开关冒充结构计算开关。
     let enabled=[true;4];
-    let dto=StateDto{version:indexed.state.version,current_index:indexed.state.current_index,dynamic_data_index:indexed.state.dynamic_data_index,enabled,trend_state:std::array::from_fn(|i|indexed.levels[i].state),data:PointDataDto{polyline,level1:trend(1)?,level2:trend(2)?,level3:trend(3)?}};
+    let dto=StateDto{qualification:QualificationDto{enabled:indexed.state.config.enable_secondary_reversal,active:std::array::from_fn(|level|indexed.state.config.enable_secondary_reversal[level]&&indexed.qualification_intervals[level].iter().any(|w|w.end_index.is_none())),intervals:indexed.qualification_intervals.clone()},version:indexed.state.version,current_index:indexed.state.current_index,dynamic_data_index:indexed.state.dynamic_data_index,enabled,trend_state:std::array::from_fn(|i|indexed.levels[i].state),data:PointDataDto{polyline,level1:trend(1)?,level2:trend(2)?,level3:trend(3)?}};
     let value=json!({"schemaVersion":1,"symbol":symbol,"timeframe":timeframe,"dataVersion":data_version,"complete":indexed.complete,"unavailableRules":indexed.unavailable_rules,"state":wavequant_quant_rs::indexed_json::to_value(dto)?,"timing":{"dataRequestMs":data_seconds*1000.0,"analysisMs":analysis_seconds*1000.0,"totalMs":total_seconds*1000.0}});
     Ok((value,snapshot))
 }

@@ -1,3 +1,9 @@
+2026-10-25 MONOREPO-362 本轮提交准备：用户要求提交并推送。资格v25共用核心22项、索引/偏移7项、API四级投影1项及前端DTO/资格/边界/索引/时间轴18项定向回归通过；pnpm --filter @repo/contracts build含类型声明完成。API首次测试编译因ApiError缺Debug失败，补cfg_attr(test,derive(Debug))；随后旧仅折线断言与既有四级启用不符，测试改为实际finish一二三级及资格后断言third_level_only、逐级enabled=true，保留无交易观察/空数组/state空断言，修复后通过。两项仅测试变更，不改变生产API或交易规则，独立复核无阻塞。无旧Python源码或pyproject变更，不包含缓存、产物、凭据或F盘迁移配置。未运行全量lint/套件、浏览器或新股票回测；沿用此前允许记录共享工具配置限制后使用最小检查的授权。全市场及完整Python等价未验证，资格性能和既有Worker摘要问题仍留记录，整体in-progress。当前分支提交后按规则同步并合并本地main，用户本次要求推送当前分支；main不自动推送。
+
+2026-10-25 MONOREPO-362 资格区间最终启动：Rust 必要启动编译 cargo +stable build --locked -p wavequant-api-rs -p wavequant-quant-rs 完成（2m30s，build-qualification-v22-final.log），已重启 API PID63988 / 8010，自动回测关闭。共享契约运行产物生成及前端生产启动编译完成，前端 PID44188 / 3003。以上仅为启动记录；未运行测试、回测、浏览器、性能或 HTTP 探针，资格结果、Python 等价及图表实际展示仍待验证。Python 未修改，未提交或推送，整体仍 in-progress。
+
+2026-10-25 MONOREPO-362 Rust资格确认v22：数组快速路径按本级买点开关与空翻多事实启动独立确认；共用普通严格2/3/重突破/时间门槛及N轧空、量价、跳空规则。确认当日检查结束，结束日无资格，旧证据不能自动重开；复用六态关键位上下文，不重跑四级趋势，不执行买卖或账户。DTO增加启用/当前资格和四级紧凑索引区间，图表从确认日显示有效区域并保留确认/结束边界，历史回放屏蔽未来。现有级别选择映射独立开关，默认仅二级。版本更新隔离旧结果，Python未修改；流程图同步。新增边界回归源码未执行，测试/回测/浏览器/独立类型或lint检查待提交时验证；仅按默认约定进行启动所需编译和重启，启动结果另记。未提交合并或推送，完整迁移仍in-progress。
+
 2026-10-24 MONOREPO-362 研究配置瘦身与自选独立：新增GET /api/research-config及共享ResearchConfigurationSchema，仅runs(id/start/end)、variants，不返回股票、sessions、rows/completed_at或静态说明；校验日志链、路径、清单摘要与report.json内容摘要，不调用run.daily或扫描其他封存文件，实际分析/完整目录仍保留原封存校验。在线初始化改用新接口；完整/api/catalog仅切换非行情历史scope时按需读取，复用进行中请求，失败保留上一个scope，忽略过期切换。首屏自选脚本删除所有研究配置/目录预取；watchlist-bootstrap自身数据就绪即构造可按需查询的股票投影、启用自身管理、接管搜索/分类/选股，不等待研究配置或图表；正式分析未就绪时保存主动选择，配置失败不清空/禁用列表。自选编辑仍使用服务器确认revision，自动分析任务仍单独需要策略配置，不把它等同列表加载。更新首屏不请求研究接口回归源码，未执行；本轮未跑测试、浏览器/E2E、回测、lint/格式、专项类型检查、Git状态差异或提交合并。按默认重启约定完成必要Rust启动编译2m55s及contracts运行产物生成，最终API71344/8010、前端73460/3003且页面预热结束；未发送新接口探针，不宣称新耗时/体积或故障场景已实测。Python/趋势/交易规则未改，整体in-progress，接口联调及历史切换待提交验证。日志build-research-config.log、build-research-config-contracts.log。
 
 2026-10-20 · MONOREPO-334 合并前最终记录

@@ -1,22 +1,22 @@
-import { BuyEligibilityOverlay } from "./buy-eligibility-overlay.js";
+import { BuyEligibilityOverlay, eligibilityLevels } from "./buy-eligibility-overlay.js";
 
-// 红色从结构低点起画；蓝色只使用资格事件的真实确认/结束日期，不把低点日当作许可日。
+// 蓝色只使用后端资格的真实确认/结束日期，同日确认和结束同时保留。
 export function eligibilityBoundaryRanges(view, asof = view?.asof) {
     const bars = view?.bars;
     if (!bars?.length || !Array.isArray(view.audit) || (view.timeframe || "1d") !== "1d") return [];
-    const level = view.backtest?.strategy?.buy_interval_level ?? 2;
+    const levels = eligibilityLevels(view);
     const cutoff = asof && asof < bars.at(-1).time ? asof : bars.at(-1).time;
     const dates = new Map(bars.map((bar, index) => [bar.time, index]));
     const windows = new Map();
     for (const event of view.audit) {
-        if (!event || event.trend_level !== level || (event.symbol && event.symbol !== view.symbol)) continue;
+        if (!event || !levels.includes(event.trend_level) || (event.symbol && event.symbol !== view.symbol)) continue;
         const opened = event.event === "trading_interval_opened";
         if (!opened && event.event !== "trading_interval_closed") continue;
         const start = opened ? event.bar_index : event.start_index;
         const day = typeof event.timestamp === "string" && /^\d{4}-\d{2}-\d{2}(?:T|$)/.test(event.timestamp)
             ? event.timestamp.slice(0, 10) : null;
         if (!day || day > cutoff || !Number.isInteger(start) || start < 0 || typeof event.source_path !== "string") continue;
-        const key = JSON.stringify([event.source_path, start]);
+        const key = JSON.stringify([event.trend_level, event.source_path, start]);
         const window = windows.get(key) || {};
         if (opened) window.confirmed = day;
         else if (!window.closed || day < window.closed) window.closed = day;
