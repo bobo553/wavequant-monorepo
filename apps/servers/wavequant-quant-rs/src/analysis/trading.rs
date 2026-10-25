@@ -25,6 +25,7 @@ pub mod squeeze;
 pub mod candidates;
 pub mod arbiter;
 pub mod n_alternation;
+pub mod single_n;
 pub mod entry_risk;
 pub mod shallow;
 pub mod abc;

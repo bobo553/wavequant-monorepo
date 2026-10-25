@@ -144,6 +144,9 @@ pub fn project_n_targets(origin: Decimal, neckline: Decimal, pullback: Decimal, 
 }
 
 pub fn observe_n(bars: &[RuleCandle], setup: &NSetup, options: &NOptions) -> Result<NObservation, String> {
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("observe_n");
+
     setup.validate()?;
     if options.timeframe != setup.timeframe { return Err("NSetup with matching timeframe required".into()); }
     let end = options.asof_index.or_else(|| bars.len().checked_sub(1)).ok_or("as-of bar is unavailable")?;

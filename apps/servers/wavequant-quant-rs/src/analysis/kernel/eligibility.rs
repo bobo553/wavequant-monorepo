@@ -40,6 +40,8 @@ struct Search {
     key: KernelPoint,
     started: usize,
     phase: QualificationPhase,
+    n: crate::analysis::trading::single_n::SingleNState,
+    squeeze: crate::analysis::trading::single_n::SqueezeState,
 }
 fn price(p: &KernelPoint) -> Result<Decimal, String> {
     p.value.to_string().parse().map_err(|_|"qualification price exceeds decimal range".into())
@@ -51,6 +53,9 @@ fn scalar(pool: &PointArena, bars: &[KernelBar], id: PointId) -> KernelPoint {
 }
 /// 为既有量价/N确认函数一次性提供标量点；不展开来源、证书或任何递归证明。
 pub(crate) fn scalar_frame(pool:&PointArena,bars:&[KernelBar],frame:&RefFrame)->KernelFrame {
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("scalar_frame");
+
     let mut out=KernelFrame::empty(frame.level);
     out.points=frame.points.iter().map(|id|scalar(pool,bars,*id)).collect();
     for event in &frame.events {
@@ -82,7 +87,8 @@ fn seed(event:&KernelEvent,up:bool)->Option<Search> {
         ||key.known_index>=high.index
         ||[origin,key,high].iter().any(|p|p.known_index>event.known_index){return None;}
     Some(Search{origin:origin.clone(),high:high.clone(),key:key.clone(),started:event.known_index,
-        phase:QualificationPhase::AwaitingAlternationEnd{after:None}})
+        phase:QualificationPhase::AwaitingAlternationEnd{after:None},
+        n:crate::analysis::trading::single_n::SingleNState::new(high.index),squeeze:Default::default()})
 }
 fn path_points(frame:&KernelFrame)->BTreeMap<usize,Vec<KernelPoint>> {
     let mut paths:BTreeMap<usize,Vec<KernelPoint>>=BTreeMap::new();
@@ -94,6 +100,9 @@ fn visible(points:&[KernelPoint],now:usize)->&[KernelPoint] {
 }
 pub(crate) struct PairContext {pub known:usize,pub path:usize,pub pair:Option<(KernelPoint,KernelPoint)>}
 pub(crate) fn pair_contexts(pool:&PointArena,bars:&[KernelBar],frame:&RefFrame)->Vec<PairContext>{
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("pair_contexts");
+
     frame.contexts.iter().map(|context|PairContext{known:context.known_index,path:context.path,
         pair:if context.direction==Some(super::Direction::Down){context.key.zip(context.anchor).map(|(key,low)|(scalar(pool,bars,key),scalar(pool,bars,low)))}else{None}}).collect()
 }
@@ -101,16 +110,24 @@ pub(crate) fn pair_contexts(pool:&PointArena,bars:&[KernelBar],frame:&RefFrame)-
 #[derive(Clone, Copy)]
 pub(crate) struct StateContext {pub known:usize,pub path:usize,pub state:Option<TrendState>}
 pub(crate) fn state_contexts(frame:&RefFrame)->Vec<StateContext>{
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("state_contexts");
+
     frame.contexts.iter().map(|context|StateContext{known:context.known_index,path:context.path,state:context.state}).collect()
 }
 /// 对应 Python confirm_bull_alternation：返回证明表示空多交替已结束，才能开启资格。
 fn confirm_bull_alternation_end(search:&Search,own:&[KernelPoint],polyline:&[KernelPoint],bars:&[RuleCandle],market:&[KernelBar],
-    now:usize,level:u8,config:&TradingDayConfig,pair:Option<(&KernelPoint,&KernelPoint)>,after:Option<usize>,allow_gap:bool)
+    now:usize,level:u8,_config:&TradingDayConfig,pair:Option<(&KernelPoint,&KernelPoint)>,after:Option<usize>,allow_gap:bool)
     ->Result<Option<AlternationProof>,String> {
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("confirm_start");
+
     if now<search.started||after.is_some_and(|after|now<=after){return Ok(None);}
     let path=format!("lecture-{}",search.origin.path);
-    if let Some(proof)=n_alternation::confirm_n_squeeze_alternation(bars,now,&search.origin,&search.high,&search.key,
-        polyline,pair,level,&path,config,after,allow_gap)? {return Ok(Some(proof));}
+    if let Some(n)=&search.n.candidate{
+        if let Some(proof)=n_alternation::confirm_single_n(bars,now,&search.origin,&search.high,&search.key,
+            polyline,n,level,&path,after)? {return Ok(Some(proof));}
+    }
     if let Some(proof)=confirmation::confirm_volume_breakout_alternation(bars,now,&search.origin,&search.high,pair,false)?{
         return Ok(Some(proof));
     }
@@ -131,6 +148,9 @@ fn gap_lower(proof:&AlternationProof)->Option<Decimal> {
     crate::analysis::trading::qualification::price(&proof.evidence,key)
 }
 fn last_rise_broken(points:&[KernelPoint],bars:&[RuleCandle],now:usize)->Result<bool,String> {
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("last_rise_broken");
+
     let Some(position)=points.iter().rposition(|p|p.kind==PointKind::H)else{return Ok(false);};
     let Some(low)=position.checked_sub(1).and_then(|i|points.get(i))else{return Ok(false);};
     let high=&points[position];
@@ -149,6 +169,9 @@ fn source_path(paths:&BTreeMap<(usize,usize),(usize,usize)>,path:usize,index:usi
 pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFrame,source_paths:&BTreeMap<(usize,usize),(usize,usize)>,
     bars:&[RuleCandle],market:&[KernelBar],config:&TradingDayConfig,pairs:&[PairContext],states:&[StateContext],enabled:bool,cancel:Option<&AtomicBool>)
     ->Result<Vec<QualificationInterval>,String> {
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("daily_eligibility");
+
     if !enabled||bars.is_empty(){return Ok(Vec::new());}
     let own=path_points(frame);let lower_points=path_points(lower);let line=path_points(polyline);
     let mut events:Vec<_>=frame.events.iter().collect();events.sort_by_key(|e|(e.known_index,e.point.order()));
@@ -179,7 +202,9 @@ pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFr
                 if let Some(previous)=searches.get_mut(&path){
                     if matches!(previous.phase,QualificationPhase::Active(_)){continue;}
                     // 延续同一轮空翻多只提高攻击高点，保留首次起点、关键位及重开门槛。
-                    if next.high.order()>previous.high.order()&&next.high.value>previous.high.value{previous.high=next.high;}
+                    if previous.n.candidate.is_none()&&next.high.order()>previous.high.order()&&next.high.value>previous.high.value{
+                        previous.n.restart(next.high.index);previous.squeeze=Default::default();previous.high=next.high;
+                    }
                 }else{searches.insert(path,next);}
             }
         }
@@ -196,6 +221,18 @@ pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFr
             let origin_broken=bars[now].low<price(&search.origin)?;
             let invalid_candidate=path_ended||bear_state||bear_flip||bear_alternation||origin_broken;
             let pair=pairs.iter().rev().find(|p|p.path==base&&p.known<=now).and_then(|p|p.pair.as_ref()).map(|(key,low)|(key,low));
+            // 每个级别/路径在当前日只推进一个N；Active期间也维护同一N及目标，不另找候选。
+            if !invalid_candidate{
+                let step=crate::analysis::trading::single_n::advance_n(&mut search.n,polyline,&bars[now],now,now.checked_sub(1).and_then(|i|bars.get(i)),|index|bars.get(index).map(|b|b.close))?;
+                if step.invalidated{search.squeeze=Default::default();}
+                if step.formed&&config.strict_n_attack_quality&&now>0
+                    &&crate::analysis::trading::entries::v3_positive_n_attack_rejection(&bars[now],Some(bars[now].volume>bars[now-1].volume)).is_some(){
+                    search.n.retire(now);search.squeeze=Default::default();
+                }
+                if let (Some(n),Some(previous))=(&mut search.n.candidate,now.checked_sub(1).and_then(|i|bars.get(i))){
+                    crate::analysis::trading::single_n::advance_squeeze(&mut search.squeeze,n,&bars[now],previous,now,config.shadow_fraction)?;
+                }
+            }
             if let QualificationPhase::AwaitingAlternationEnd{after}=search.phase{
                 // 没有有效资格可关闭；仅撤销已经失效的翻多候选，不生成结束区间。
                 if invalid_candidate{retired.push(path);continue;}
@@ -231,7 +268,10 @@ pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFr
                 close(&active,&mut intervals,now,reason);
                 // 沿用 Python resume_qualification_search：本级翻多仍成立才等待新证据。
                 // 本级空头/反向事实/起点或路径失效必须回到等待新的空翻多。
-                if invalid_candidate{retired.push(path);}else{search.phase=QualificationPhase::AwaitingAlternationEnd{after:Some(now)};}
+                if invalid_candidate{retired.push(path);}else{
+                    search.n.retire(now);search.squeeze=Default::default();
+                    search.phase=QualificationPhase::AwaitingAlternationEnd{after:Some(now)};
+                }
             }else{search.phase=QualificationPhase::Active(active);}
         }
         for path in retired{searches.remove(&path);}

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use super::{kernel::{self, KernelBar, KernelFrame, KernelOptions, TrendState}, trading::{self, RuleCandle, qualification::TradingEligibility, FrameTradeEvaluation}};
 
-pub const VERSION: u32 = 25;
+pub const VERSION: u32 = 26;
 // 结构模式计算全部四级；账户交易保持独立停用。
 pub const STRUCTURE_ONLY:bool=true;
 const MAX_BARS: usize = 250_000;
@@ -316,6 +316,9 @@ impl TrendAnalyzer {
     }
     /// 只消费已经完成的四级结构；资格开启与交易执行完全独立。
     pub fn finish_qualification_arrays(&mut self,cancel:Option<&AtomicBool>)->Result<(),String>{
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("qualification_total");
+
         let Some(frames)=&self.array_frames else{return Ok(());};
         if !self.state.config.enable_secondary_reversal.iter().any(|enabled|*enabled){return Ok(());}
         let phase=Instant::now();

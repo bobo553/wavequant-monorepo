@@ -6,6 +6,9 @@ use crate::indexed_json::{Value,json};
 fn value(p:&KernelPoint)->Result<Decimal,String>{p.value.to_string().parse().map_err(|_|"N alternation anchor price is outside decimal range".into())}
 fn candidate_proof(bars:&[RuleCandle],now:usize,origin:&KernelPoint,high:&KernelPoint,key:&KernelPoint,vertices:&[KernelPoint;3],
     attack:usize,level:u8,path:&str,gap:Option<&Value>,confirmed_regime:Option<MarketRegime>,resumed:bool)->Result<Option<Value>,String>{
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("candidate_proof");
+
     let[a,_,c]=vertices;let known=vertices.iter().map(|p|p.known_index).max().unwrap_or(0);let anchor_known=origin.known_index.max(high.known_index).max(key.known_index);
     if !(high.index<a.index&&a.index<c.index&&c.index<=attack&&attack<=now&&now<bars.len()&&anchor_known<=attack&&known<=now){return Ok(None);}
     if !matches!(confirmed_regime,Some(MarketRegime::Bull|MarketRegime::StrongBull))&&!resumed&&gap.is_none(){return Ok(None);}
@@ -36,6 +39,9 @@ fn candidate_proof(bars:&[RuleCandle],now:usize,origin:&KernelPoint,high:&Kernel
 }
 pub fn confirm_n_squeeze_alternation(bars:&[RuleCandle],now:usize,origin:&KernelPoint,high:&KernelPoint,key:&KernelPoint,
     polyline:&[KernelPoint],pair:Option<(&KernelPoint,&KernelPoint)>,level:u8,path:&str,config:&TradingDayConfig,after_index:Option<usize>,allow_gap:bool)->Result<Option<AlternationProof>,String>{
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("n_confirmation");
+
     if now>=bars.len()||level>3||path.is_empty()||!(origin.index<high.index&&high.index<=now)||after_index.is_some_and(|i|i>=now){return Ok(None);}
     if [origin,high,key].into_iter().chain(polyline).any(|p|p.known_index>now){return Err("N alternation requires known causal points".into());}
     let origin_price=value(origin)?;
@@ -76,3 +82,23 @@ pub fn confirm_n_squeeze_alternation(bars:&[RuleCandle],now:usize,origin:&Kernel
                 return Ok(Some(AlternationProof{low:low.clone(),rule:"positive_n_and_squeeze_after_qualified_b".into(),evidence:proof}));}}
     }Ok(None)
 }
+
+/// 只验证已锁定 N 的外层交替条件；不再枚举候选或重跑 N/轧空历史。
+pub fn confirm_single_n(bars:&[RuleCandle],now:usize,origin:&KernelPoint,high:&KernelPoint,key:&KernelPoint,
+    polyline:&[KernelPoint],n:&super::single_n::SingleNData,level:u8,path:&str,after:Option<usize>)->Result<Option<AlternationProof>,String>{
+    let (Some(attack),Some(defense),Some(squeeze))=(n.attack_index,n.defense,n.squeeze_index)else{return Ok(None);};
+    if bar_low_broken(&bars[now],defense)||after.is_some_and(|i|squeeze<=i)||n.a.bar_index<=high.index{return Ok(None);}
+    let make=|r:&super::single_n::NPointRef,kind,value|KernelPoint::new(crate::analysis::kernel::KernelPointData{
+        index:r.bar_index,ordinal:r.ordinal,known_index:r.known_index,kind,value,time:bars[r.bar_index].timestamp.clone(),
+        level:0,path:origin.path,state:crate::analysis::kernel::PointState::Confirmed,evidence:Value::Null});
+    use rust_decimal::prelude::ToPrimitive;
+    let vertices=[make(&n.a,PointKind::L,n.origin.to_f64().ok_or("N origin unavailable")?),
+        make(&n.b,PointKind::H,n.neckline.to_f64().ok_or("N neckline unavailable")?),
+        make(&n.c,PointKind::L,n.pullback.to_f64().ok_or("N pullback unavailable")?)];
+    let Some(proof)=candidate_proof(bars,now,origin,high,key,&vertices,attack,level,path,None,n.regime,false)? else{return Ok(None);};
+    if let Some(low)=polyline.iter().find(|p|p.kind==PointKind::L&&Some(p.index)==super::qualification::index(&proof,"b_low_index")
+        &&value(p).ok()==super::qualification::price(&proof,"b_low_price")){
+        return Ok(Some(AlternationProof{low:low.clone(),rule:"single_n_and_squeeze_after_qualified_b".into(),evidence:proof}));
+    }Ok(None)
+}
+fn bar_low_broken(bar:&RuleCandle,defense:Decimal)->bool{bar.low<defense}

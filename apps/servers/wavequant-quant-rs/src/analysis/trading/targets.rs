@@ -99,6 +99,9 @@ impl EligibleNSource{
 }
 fn geometry(points:&[KernelPoint])->String{points.iter().map(|p|format!("{}.{}.{}.{}",p.index,p.ordinal,p.known_index,p.value)).collect::<Vec<_>>().join(":")}
 pub fn folded_n_candidates(points:&[KernelPoint],earliest:usize,direction:Direction,allow_equal_origin:bool)->Vec<[KernelPoint;3]>{
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("folded_candidates");
+
     let high=if direction==Direction::Up{PointKind::H}else{PointKind::L};let low=high.opposite();let sign=if direction==Direction::Up{1.0}else{-1.0};
     let points:Vec<_>=points.iter().filter(|p|p.index>=earliest).collect();let mut result=vec![];
     for(position,b)in points.iter().enumerate(){

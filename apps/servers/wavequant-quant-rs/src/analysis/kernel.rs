@@ -187,3 +187,6 @@ pub fn attach_promotion_receipts(source:&mut [KernelPoint],receipts:&[PromotionR
     }
     Ok(())
 }
+
+#[cfg(feature="qualification-timing")]
+pub mod qualification_profile;

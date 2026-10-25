@@ -126,6 +126,9 @@ pub(crate) fn confirm_ordinary_bull_counter(origin:&KernelPoint,impulse:&KernelP
 /// 重开确认先排除旧窗口已消费的低点，沿用 Python 的 after_index 语义。
 pub(crate) fn confirm_ordinary_bull_counter_after(origin:&KernelPoint,impulse:&KernelPoint,points:&[KernelPoint],bars:&[KernelBar],now:usize,after:Option<usize>)
     ->Result<Option<(KernelPoint,&'static str)>,String> {
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("ordinary_confirmation");
+
     if origin.index>=impulse.index || impulse.index>=now || after.is_some_and(|after|now<=after) {return Ok(None);}
     if bars[origin.index+1..=now].iter().any(|bar|bar.low<origin.value) {return Ok(None);}
     let counter=points.iter().filter(|p|p.path==origin.path && p.kind==PointKind::L && p.is_closed()
