@@ -15271,6 +15271,21 @@
                 "遵循用户验证安排：启动请求授权必要编译、启动修复和只读连通确认；不主动运行回测、测试、lint、格式或浏览器。完整行为等价未验收前保持in-progress，本轮不提交合并。"
             ],
             "verification": [
+                {
+                    "command": "node --test (watchlists,watchlist-first-paint,server-watchlists); pnpm exec tsc -p .codex-runtime/rust-startup/submit/tsconfig.json --noEmit; node --check modified JS; git diff --check",
+                    "status": "passed",
+                    "summary": "2026-10-25 提交阶段37项相关检查、隔离映射共享产物的严格类型及6个JS语法通过。首次预览夹具缺新增DOM节点失败已补齐，增加标题/星标交接回归，无产品追加行为变化。Python无改动。全量lint缺工具配置依赖沿用此前明确许可记录限制；未全套测试/回测/新增浏览器检查。用户明确授权提交合并main及推送两个分支；完整迁移保持in-progress。"
+                },
+                {
+                    "command": "Chrome DevTools: 15s continuous rectangles and rendered-state sampling, cached reload / 1440px + API delay1200ms / preview bypass + delay; frontend production restart",
+                    "status": "passed",
+                    "summary": "2026-10-25 二次排查纠正先前可视CLS与首尾比对的遗漏：修复34px回放往返、约65px底部内容移动、13px拖拽图标偏移。最终三场景16区域x/y/width/height全程极差0，CLS0、Console无error/warn；缓存标题、星标、选中行、手柄及买点说明无闪变，冷缓存只首次填充不回退。前端31708/3003已重启，恢复正常浏览器请求。未运行测试/lint/typecheck/Git检查，未提交推送，不构成完整迁移验收。"
+                },
+                {
+                    "command": "Chrome DevTools: reload + PerformanceObserver(layout-shift) + DOM rectangles; cache preview bypass + API delay 1200ms + 1440px viewport; production frontend restart",
+                    "status": "passed",
+                    "summary": "2026-10-25 用户明确授权页面联调。布局偏移累计由0.226104降至0，关键红框容器首帧/完成坐标尺寸一致；缓存与正式自选行名称/代码及行高一致，Console无error/warn。必要启动编译和3003重启完成。只验证本次加载布局；未运行测试/lint/typecheck，不构成完整迁移验收。代码未提交合并推送。"
+                },
 {
     "command": "cargo +stable test -p wavequant-quant-rs --test indexed_data_flow --test trend_offset; node --import local resolver --test trend-state/indexed-document/backtest-job-status",
     "status": "passed",

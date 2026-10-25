@@ -6,12 +6,12 @@ export function createDeferredFeature({ loader, create, actionId, statusId, acti
     const status = document.getElementById(statusId);
     const idleText = status.textContent;
     const controller = window.wavequantCreateFeatureLoader(loader);
-    async function ensure() {
+    async function ensure({ announce = false } = {}) {
         if (instance) return instance;
         if (loading) return loading;
         if (controller.getStatus() === "failed") controller.reset();
         button.disabled = true;
-        status.textContent = "正在加载工具…";
+        if (announce) status.textContent = "正在加载工具…";
         loading = controller.load().then((module) => {
             instance ||= create(module);
             if (status.textContent === "正在加载工具…") status.textContent = idleText;
@@ -23,7 +23,7 @@ export function createDeferredFeature({ loader, create, actionId, statusId, acti
             const retry = document.createElement("button");
             retry.type = "button";
             retry.textContent = "重新加载工具";
-            retry.addEventListener("click", () => { void ensure(); });
+            retry.addEventListener("click", () => { void ensure({ announce: true }); });
             status.append(retry);
             button.disabled = !canStart();
             return null;
@@ -32,7 +32,7 @@ export function createDeferredFeature({ loader, create, actionId, statusId, acti
     }
     button.addEventListener("click", () => {
         // 创建后由原工具的监听器处理；首次点击在模块就绪后补执行一次。
-        if (!instance && canStart()) void ensure().then((feature) => { if (feature && canStart()) return feature[action](); });
+        if (!instance && canStart()) void ensure({ announce: true }).then((feature) => { if (feature && canStart()) return feature[action](); });
     });
     return {
         ensure,

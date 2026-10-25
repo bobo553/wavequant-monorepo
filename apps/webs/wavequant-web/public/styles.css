@@ -3626,3 +3626,48 @@ tbody tr:hover {
 .completed-backtest-elapsed[hidden] {
     display: none;
 }
+
+/* 数据状态只更新内容；首屏、等待和完成状态共用空间。 */
+.chart-canvas-slot { position:relative; flex:0 0 auto; height:max(200px, calc(100svh - 480px)); min-width:0; }
+.chart-canvas-slot > .price-chart { height:100%; }
+.chart-canvas-slot > .chart-preparing-state:not([hidden]) { position:absolute; inset:0; z-index:2; min-height:0; margin:0; box-sizing:border-box; }
+.ohlc #ohlc-text { flex:1 1 0; }
+.symbol-copy { width:154px; flex:0 0 154px; }
+#symbol-copy-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#watchlist-toggle-current { width:32px; height:32px; flex:0 0 32px; }
+#watchlist-count { display:inline-block; min-width:5ch; text-align:right; font-variant-numeric:tabular-nums; }
+#watchlist-status { height:40px; min-height:40px; overflow:auto; }
+#watchlist-backtest-status { height:32px; min-height:32px; overflow:auto; }
+.workspace-grid .selected-stock-summary { height:100px; min-height:100px; box-sizing:border-box; }
+#scan-status { min-height:54px; }
+#scan-start { min-width:148px; }
+.chart-position { box-sizing:border-box; min-height:108px; }
+
+
+.symbol-copy-icon { margin-left:auto; flex:0 0 auto; }
+.chart-position-heading output { width:180px; flex:0 0 180px; }
+.chart-position-legend > span:first-child { width:160px; flex:0 0 160px; }
+.chart-position-legend > span:nth-child(3) { min-width:150px; }
+.chart-timing-slot { height:20px; margin-top:4px; font-size:10px; color:var(--research-text-soft); white-space:nowrap; overflow:auto; }
+.chart-position { min-height:128px; }
+#asof-label { display:inline-block; width:190px; font-variant-numeric:tabular-nums; }
+#replay-mode { display:inline-block; box-sizing:border-box; width:80px; text-align:center; }
+.workspace-grid .selected-stock-summary { padding:8px 10px; border:1px solid var(--research-accent-border); border-radius:6px; background:var(--research-accent-soft); }
+
+/* 状态条曾在首屏外把历史回放推移34px；预留包括重试按钮的空间。 */
+.stock-data-status-slot { box-sizing:border-box; height:50px; flex:0 0 50px; overflow:auto; }
+.stock-data-status-slot .stock-data-load-status { box-sizing:border-box; min-height:50px; margin:0; }
+#stock-data-load-message { min-width:0; }
+#stock-data-load-retry { flex:0 0 auto; }
+#symbol-copy-text { flex:1 1 0; text-align:left; }
+#watchlist-toggle-current:disabled { opacity:1; }
+#watchlist-toggle-current svg { width:18px; height:18px; }
+#scan-status { height:54px; overflow:auto; }
+
+.workspace-grid > .insight { height:350px; }
+.workspace-grid > .insight:has(.selection-info details) { height:auto; }
+.backtest-details-slot { height:80px; overflow:auto; }
+.backtest-details-slot > #backtest-details { margin-bottom:0; }
+
+.stock-backtest-status-slot { flex:0 0 100%; height:66px; min-width:0; overflow:auto; }
+.stock-backtest-status-slot .stock-backtest-status { margin:0; min-height:42px; box-sizing:border-box; }

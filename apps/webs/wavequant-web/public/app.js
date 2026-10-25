@@ -36,7 +36,6 @@ import { candleCopyText, previousCandleClose } from "./candle-details.js";
 import { loadMarketTimeframeSnapshot, readCachedMarketTimeframeSnapshot } from "./catalog-cache.js";
 import { scrollChartWithMetrics } from "./chart-focus-scroll.js";
 import { chartNavigationKeyPosition } from "./chart-navigation.js";
-import { bindChartViewportHeight } from "./chart-viewport-height.js";
 import { PriceChart } from "./charts.js";
 import { combinedAEntryEvidence } from "./combined-a-entry-evidence.js";
 import { reuseCompletedBacktest } from "./completed-backtest-result.js";
@@ -338,7 +337,9 @@ const preparingCandles = new Map();
 function showChartPreparation(preparing, message = "正在准备日线，行情到达后自动显示。") {
     $("chart-preparing-state").hidden = !preparing;
     $("chart-preparing-message").textContent = message;
-    $("price-chart").hidden = preparing;
+    $("price-chart").style.visibility = preparing ? "hidden" : "";
+    $("price-chart").inert = preparing;
+    $("price-chart").setAttribute("aria-busy", String(preparing));
 }
 async function showPreparingCandles(request, sequence, signal) {
     const source = sourceForScope($("result-scope").value);
@@ -365,7 +366,7 @@ async function showPreparingCandles(request, sequence, signal) {
         $("price-chart").setAttribute("aria-busy", "false");
         $("price-basis").textContent = view.price_basis === "raw_unadjusted" ? "原始不复权" : "因果复权";
         $("loading").hidden = true;
-        document.querySelector(".metric-grid").hidden = true;
+        clearResearchMetrics();
         describeBar(preserveViewport && currentCandle
             ? chartMarketBars(view).find((bar) => bar.time === currentCandle.time) || chartMarketBars(view).at(-1)
             : chartMarketBars(view).at(-1));
@@ -491,7 +492,7 @@ async function refreshBacktestPreview(job) {
             annotations: annotationOptions(), preserveViewport });
         chart.setTheory(view.theory, $("show-theory").checked, preserveViewport);
         if (!samePreview) {
-            document.querySelector(".metric-grid").hidden = true;
+            clearResearchMetrics();
             tradePlayback.setView(null);
         }
         renderTables();
@@ -765,11 +766,7 @@ function renderChartViewport(state, bars, view) {
     $("chart-position-label").textContent = `${first} — ${last}`;
     slider.setAttribute("aria-valuetext", `当前图窗 ${first} 至 ${last}；${timeline.label}；资格区间 ${timeline.ranges.length} 段`);
 }
-bindChartViewportHeight(
-    $("price-chart"),
-    [document.querySelector(".chart-card .chart-position")],
-    $("research-main") ?? $("price-chart").parentElement,
-);
+
 const chart = new PriceChart(
     $("price-chart"),
     describeBar,
@@ -1579,11 +1576,23 @@ function renderHoldingCycles(view) {
         body.append(row);
     }
 }
+// 无交易结果时清空旧股票的指标，但保留首屏卡片和尺寸。
+function clearResearchMetrics() {
+    document.querySelector(".metric-grid").hidden = false;
+    for (const id of ["metric-return", "metric-dd", "metric-trades", "metric-exposure"]) {
+        $(id).textContent = "—";
+        $(id).className = "";
+    }
+    $("metric-return-note").textContent = "等待交易计算结果";
+    $("metric-dd-note").textContent = "等待交易计算结果";
+    $("metric-dd-period").textContent = "暂无持仓区间";
+    $("metric-dd-jump").disabled = true;
+}
 function renderMetrics() {
     renderHoldingCycles(state.view);
     renderDrawdownInterval(state.view);
     if (state.view.backtest?.status === "data_unavailable") {
-        document.querySelector(".metric-grid").hidden = true;
+        clearResearchMetrics();
         $("evidence").textContent = state.view.evidence;
         $("backtest-details").hidden = false;
         $("backtest-details").textContent = state.view.evidence;
@@ -1592,7 +1601,7 @@ function renderMetrics() {
         return;
     }
     if (["tdx", "akshare"].includes(state.view.result_scope)) {
-        document.querySelector(".metric-grid").hidden = true;
+        clearResearchMetrics();
         $("evidence").textContent = state.view.evidence;
         $("backtest-details").hidden = false;
         $("backtest-details").textContent =
@@ -1602,7 +1611,7 @@ function renderMetrics() {
         return;
     }
     if (["first_level_only","second_level_only","third_level_only"].includes(state.view.calculation_mode)) {
-        document.querySelector(".metric-grid").hidden = true;
+        clearResearchMetrics();
         $("evidence").textContent = "各级趋势索引计算完成，交易判断未运行。";
         $("backtest-details").hidden = true;
         setSecondaryText("curve-scope-label", "结构计算未生成净值");
@@ -2375,7 +2384,7 @@ async function loadProgressiveMarketView(request, sequence, signal) {
                 $("timeframe-tag").textContent = timeframes[view.timeframe || "1d"].tag;
                 $("partial-timeframe").hidden = !view.is_partial_last_bar;
                 $("price-basis").textContent = view.price_basis === "raw_unadjusted" ? "原始不复权" : "因果复权";
-                document.querySelector(".metric-grid").hidden = true;
+                clearResearchMetrics();
                 renderTables();
                 chart.setData(view, {
                     volume: $("show-volume").checked,
@@ -2575,7 +2584,7 @@ async function loadView({
             : "读取已封存行情与交易记录…";
     $("chart-loading-overlay").hidden = true;
     $("price-chart").setAttribute("aria-busy", String(!backtestMode || !hasRenderedView));
-    if (backtestMode || !hasRenderedView) document.querySelector(".metric-grid").hidden = true;
+    if (backtestMode || !hasRenderedView) clearResearchMetrics();
     showPage(state.page);
     syncDate();
     const request = select();
@@ -2957,7 +2966,7 @@ async function loadView({
         $("price-chart").setAttribute("aria-busy", "false");
         if (!backtestMode) {
             document.querySelectorAll(".page").forEach((p) => (p.hidden = true));
-            document.querySelector(".metric-grid").hidden = true;
+            clearResearchMetrics();
             $("stock-results").hidden = true;
         }
         renderServerBacktestStatuses();

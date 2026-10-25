@@ -205,7 +205,7 @@ export function ResearchChart(): JSX.Element {
                         title="将当前股票加入自选股"
                         disabled
                     >
-                        <IconStar size={20} stroke={1.8} aria-hidden="true" />
+                        <span id="watchlist-current-icon"><IconStar size={18} stroke={1.8} aria-hidden="true" /></span>
                     </button>
                     <div id="timeframe-select" className="timeframe-tabs" role="tablist" aria-label="K线周期">
                         {chartTimeframes.map(([value, label], index) => (

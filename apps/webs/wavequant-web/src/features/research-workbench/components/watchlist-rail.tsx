@@ -89,7 +89,7 @@ export function WatchlistRail(): JSX.Element {
                         </div>
                     </div>
                     <p id="watchlist-backtest-status" role="status">
-                        等待自选股列表加载…
+                        等待可用行情和回测参数…
                     </p>
                     <progress id="watchlist-backtest-progress" max={1} value={0} aria-label="自选股回测进度" />
                     <small>服务器按自选顺序回测全部分类；关闭页面后继续，策略更新后自动重跑。</small>

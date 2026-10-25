@@ -33,7 +33,9 @@ export function ResearchWorkbench(): JSX.Element {
                             <StockBrowser />
                             <ResearchEvidence />
                         </div>
-                        <div id="backtest-details" className="panel note-card" hidden />
+                        <div className="backtest-details-slot">
+                            <div id="backtest-details" className="panel note-card" hidden />
+                        </div>
                         <ResearchLedgers />
                     </section>
                     <ResearchControls />

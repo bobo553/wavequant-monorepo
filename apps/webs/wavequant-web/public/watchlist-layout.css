@@ -1,0 +1,21 @@
+/* 缓存首屏与正式列表共享布局，交接不改变行高、列宽和控件样式。 */
+:host { display:block; font:inherit; color:inherit; }
+#watchlist-group-first-paint label, :host > label { display:grid; grid-template-columns:minmax(0,1fr); gap:4px; color:var(--research-text-soft); font:inherit; }
+#watchlist-group-first-paint select, :host > label select { box-sizing:border-box; width:100%; min-width:0; height:34px; padding:6px; border:1px solid var(--border); border-radius:5px; color:var(--text); background:var(--research-control); font:inherit; }
+.watchlist-preview-list { display:grid; gap:4px; margin:0; padding:0; }
+.watchlist-stock-row { box-sizing:border-box; display:flex; position:relative; min-width:0; height:48px; align-items:center; gap:0; padding:2px 4px 2px 1px; border:1px solid transparent; border-radius:8px; background:var(--research-subtle); color:var(--text); }
+.watchlist-stock-row[data-selected="true"] { background:var(--research-accent-soft); }
+.watchlist-stock-row[data-selected="true"]::before { position:absolute; top:10px; bottom:10px; left:0; width:2px; border-radius:2px; background:var(--cyan); content:""; pointer-events:none; }
+.watchlist-stock-drag { box-sizing:border-box; flex:0 0 24px; min-height:42px; padding:0; border:0; border-radius:5px; background:transparent; color:var(--research-text-soft); }
+.watchlist-stock-drag svg { display:block; margin:auto; }
+.watchlist-stock-open { box-sizing:border-box; display:flex; flex:1 1 auto; width:0; min-width:0; min-height:42px; flex-direction:column; justify-content:center; gap:3px; padding:4px 2px; text-align:left; border:0; background:transparent; color:inherit; font:inherit; cursor:pointer; }
+.watchlist-stock-identity { display:grid; width:100%; min-width:0; grid-template-columns:minmax(0,1fr) auto 72px; align-items:center; gap:4px; }
+.watchlist-stock-open strong { min-width:0; overflow:hidden; text-overflow:ellipsis; color:var(--text); font-size:12px; font-weight:650; white-space:nowrap; }
+.watchlist-stock-row[data-selected="true"] strong { color:var(--cyan); }
+.watchlist-stock-open small { color:var(--research-text-soft); font-size:9px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.watchlist-backtest-badge { box-sizing:border-box; width:72px; max-width:72px; padding:2px 4px; overflow:hidden; border-radius:4px; color:var(--research-text-faint); font-size:9px; white-space:nowrap; text-overflow:ellipsis; text-align:right; }
+.watchlist-stock-open:focus-visible { outline:2px solid var(--cyan); outline-offset:-2px; }
+
+.watchlist-backtest-badge { line-height:1.1; background:color-mix(in srgb, var(--text) 6%, transparent); }
+
+.watchlist-stock-drag { display:flex; align-items:center; justify-content:center; }
