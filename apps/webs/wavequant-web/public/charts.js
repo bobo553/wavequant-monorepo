@@ -192,6 +192,8 @@ export class PriceChart {
         this.onVisible = onVisible;
         this.onViewport = onViewport;
         this.chart = base(container);
+        // 预留价格标签宽度，第一批行情不会挤动绘图区。
+        this.chart.applyOptions({ rightPriceScale: { minimumWidth: 88 } });
         this.chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
         this.unbindKeyboardNavigation = bindChartKeyboardNavigation(container, this, onKeyboardNavigate);
         this.candles = this.chart.addSeries(L.CandlestickSeries, {

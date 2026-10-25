@@ -144,17 +144,19 @@ export function ResearchControls(): JSX.Element {
                     普通高低点升降确认整波结束
                 </label>
                 <button id="run-stock-backtest">运行当前股票回测</button>
-                <div
-                    id="stock-backtest-status"
-                    className="stock-backtest-status"
-                    role="status"
-                    aria-live="polite"
-                    hidden
-                >
-                    <span className="stock-backtest-indicator" aria-hidden="true" />
-                    <span id="stock-backtest-status-text" />
-                    <progress id="stock-backtest-progress" max={100} aria-label="回测进度" hidden />
-                    <span id="stock-backtest-other" className="stock-backtest-other" />
+                <div className="stock-backtest-status-slot">
+                    <div
+                        id="stock-backtest-status"
+                        className="stock-backtest-status"
+                        role="status"
+                        aria-live="polite"
+                        hidden
+                    >
+                        <span className="stock-backtest-indicator" aria-hidden="true" />
+                        <span id="stock-backtest-status-text" />
+                        <progress id="stock-backtest-progress" max={100} aria-label="回测进度" hidden />
+                        <span id="stock-backtest-other" className="stock-backtest-other" />
+                    </div>
                 </div>
                 <button id="download-backtest" disabled>
                     导出回测账本

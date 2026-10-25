@@ -11,19 +11,21 @@ export function ChartViewport(): JSX.Element {
                 </button>
                 <span id="candle-copy-feedback" className="candle-copy-feedback" role="status" aria-live="polite" />
             </div>
-            <section id="chart-preparing-state" className="chart-preparing-state" role="status" hidden>
-                <strong>正在准备当前股票的行情与回测</strong>
-                <p id="chart-preparing-message">正在读取日线，行情到达后自动显示。</p>
-                <p>你可以切换股票或调整设置，后台任务会继续计算。</p>
-            </section>
-            <div
-                id="price-chart"
-                className="price-chart"
-                role="region"
-                tabIndex={0}
-                aria-label="TradingView K线与成交量图"
-                aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
-            />
+            <div className="chart-canvas-slot">
+                <section id="chart-preparing-state" className="chart-preparing-state" role="status" hidden>
+                    <strong>正在准备当前股票的行情与回测</strong>
+                    <p id="chart-preparing-message">正在读取日线，行情到达后自动显示。</p>
+                    <p>你可以切换股票或调整设置，后台任务会继续计算。</p>
+                </section>
+                <div
+                    id="price-chart"
+                    className="price-chart"
+                    role="region"
+                    tabIndex={0}
+                    aria-label="TradingView K线与成交量图"
+                    aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
+                />
+            </div>
             <div className="chart-position">
                 <div className="chart-position-heading">
                     <label htmlFor="chart-position-slider">当前图窗位置</label>
@@ -74,12 +76,7 @@ export function ChartViewport(): JSX.Element {
                             >
                                 复制
                             </button>
-                            <span
-                                id="completed-backtest-elapsed"
-                                className="completed-backtest-elapsed"
-                                role="status"
-                                hidden
-                            />
+
                             <span data-current-eligibility-action="" hidden>
                                 <button
                                     id="copy-current-eligibility-range-timeline"
@@ -104,16 +101,26 @@ export function ChartViewport(): JSX.Element {
                         <span>拖动定位图窗中心</span>
                     </div>
                 </div>
+                <div className="chart-timing-slot">
+                    <span
+                        id="completed-backtest-elapsed"
+                        className="completed-backtest-elapsed"
+                        role="status"
+                        hidden
+                    />
+                </div>
             </div>
             <div id="chart-loading-overlay" className="chart-loading-overlay" role="status" aria-live="polite" hidden>
                 <span className="chart-loading-spinner" aria-hidden="true" />
                 <span>正在加载股票数据…</span>
             </div>
-            <div id="stock-data-load-status" className="stock-data-load-status" role="status" aria-live="polite" hidden>
-                <span id="stock-data-load-message" />
-                <button id="stock-data-load-retry" type="button" hidden>
-                    重试加载
-                </button>
+            <div className="stock-data-status-slot">
+                <div id="stock-data-load-status" className="stock-data-load-status" role="status" aria-live="polite" hidden>
+                    <span id="stock-data-load-message" />
+                    <button id="stock-data-load-retry" type="button" hidden>
+                        重试加载
+                    </button>
+                </div>
             </div>
             <div className="replay">
                 <div className="replay-title">

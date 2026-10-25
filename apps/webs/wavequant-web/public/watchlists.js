@@ -504,7 +504,7 @@ export class Watchlists {
         if (!badge) return;
         const status =
             this.backtestStatuses[symbol] ||
-            (this.backtestEligible && !this.backtestEligible.has(symbol) ? "unavailable" : "pending");
+            (this.backtestEligible ? (!this.backtestEligible.has(symbol) ? "unavailable" : "pending") : "unknown");
         const runningJob =
             status === "running"
                 ? this.backtestJobs.find((job) => job.status === "running" && job.symbol === symbol)

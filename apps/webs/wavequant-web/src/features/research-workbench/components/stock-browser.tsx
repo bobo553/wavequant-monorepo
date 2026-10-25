@@ -9,7 +9,7 @@ export function StockBrowser(): JSX.Element {
                 <button id="trade-nodes-tab" aria-pressed="false" hidden>
                     交易节点
                 </button>
-                <button id="buy-points-tab" aria-pressed="false">
+                <button id="buy-points-tab" aria-pressed="true">
                     符合买点
                 </button>
                 <button id="structure-signals-tab" aria-pressed="false">
@@ -113,7 +113,7 @@ export function StockBrowser(): JSX.Element {
                     </p>
                 </div>
             </section>
-            <section id="buy-points-panel" hidden aria-label="符合买点的股票">
+            <section id="buy-points-panel" aria-label="符合买点的股票">
                 <label>
                     信号窗口
                     <select id="scan-lookback" aria-label="买点信号窗口" defaultValue="1">
@@ -124,11 +124,11 @@ export function StockBrowser(): JSX.Element {
                 </label>
                 <div className="scan-actions">
                     <button id="scan-start" disabled>
-                        查询买点结果
+                        查询当前股票买点
                     </button>
                 </div>
                 <p id="scan-status" role="status">
-                    沿用上方策略、成本和回放日期，查询服务器已经发布的信号快照。
+                    使用当前股票的 AkShare 原始不复权日线计算策略信号，不模拟成交。
                 </p>
                 <div id="buy-points-list" />
                 <p className="scan-note">

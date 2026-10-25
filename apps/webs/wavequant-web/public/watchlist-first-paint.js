@@ -45,7 +45,9 @@
             performance.mark?.('wavequant:watchlist-selection');
             for (const button of document.getElementById('watchlist-first-paint')?.shadowRoot?.querySelectorAll('button[data-symbol]') || []) {
                 button.setAttribute('aria-pressed', String(button.dataset.symbol === symbol));
+                button.closest('.watchlist-stock-row').dataset.selected = String(button.dataset.symbol === symbol);
             }
+            paintHeader(symbol);
             const member = this.preview.snapshot.memberships.find((item) => item.symbol === symbol);
             text('watchlist-status', `已选中 ${member.name || symbol}，正在准备图表…`);
         },
@@ -53,8 +55,12 @@
             if (!this.runtimeReady) return;
             released = true;
             observer.disconnect();
-            for (const shadow of shadows.values()) shadow.replaceChildren(document.createElement('slot'));
-            shadows.clear();
+            for (const [host, shadow] of shadows) {
+                // 标题在分析运行时接管后才释放，避免侧栏先就绪时露出SSR占位。
+                if (!this.analysisReady && ['symbol-copy-text', 'watchlist-current-icon'].includes(host.id)) continue;
+                shadow.replaceChildren(document.createElement('slot'));
+                shadows.delete(host);
+            }
         },
         accept(value, source) {
             const next = preview(value);
@@ -90,6 +96,21 @@
         const shadow = shadowFor(id);
         if (shadow) shadow.textContent = value;
     }
+    function paintHeader(symbol) {
+        if (!symbol) return;
+        const member = boot.preview?.snapshot.memberships.find(item => item.symbol === symbol);
+        text('symbol-copy-text', `${symbol.slice(3)} ${member?.name || ''}`.trim());
+        const shadow = shadowFor('watchlist-current-icon');
+        const filled = boot.preview?.snapshot.memberships.some(item => item.groupId === boot.groupId && item.symbol === symbol);
+        const icon = document.getElementById(`watchlist-star-${filled ? 'filled' : 'outline'}-icon`)?.cloneNode(true);
+        if (shadow && icon) {
+            icon.removeAttribute('id');
+            icon.setAttribute('aria-hidden', 'true');
+            const css = document.createElement('style');
+            css.textContent = `svg{display:block;width:18px;height:18px;color:${filled ? 'var(--amber)' : 'var(--text)'}}`;
+            shadow.replaceChildren(css, icon);
+        }
+    }
     function render() {
         if (released || (!boot.preview && !boot.error)) return;
         const shadow = shadowFor('watchlist-first-paint');
@@ -107,17 +128,23 @@
         const snapshot = boot.preview.snapshot;
         const group = snapshot.groups.find((item) => item.id === (boot.groupId || selected)) || snapshot.groups[0];
         boot.groupId = group.id;
+        const linked = new URLSearchParams(location.search).get('symbol');
+        const linkedSymbol = /^(sh\.(60|68)\d{4}|sz\.(00|30)\d{4}|bj\.(43|82|83|87|88|92)\d{4})$/.test(linked || '') ? linked : null;
+        // 同正式入口：显式链接优先，否则当前分类第一只；不把展示预选写成用户点击。
+        const first = snapshot.memberships.filter(item => item.groupId === group.id).sort((a,b) => a.position-b.position)[0];
+        const displayedSymbol = boot.pendingSymbol || linkedSymbol || first?.symbol;
+        paintHeader(displayedSymbol);
         const groupShadow = shadowFor('watchlist-group-first-paint');
         if (groupShadow) {
             const css = document.createElement('style');
-            css.textContent = ':host{display:block;flex:1}label{display:flex;gap:6px;align-items:center;font:inherit}select{flex:1;min-width:0;color:inherit;font:inherit;border:1px solid var(--border);background:var(--research-subtle);border-radius:5px;padding:6px}';
+            css.textContent = document.getElementById('watchlist-layout').textContent;
             const label = document.createElement('label');
             label.textContent = '分类';
             const select = document.createElement('select');
             select.setAttribute('aria-label', '自选股分类');
             for (const item of snapshot.groups) {
                 const option = document.createElement('option');
-                option.value = item.id; option.textContent = item.name;
+                option.value = item.id; option.textContent = `${item.name}（${snapshot.memberships.filter(member => member.groupId === item.id).length}）`;
                 select.append(option);
             }
             select.value = group.id;
@@ -131,21 +158,35 @@
         const members = snapshot.memberships.filter((item) => item.groupId === group.id && boot.query.trim().toLowerCase().split(/\s+/).every((token) => `${item.name} ${item.symbol}`.toLowerCase().includes(token)))
             .slice().sort((left, right) => left.position - right.position);
         const style = document.createElement('style');
-        style.textContent = ':host{display:block;font:inherit;color:inherit}ul{list-style:none;margin:0;padding:0;display:grid;gap:5px}li{border:1px solid var(--border);background:var(--research-subtle);border-radius:7px;padding:0;display:flex;align-items:center;gap:8px}button{font:inherit;color:inherit;background:none;border:0;width:100%;text-align:left;padding:9px 10px;display:flex;align-items:center;gap:8px;cursor:pointer}button:focus-visible{outline:2px solid var(--accent,#2b8ac6);outline-offset:1px}button[aria-pressed=true]{background:var(--research-active,rgba(43,138,198,.16));border-radius:7px}strong{font-size:12px;font-weight:600}small{margin-left:auto;font-size:10px;color:var(--muted)}p{font-size:12px;color:var(--muted);text-align:center;padding:24px 8px}';
-        const list = document.createElement('ul');
+        style.textContent = document.getElementById('watchlist-layout').textContent;
+        const list = document.createElement('div');
+        list.className = 'watchlist-preview-list';
         for (const member of members) {
-            const row = document.createElement('li');
+            const row = document.createElement('div');
+            row.className = 'watchlist-stock-row';
+            row.dataset.selected = String(displayedSymbol === member.symbol);
+            const drag = document.createElement('span');
+            drag.className = 'watchlist-stock-drag';
+            drag.setAttribute('aria-hidden', 'true');
+            drag.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M9 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M9 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M15 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M15 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M15 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/></svg>';
             const name = document.createElement('strong');
             name.textContent = member.name || member.symbol;
             const code = document.createElement('small');
             code.textContent = member.symbol;
             const button = document.createElement('button');
             button.type = 'button';
+            button.className = 'watchlist-stock-open';
             button.dataset.symbol = member.symbol;
-            button.setAttribute('aria-pressed', String(boot.pendingSymbol === member.symbol));
+            button.setAttribute('aria-pressed', String(displayedSymbol === member.symbol));
             button.addEventListener('click', () => boot.select(member.symbol));
-            button.append(name, code);
-            row.append(button);
+            const identity = document.createElement('span');
+            identity.className = 'watchlist-stock-identity';
+            const badge = document.createElement('span');
+            badge.className = 'watchlist-backtest-badge';
+            badge.textContent = '状态待确认';
+            identity.append(name, code, badge);
+            button.append(identity);
+            row.append(drag, button);
             list.append(row);
         }
         if (!members.length) {
@@ -158,13 +199,13 @@
         const chosen = snapshot.memberships.find((member) => member.symbol === boot.pendingSymbol);
         text('watchlist-status', chosen ? `已选中 ${chosen.name || chosen.symbol}，正在准备图表…` :
             boot.source === 'data' ? '点击股票切换；自选数据已同步' : '点击股票切换；后台同步自选数据中…');
-        text('watchlist-backtest-status', '自选列表已显示，正在同步任务状态…');
+        text('watchlist-backtest-status', '等待可用行情和回测参数…');
         if (!mounted) {
             performance.mark?.('wavequant:watchlist-preview-visible');
             performance.mark?.('wavequant:watchlists-interactive');
         }
         mounted = true;
-        observer.disconnect();
+        if (document.getElementById('symbol-copy-text') && document.getElementById('watchlist-current-icon')) observer.disconnect();
     }
     document.addEventListener('input', (event) => {
         if (!released && event.target?.id === 'header-stock-search') {

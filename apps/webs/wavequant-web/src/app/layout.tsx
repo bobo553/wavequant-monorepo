@@ -14,6 +14,8 @@ import "../../public/styles.css";
 // 内联独立缓存脚本，避免首屏再等待一次脚本下载；仅在服务端读取静态源码。
 const watchlistFirstPaintScript = readFileSync(join(process.cwd(), "public/watchlist-first-paint.js"), "utf8");
 
+const watchlistLayoutCss = readFileSync(join(process.cwd(), "public/watchlist-layout.css"), "utf8");
+
 // 必须在首屏内容解析前执行，避免浅色偏好等待客户端脚本时先绘制深色页面。
 const themeInitScript = `(() => {
     try {
@@ -73,6 +75,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
     return (
         <html lang="zh-CN" className="light" data-theme="market-blue" data-palette="classic" data-density="comfortable" suppressHydrationWarning>
             <head>
+                <style id="watchlist-layout">{watchlistLayoutCss}</style>
                 <script id="wavequant-theme-init">{
                     [themeInitScript, watchlistFirstPaintScript,
                         process.env.NODE_ENV === "development" ? mainRevisionScript : ""].join("\n")

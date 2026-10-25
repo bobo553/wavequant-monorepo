@@ -26,7 +26,10 @@ export function getWatchlistRuntime() {
             boot.runtimeReady = true;
             boot.sidebarReady = true;
         }
-        watchlists.setUniverse(researchSymbols(watchlists.state.memberships), boot?.pendingSymbol || "");
+        const linked = new URLSearchParams(location.search).get("symbol");
+        const linkedSymbol = /^(sh\.(60|68)\d{4}|sz\.(00|30)\d{4}|bj\.(43|82|83|87|88|92)\d{4})$/.test(linked || "") ? linked : "";
+        const stocks = researchSymbols(watchlists.state.memberships, linkedSymbol);
+        watchlists.setUniverse(stocks, watchlists.initialSymbol(stocks, boot?.pendingSymbol || linkedSymbol));
         boot?.release();
         performance.mark?.("wavequant:watchlist-data-ready");
     });

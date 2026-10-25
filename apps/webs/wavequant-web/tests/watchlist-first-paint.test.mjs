@@ -4,13 +4,18 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 
 const script = await readFile(new URL("../public/watchlist-first-paint.js", import.meta.url), "utf8");
+const layoutCss = await readFile(new URL("../public/watchlist-layout.css", import.meta.url), "utf8");
 const doc = (name = "海洋王", revision = 1) => ({ revision, settings: null, snapshot: {
     schemaVersion: 1,
     groups: [{ id: "default", name: "我的自选", position: 0, protected: true }],
     memberships: [{ groupId: "default", symbol: "sz.002724", name, position: 0 }],
 } });
 function dom() {
-    const instance = new JSDOM(`<p id="watchlist-status">原始占位</p><span id="watchlist-count">0 只</span>
+    const instance = new JSDOM(`<style id="watchlist-layout">${layoutCss}</style>
+        <span id="symbol-copy-text">读取股票…</span>
+        <button id="watchlist-toggle-current"><span id="watchlist-current-icon"></span></button>
+        <svg id="watchlist-star-filled-icon" fill="currentColor"></svg><svg id="watchlist-star-outline-icon" fill="none"></svg>
+        <p id="watchlist-status">原始占位</p><span id="watchlist-count">0 只</span>
         <p id="watchlist-backtest-status">等待</p><div id="watchlist-first-paint"><p>原始占位</p></div>`,
         { url: "http://localhost:3003/research", runScripts: "outside-only" });
     instance.window.AbortSignal = AbortSignal;
@@ -146,5 +151,32 @@ test("classification and filtering are available before runtime ownership", () =
         search.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
         assert.equal(window.wavequantWatchlistBoot.pendingSymbol, "sz.000978");
         assert.equal(window.wavequantWatchlistBoot.query, "000978");
+    } finally { instance.window.close(); }
+});
+
+
+test("cached identity and favorite survive sidebar handoff until analysis owns the header", () => {
+    const instance = dom();
+    try {
+        const { window } = instance;
+        window.localStorage.setItem("wavequant.watchlists.preview.v2", JSON.stringify(doc()));
+        window.fetch = () => new Promise(() => {});
+        const title = window.document.getElementById("symbol-copy-text");
+        const icon = window.document.getElementById("watchlist-current-icon");
+        window.eval(script);
+        const boot = window.wavequantWatchlistBoot;
+        assert.equal(title.textContent, "读取股票…");
+        assert.equal(title.shadowRoot.textContent, "002724 海洋王");
+        assert.equal(icon.shadowRoot.querySelector("svg").getAttribute("fill"), "currentColor");
+        assert.equal(boot.pendingSymbol, null);
+        assert.equal(window.document.getElementById("watchlist-first-paint").shadowRoot.querySelector(".watchlist-stock-row").dataset.selected, "true");
+        boot.runtimeReady = true;
+        boot.release();
+        assert.equal(title.shadowRoot.textContent, "002724 海洋王");
+        title.textContent = "002724 海洋王";
+        boot.analysisReady = true;
+        boot.release();
+        assert.ok(title.shadowRoot.querySelector("slot"));
+        assert.ok(icon.shadowRoot.querySelector("slot"));
     } finally { instance.window.close(); }
 });
