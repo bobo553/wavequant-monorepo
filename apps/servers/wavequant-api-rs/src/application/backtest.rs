@@ -66,13 +66,26 @@ impl BacktestService {
         }else if wavequant_quant_rs::data::indices::is_index(&request.symbol){
             if !self.online_enabled{return Err(ApiError::unavailable("在线行情源已禁用"));}
             if need_minutes{return Err(ApiError::invalid("指数仅支持日线及聚合周期行情和趋势，不支持个股分钟成交"));}
+            let source_started=std::time::Instant::now();let phase=std::time::Instant::now();
+            let upstream=wavequant_quant_rs::data::indices::upstream(&request.symbol);
+            let endpoint=wavequant_quant_rs::data::indices::endpoint(&request.symbol);
             let provider=AkShareProvider::new(self.timeout).map_err(data_error)?;
-            let raw=provider.index_daily(&request.symbol,&request.asof).map_err(data_error)?;
+            let provider_init_ms=phase.elapsed().as_secs_f64()*1000.0;let phase=std::time::Instant::now();
+            let raw=provider.index_daily(&request.symbol,&request.asof).map_err(|error|{
+                let sdk_calls=provider.request_timings().ok().and_then(|calls|wavequant_quant_rs::indexed_json::to_string(&calls).ok());
+                tracing::warn!(symbol=%request.symbol,upstream,endpoint,error=%error,source_total_ms=source_started.elapsed().as_secs_f64()*1000.0,sdk_calls=?sdk_calls,"index_source_failed");
+                data_error(error)
+            })?;
+            let daily_ms=phase.elapsed().as_secs_f64()*1000.0;let phase=std::time::Instant::now();
             let start=effective_start(&raw.bars,&request.start,&request.asof)?;
             let bars=wavequant_quant_rs::data::indices::execution_bars(&raw,&start);
-            let version=digest(&wavequant_quant_rs::indexed_json::to_vec(&json!(["akshare-index-em-unadjusted-v1",raw.version,start,request.asof]))?);
+            let mapping_ms=phase.elapsed().as_secs_f64()*1000.0;let phase=std::time::Instant::now();
+            let version=digest(&wavequant_quant_rs::indexed_json::to_vec(&json!([wavequant_quant_rs::data::indices::cache_policy(&request.symbol),raw.version,start,request.asof]))?);
             let sdk=provider.version().map_err(data_error)?;
-            let provenance=json!({"provider":"akshare","asset_type":"index","upstream":"eastmoney","transport":"python_sdk_process","daily_endpoint":"stock_zh_index_daily_em","factor_endpoint":null,"provider_version":format!("akshare-python/{sdk}"),"sdk_version":sdk,"daily_sha256":raw.version,"factor_sha256":null,"price_basis":"unadjusted_index","price_unit":"points","volume_unit":"shares","effective_start":start});
+            let identity_ms=phase.elapsed().as_secs_f64()*1000.0;
+            let sdk_calls=wavequant_quant_rs::indexed_json::to_string(&provider.request_timings().map_err(data_error)?)?;
+            tracing::info!(symbol=%request.symbol,upstream,endpoint,provider_init_ms,daily_ms,mapping_ms,identity_ms,source_total_ms=source_started.elapsed().as_secs_f64()*1000.0,bars=bars.len(),sdk_calls=%sdk_calls,"index_source_timing");
+            let provenance=json!({"provider":"akshare","asset_type":"index","upstream":upstream,"transport":"python_sdk_process","daily_endpoint":endpoint,"factor_endpoint":null,"amount_available":raw.bars.iter().all(|bar|bar.amount.is_some()),"provider_version":format!("akshare-python/{sdk}"),"sdk_version":sdk,"daily_sha256":raw.version,"factor_sha256":null,"price_basis":"unadjusted_index","price_unit":"points","volume_unit":"shares","effective_start":start});
             (bars,version,provenance,vec![],BTreeMap::new(),vec![],None)
         }else{
             if !self.online_enabled{return Err(ApiError::unavailable("在线行情源已禁用"));}
@@ -130,7 +143,7 @@ impl BacktestService {
         let parameters=execution_parameters(&profile,&request.scenario).map_err(ApiError::invalid)?;
         let(execution,holding)=execution_configuration(&profile,&request.scenario).map_err(ApiError::invalid)?;
         let profile_ms=started.elapsed().as_secs_f64()*1000.0;
-        reporter.progress(15,"读取同源行情及因果复权")?;
+        reporter.progress(15,if index{"读取指数日线（无需复权）"}else{"读取同源行情及因果复权"})?;
         let market_request=MarketRequest{source:request.source.clone(),symbol:request.symbol.clone(),start:request.start.clone(),asof:request.asof.clone()};
         reporter.data_started()?;
         let loaded_result=self.load_market(&market_request,!wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY&&(parameters.staged_exit_intraday||parameters.consolidation_entry_intraday),parameters.missing_minute_daily_fallback,Some(&reporter.cancellation_flag()));

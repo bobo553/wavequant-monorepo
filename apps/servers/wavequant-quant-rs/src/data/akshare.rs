@@ -52,6 +52,20 @@ while True:
 "#;
 fn invalid(message:&str)->DataError{DataError::Invalid(message.into())}
 fn unavailable(message:&str)->DataError{DataError::Unavailable(message.into())}
+fn sdk_failure(operation:&str,response:&Value)->DataError{
+    let message=match response["error"].as_str(){
+        Some("sdk_missing")=>"指定 Python 环境未安装完整 AKShare SDK 依赖",
+        Some("response_too_large")=>"AKShare 响应超过大小上限",
+        _ if operation=="index_daily"=>match response["error_type"].as_str(){
+            Some("ProxyError")=>"AKShare 指数日线代理连接失败，请检查本机代理后重试；趋势分析尚未开始",
+            Some("ConnectionError")=>"AKShare 指数日线数据源连接中断，请稍后重试；趋势分析尚未开始",
+            Some("Timeout"|"ReadTimeout"|"ConnectTimeout")=>"AKShare 指数日线数据源请求超时；趋势分析尚未开始",
+            Some("JSONDecodeError"|"KeyError"|"IndexError")=>"AKShare 指数日线数据源返回无效响应；趋势分析尚未开始",
+            _=>"AKShare 指数日线获取失败；趋势分析尚未开始，请稍后重试",
+        },
+        _=>"AKShare SDK 上游请求失败，请稍后重试",
+    };unavailable(message)
+}
 fn digest(bytes:impl AsRef<[u8]>)->String{format!("{:x}",Sha256::digest(bytes.as_ref()))}
 struct Permit;
 impl Permit{fn acquire()->Result<Self,DataError>{ACTIVE.fetch_update(Ordering::AcqRel,Ordering::Acquire,|n|(n<4).then_some(n+1)).map_err(|_|unavailable("AKShare 数据进程容量已满，请稍后重试"))?;Ok(Self)}}
@@ -101,6 +115,7 @@ pub struct SdkCallTiming{pub operation:String,pub cache_hit:bool,pub queue_ms:f6
 impl AkShareProvider{
     pub fn new(timeout:Duration)->Result<Self,DataError>{if timeout<Duration::from_secs(1)||timeout>Duration::from_secs(60){return Err(invalid("AKShare timeout must be 1..60 seconds"));}Ok(Self{python:interpreter()?,timeout,version:Arc::new(Mutex::new(None)),timings:Arc::new(Mutex::new(Vec::new()))})}
     pub fn request_timings(&self)->Result<Vec<SdkCallTiming>,DataError>{self.timings.lock().map(|v|v.clone()).map_err(|_|unavailable("AKShare计时状态不可用"))}
+    fn record_timing(&self,timing:SdkCallTiming){if let Ok(mut timings)=self.timings.lock(){if timings.len()>=8{timings.remove(0);}timings.push(timing);}}
     pub fn version(&self)->Result<String,DataError>{self.version.lock().map_err(|_|unavailable("AKShare 版本状态不可用"))?.clone().ok_or_else(||unavailable("AKShare SDK 尚未返回版本"))}
     fn reuse_reply(&self,operation:&str,entry:SourceReply,started:Instant,queue_ms:f64)->Result<(Value,String),DataError>{
         self.accept_version(&entry.sdk_version)?;
@@ -159,7 +174,11 @@ impl AkShareProvider{
         let roundtrip_ms=roundtrip_started.elapsed().as_secs_f64()*1000.0;let decode_started=Instant::now();
         let response:Value=crate::indexed_json::from_slice(&bytes).map_err(|_|unavailable("AKShare 数据进程返回无效 JSON"))?;
         if response["protocol"]!=1||response["request_id"]!=identity{return Err(unavailable("AKShare 响应身份不匹配"));}
-        if response["ok"]!=true{*slot=Some(process);return Err(unavailable(match response["error"].as_str(){Some("sdk_missing")=>"指定 Python 环境未安装完整 AKShare SDK 依赖",Some("response_too_large")=>"AKShare 响应超过大小上限",_=>"AKShare SDK 上游请求失败，请稍后重试"}));}
+        if response["ok"]!=true{
+            self.record_timing(SdkCallTiming{operation:operation.into(),cache_hit:false,queue_ms,process_spawn_ms,process_started,roundtrip_ms,
+                decode_ms:decode_started.elapsed().as_secs_f64()*1000.0,fingerprint_ms:0.0,total_ms:started.elapsed().as_secs_f64()*1000.0,response_bytes:bytes.len()});
+            *slot=Some(process);return Err(sdk_failure(operation,&response));
+        }
         let version=response["sdk_version"].as_str().filter(|v|!v.is_empty()&&v.len()<=64).ok_or_else(||unavailable("AKShare SDK 版本缺失"))?.to_owned();
         self.accept_version(&version)?;
         let data=response.get("data").ok_or_else(||unavailable("AKShare 数据字段缺失"))?.clone();
@@ -170,7 +189,7 @@ impl AkShareProvider{
         if let Some(key)=cache_key{cache_reply(SourceReply{key,data:data.clone(),source_version:source_version.clone(),sdk_version:version,created:started,bytes:bytes.len().saturating_mul(4)});}
         *slot=Some(process);
         // 每个provider最多保留最近8次调用，在线目录等长生命周期实例不能无限积累。
-        if let Ok(mut timings)=self.timings.lock(){if timings.len()>=8{timings.remove(0);}timings.push(SdkCallTiming{operation:operation.into(),cache_hit:false,queue_ms,process_spawn_ms,process_started,roundtrip_ms,decode_ms,fingerprint_ms,total_ms:started.elapsed().as_secs_f64()*1000.0,response_bytes:bytes.len()});}
+        self.record_timing(SdkCallTiming{operation:operation.into(),cache_hit:false,queue_ms,process_spawn_ms,process_started,roundtrip_ms,decode_ms,fingerprint_ms,total_ms:started.elapsed().as_secs_f64()*1000.0,response_bytes:bytes.len()});
         Ok((data,source_version))
     }
     pub fn daily(&self,symbol:&str,asof:&str)->Result<MarketData,DataError>{
@@ -196,7 +215,7 @@ impl AkShareProvider{
         let mut market=Self::market_data(symbol,&today.to_string(),data,String::new())?;
         market.bars.retain(|bar|bar.date.as_str()<=asof);if market.bars.is_empty(){return Err(unavailable("该日期之前没有指数日线"));}
         market.asof=asof.into();let prefix=serde_json::to_vec(&market.bars).map_err(|_|invalid("index history encoding failed"))?;
-        market.version=digest(format!("akshare-index-em-v1:{}:{}:{}:{}:{}:{}",digest(WORKER),digest(SDK_LOOP),self.version()?,symbol,asof,digest(prefix)));Ok(market)
+        market.version=digest(format!("{}:{}:{}:{}:{}:{}:{}",super::indices::cache_policy(symbol),digest(WORKER),digest(SDK_LOOP),self.version()?,symbol,asof,digest(prefix)));Ok(market)
     }
     pub fn eastmoney_daily(&self,symbol:&str,asof:&str)->Result<MarketData,DataError>{
         if !is_stock(symbol){return Err(invalid("invalid AKShare symbol"));}parse_date(asof)?;
@@ -211,7 +230,8 @@ impl AkShareProvider{
         for row in rows(&data,20000)?{let date=day(&row["date"])?;if date.as_str()>asof||!seen.insert(date.clone()){return Err(invalid("AKShare 日线包含未来或重复日期"));}
             let(open,high,low,close,volume)=(number(row,"open")?,number(row,"high")?,number(row,"low")?,number(row,"close")?,number(row,"volume")?);
             if low<=0.0||low>open.min(close)||high<open.max(close)||volume<0.0||volume.fract()!=0.0||volume>=u64::MAX as f64{return Err(invalid("AKShare 日线价格或成交量无效"));}
-            let amount=number(row,"amount")?;if amount<0.0{return Err(invalid("AKShare 日线成交额无效"));}
+            let amount=if super::indices::is_index(symbol)&&super::indices::upstream(symbol)=="sina"&&row["amount"].is_null(){None}else{Some(number(row,"amount")?)};
+            if amount.is_some_and(|value|value<0.0){return Err(invalid("AKShare 日线成交额无效"));}
             bars.push(DailyBar{date,open,high,low,close,volume:volume as u64,amount});
         }
         bars.sort_by(|a,b|a.date.cmp(&b.date));if bars.is_empty(){return Err(unavailable("该回放日期之前没有 AKShare 日线"));}Ok(MarketData{symbol:symbol.into(),asof:asof.into(),version,bars})
@@ -251,6 +271,22 @@ impl AkShareProvider{
 #[cfg(test)]
 mod resident_protocol_tests{
     use super::*;
+    #[test]
+    fn only_sina_index_history_can_omit_amount(){
+        let row=json!([{"date":"2026-10-23","open":3000.0,"high":3100.0,"low":2900.0,"close":3050.0,"volume":12300}]);
+        let index=AkShareProvider::market_data("sh.000001","2026-10-26",row.clone(),String::new()).unwrap();
+        assert_eq!(index.bars[0].amount,None);assert_eq!(index.bars[0].volume,12300);
+        assert!(AkShareProvider::market_data("sz.000001","2026-10-26",row.clone(),String::new()).is_err());
+        assert!(AkShareProvider::market_data("bj.899050","2026-10-26",row,String::new()).is_err());
+        assert_ne!(super::super::indices::cache_policy("sh.000001"),super::super::indices::cache_policy("bj.899050"));
+    }
+    #[test]
+    fn index_sdk_failures_report_only_safe_categories(){
+        let response=json!({"error":"sdk_call_failed","error_type":"ProxyError","message":"secret proxy credentials"});
+        let message=sdk_failure("index_daily",&response).to_string();assert!(message.contains("代理连接失败"));assert!(!message.contains("secret"));
+        assert!(sdk_failure("index_daily",&json!({"error_type":"ConnectionError"})).to_string().contains("连接中断"));
+        assert_eq!(sdk_failure("daily",&response).to_string(),"AKShare SDK 上游请求失败，请稍后重试");
+    }
     #[test]
     fn consecutive_replies_keep_the_next_frame_in_the_same_reader(){
         let mut reader=BufReader::new(std::io::Cursor::new(b"{\"request_id\":\"first\"}\n{\"request_id\":\"second\"}\n"));

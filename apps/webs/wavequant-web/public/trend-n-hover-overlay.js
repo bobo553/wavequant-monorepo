@@ -9,7 +9,8 @@ export class TrendNHoverOverlay {
     zOrder() { return "top"; }
     renderer() { return this; }
     setModel(model) {
-        const key = model ? `${model.level}/${model.nIndex}/${model.snapshotIndex}/${model.day}/${model.time}/${model.color}` : "";
+        const stage = model?.displayStage;
+        const key = model ? `${model.level}/${model.nIndex}/${model.snapshotIndex}/${model.day}/${model.time}/${model.color}/${stage?.level ?? ""}/${stage?.path ?? ""}/${stage?.from ?? ""}/${stage?.to ?? ""}` : "";
         if (this.key === key) return;
         this.key = key; this.model = model; this.updateAllViews(); this.requestUpdate?.();
     }

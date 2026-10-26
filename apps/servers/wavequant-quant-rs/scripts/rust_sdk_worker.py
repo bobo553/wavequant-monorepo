@@ -3,14 +3,43 @@
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Iterator
 import json
 import os
 import re
 import sys
 from typing import Any
+from urllib.request import getproxies
 
 MAX_REQUEST_BYTES = 4096
 MAX_RESPONSE_BYTES = 20 * 1024 * 1024
+
+
+@contextlib.contextmanager
+def index_proxy_environment(host: str = "push2his.eastmoney.com") -> Iterator[None]:
+    """仅指数公共接口直连；常驻桥接串行处理请求，退出作用域即恢复其他SDK调用的代理。"""
+    if "NO_PROXY" in os.environ or "no_proxy" in os.environ:
+        yield
+        return
+    names = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+             "http_proxy", "https_proxy", "all_proxy", "no_proxy")
+    previous = {name: os.environ.get(name) for name in names}
+    proxies = getproxies()
+    try:
+        # 显式保留系统代理，否则urllib看到NO_PROXY后会忽略Windows的其他代理配置。
+        for scheme in ("http", "https", "all"):
+            value = proxies.get(scheme, "")
+            os.environ[f"{scheme.upper()}_PROXY"] = value
+            os.environ[f"{scheme}_proxy"] = value
+        os.environ["NO_PROXY"] = host
+        os.environ["no_proxy"] = host
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def records(frame: Any, maximum: int = 20000) -> list[dict[str, object]]:
@@ -32,10 +61,16 @@ def dispatch(sdk: Any, request: dict[str, object]) -> object:
             raise ValueError("invalid index identity")
         if not isinstance(asof, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", asof):
             raise ValueError("index history requires an as-of date")
-        frame = sdk.stock_zh_index_daily_em(symbol=symbol.replace(".", ""), start_date="19900101",
-                                           end_date=asof.replace("-", ""))
-        # 东财K线成交量由手统一为股；指数点位不调用个股复权接口。
-        frame["volume"] = frame["volume"] * 100
+        if symbol.startswith("bj."):
+            with index_proxy_environment():
+                frame = sdk.stock_zh_index_daily_em(symbol=symbol.replace(".", ""), start_date="19900101",
+                                                   end_date=asof.replace("-", ""))
+            frame["volume"] = frame["volume"] * 100
+        else:
+            with index_proxy_environment("finance.sina.com.cn"):
+                frame = sdk.stock_zh_index_daily(symbol=symbol.replace(".", ""))
+            # 新浪指数历史直接提供股数，不复权，也不虚构其未提供的成交额。
+            frame = frame[frame["date"].astype(str) <= asof]
         return records(frame)
     if operation in ("daily", "factors", "minutes"):
         if not isinstance(symbol, str) or not re.fullmatch(r"(?:sh|sz)\.\d{6}", symbol):

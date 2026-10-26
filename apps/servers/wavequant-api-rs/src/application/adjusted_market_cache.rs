@@ -40,7 +40,7 @@ impl AdjustedMarketCache{
         fn read(name:&str,default:usize,min:usize,max:usize)->Result<usize>{std::env::var(name).unwrap_or_else(|_|default.to_string()).parse::<usize>().ok().filter(|v|(min..=max).contains(v)).ok_or_else(||ApiError::invalid(format!("{name} outside supported range")))}
         let mut cache=Self::new(redis);cache.policy.max_entries=read("WAVEQUANT_KLINE_MAX_ENTRIES",2048,1,10000)?;cache.policy.max_bytes=read("WAVEQUANT_KLINE_MAX_MIB",512,32,4096)?*1024*1024;cache.policy.max_item=read("WAVEQUANT_KLINE_MAX_ITEM_MIB",16,1,32)?*1024*1024;cache.policy.intraday_seconds=read("WAVEQUANT_KLINE_INTRADAY_SECONDS",60,30,900)? as i64;cache.policy.batch=read("WAVEQUANT_KLINE_REFRESH_BATCH",16,1,64)?;Ok(cache)
     }
-    fn key(request:&MarketRequest)->Result<String>{let index=wavequant_quant_rs::data::indices::is_index(&request.symbol);Ok(digest(&wavequant_quant_rs::indexed_json::to_vec(&json!([if index{"akshare-eastmoney-index-kline-v1"}else{POLICY},request.source,request.symbol,request.start,"1d",if index{"unadjusted_index"}else{"causal_adjusted_equivalent"},std::env::var("WAVEQUANT_AKSHARE_PYTHON").ok()]))?))}
+    fn key(request:&MarketRequest)->Result<String>{let index=wavequant_quant_rs::data::indices::is_index(&request.symbol);Ok(digest(&wavequant_quant_rs::indexed_json::to_vec(&json!([if index{wavequant_quant_rs::data::indices::cache_policy(&request.symbol)}else{POLICY},request.source,request.symbol,request.start,"1d",if index{"unadjusted_index"}else{"causal_adjusted_equivalent"},std::env::var("WAVEQUANT_AKSHARE_PYTHON").ok()]))?))}
     fn redis_ready(&self)->bool{self.redis.is_some()&&self.redis_retry.lock().map(|next|next.is_none_or(|next|Instant::now()>=next)).unwrap_or(false)}
     fn redis_failed(&self){self.errors.fetch_add(1,Ordering::Relaxed);if let Ok(mut next)=self.redis_retry.lock(){*next=Some(Instant::now()+Duration::from_secs(30));}tracing::warn!("Kline Redis unavailable; bounded memory/source fallback for 30 seconds");}
     fn decode(&self,payload:&[u8],key:&str)->Option<Envelope>{
@@ -85,9 +85,11 @@ impl AdjustedMarketCache{
         if market.bars.is_empty(){return Err(ApiError::invalid("所选区间没有可用日线"));}
         // 后续交易日或因子新增不能改变历史前缀身份；规则升级通过POLICY显式失效。
         let prefix=digest(&serde_json::to_vec(&market.bars).map_err(|_|ApiError::internal())?);
-        market.version=digest(&wavequant_quant_rs::indexed_json::to_vec(&json!([POLICY,request.source,request.symbol,request.start,request.asof,prefix]))?);
+        let policy=if wavequant_quant_rs::data::indices::is_index(&request.symbol){wavequant_quant_rs::data::indices::cache_policy(&request.symbol)}else{POLICY};
+        market.version=digest(&wavequant_quant_rs::indexed_json::to_vec(&json!([policy,request.source,request.symbol,request.start,request.asof,prefix]))?);
         market.provenance["source_version"]=json!(market.version);
-        market.provenance["adjusted_cache"]=json!({"hit":hit,"backend":backend,"created_at":created_at,"refresh_after":refresh_after,"checked_session":checked_session,"expires_at":null,"refresh_policy":"calendar_close_reconcile_daily_and_factors_atomic_replace","schema":2});Ok(market)
+        let refresh_policy=if wavequant_quant_rs::data::indices::is_index(&request.symbol){"calendar_close_reconcile_index_daily_atomic_replace"}else{"calendar_close_reconcile_daily_and_factors_atomic_replace"};
+        market.provenance["adjusted_cache"]=json!({"hit":hit,"backend":backend,"created_at":created_at,"refresh_after":refresh_after,"checked_session":checked_session,"expires_at":null,"refresh_policy":refresh_policy,"schema":2});Ok(market)
     }
     fn rebuild(&self,key:&str,request:&MarketRequest,touch:bool,timeout:Duration,load:&dyn Fn(&MarketRequest)->Result<LoadedMarket>)->Result<Option<Envelope>>{
         let lease=(timeout.as_secs()*2+15).clamp(30,180);

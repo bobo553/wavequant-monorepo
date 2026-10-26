@@ -15,11 +15,16 @@ export function createTrendNReader(data) {
     const bars = data?.bars ?? [];
     const indices = new Map(bars.map((bar, index) => [bar.time, index]));
     const byPath = new Map();
+    const sharedByShape = new Map(), stageReferences = new Map();
     const observations = [[], [], [], []];
     display?.spans.forEach((spans, level) => {
         for (const span of spans) {
             const key = `${level}/${span.path}`, list = byPath.get(key) ?? []; list.push(span); byPath.set(key, list);
             const record = display.records[span.nIndex];
+            if (level !== 1) {
+                const shapeKey = `${span.path}/${record.direction}`, references = sharedByShape.get(shapeKey) ?? [];
+                references.push({ level, span }); sharedByShape.set(shapeKey, references);
+            }
             const end = Math.min(span.endIndex === null ? bars.length - 1 : span.endIndex - 1,
                 record.observedThrough ?? -1, record.invalidatedIndex === null ? bars.length - 1 : record.invalidatedIndex - 1);
             if (end >= span.startIndex) observations[level].push({ from: bars[span.startIndex].time, to: bars[end].time,
@@ -27,6 +32,29 @@ export function createTrendNReader(data) {
         }
     });
     for (const rows of observations) rows.sort((left, right) => right.from.localeCompare(left.from));
+    for (const rows of sharedByShape.values()) rows.sort((left, right) => {
+        const a = display.records[left.span.nIndex], b = display.records[right.span.nIndex];
+        return a.points[0].barIndex - b.points[0].barIndex || a.knownIndex - b.knownIndex
+            || left.span.nIndex - right.span.nIndex || left.level - right.level || left.span.startIndex - right.span.startIndex;
+    });
+    const sharedReferences = (stage, from, to) => {
+        const key = `${stage.path}/${stage.direction}/${from}/${to}`;
+        if (stageReferences.has(key)) return stageReferences.get(key);
+        const rows = sharedByShape.get(`${stage.path}/${stage.direction}`) ?? [];
+        let left = 0, right = rows.length;
+        while (left < right) {
+            const middle = (left + right) >>> 1;
+            if (display.records[rows[middle].span.nIndex].points[0].barIndex < from) left = middle + 1; else right = middle;
+        }
+        const selected = [];
+        for (let index = left; index < rows.length; index++) {
+            const item = rows[index], record = display.records[item.span.nIndex];
+            if (record.points[0].barIndex > to) break;
+            if (record.points[2].barIndex <= to && item.span.startIndex <= to
+                && (record.attackIndex === null || record.attackIndex <= to)) selected.push(item);
+        }
+        stageReferences.set(key, selected); return selected;
+    };
     return {
         /** 沿用原波段悬停选择器；K线区域、日期定位和点线命中读取同一份引用。 */
         contextAt(level, time, asof, direction = null) {
@@ -39,7 +67,8 @@ export function createTrendNReader(data) {
         /** 一级整段日期范围用于查看本段N；形成前可回看段内已知来源，回放截止仍有效。 */
         inspectStage(stage, time, asof) {
             const day = indices.get(time), cutoff = indices.get(asof), from = indices.get(stage.from), to = indices.get(stage.to);
-            if (!display || day === undefined || cutoff === undefined || from === undefined || to === undefined || day > cutoff) return null;
+            if (!display || day === undefined || cutoff === undefined || from === undefined || to === undefined
+                || day > cutoff || day < from || day > to) return null;
             const rows = byPath.get(`${stage.level}/${stage.path}`) ?? [];
             const belongs = span => {
                 const record = display.records[span.nIndex];
@@ -52,9 +81,21 @@ export function createTrendNReader(data) {
             }
             // 只允许形成前查看本段内后续已知N；失效后不能沿用旧N，不能跨段或跨路径借用。
             const upcoming = rows.find(span => span.startIndex > day && span.startIndex <= cutoff && belongs(span));
-            if (!upcoming) return null;
-            const model = this.inspect(stage.level, stage.path, bars[upcoming.startIndex].time, asof, stage.direction);
-            return model ? { ...model, time } : null;
+            if (upcoming) {
+                const model = this.inspect(stage.level, stage.path, bars[upcoming.startIndex].time, asof, stage.direction);
+                if (model) return { ...model, time };
+            }
+            if (stage.level !== 1) return null;
+            // 算法订阅级别与图形所在一级段不同；只引用后端已发布的同段共享N，不增加本级资格或维护订阅。
+            const references = sharedReferences(stage, from, to);
+            for (const future of [false, true]) for (const { level, span } of references) {
+                if (future !== (span.startIndex > day) || span.startIndex > cutoff) continue;
+                const selectedTime = future ? bars[span.startIndex].time : time;
+                const model = this.inspect(level, span.path, selectedTime, asof, stage.direction);
+                if (model?.nIndex !== span.nIndex) continue;
+                return { ...model, time, displayStage: { level: 1, path: stage.path, direction: stage.direction, from: stage.from, to: stage.to } };
+            }
+            return null;
         },
         /** 回看选中N在本级使用期内已发布的目标；光标日期不充当回放截止日。 */
         inspect(level, path, time, asof, direction = null) {
@@ -145,6 +186,7 @@ export function appendTrendNTooltip(host, context) {
     add(`${levelNames[context.level]} · ${directionLabel}${context.state ? ` · ${context.state}` : ""}`, true);
     const n = context.n;
     if (!n) { add(context.direction === "up" ? "本上涨段此时尚无有效正 N" : context.direction === "down" ? "本下跌段此时尚无有效倒 N" : "本趋势此时尚无有效 N"); return; }
+    if (n.displayStage && n.level !== context.level) add(`N 来源：${levelNames[n.level]}；在所属一级趋势段展示。`);
     add(`${n.up ? "正 N · 轧空" : "倒 N · 杀多"}：${n.squeeze ? `${n.squeeze} 已确认` : "等待确认"}`, true, true);
     add(n.shape.slice(0, 3).map(point => `${point.label} ${point.time} ${priceText.format(point.value)}`).join(" · "));
     if (n.defense !== null) add(`${n.up ? "轧空低" : "杀多高"} ${priceText.format(n.defense)} ${n.priceUnit ?? "元"}`, false, true);
