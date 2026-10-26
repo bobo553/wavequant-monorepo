@@ -161,8 +161,12 @@ fn last_rise_broken(points:&[KernelPoint],bars:&[RuleCandle],now:usize)->Result<
     let Some(low)=position.checked_sub(1).and_then(|i|points.get(i))else{return Ok(false);};
     let high=&points[position];
     if low.kind!=PointKind::L||low.known_index>=now||high.index>=now{return Ok(false);}
-    let ceiling=price(high)?;
-    Ok(bars[now].low<price(low)?&&!bars[high.index+1..=now].iter().any(|b|b.high>ceiling))
+    let ceiling=price(high)?;let support=price(low)?;
+    if bars[now].low>=support||bars[high.index+1..=now].iter().any(|bar|bar.high>ceiling){return Ok(false);}
+    let Some(offset)=bars[high.index+1..=now].iter().position(|bar|bar.low<support)else{return Ok(false);};
+    // 破位是一次性因果事实；较早跌破的旧支撑不能逐日关闭后来新确认的资格。
+    let first_known=(high.index+1+offset).max(high.known_index).max(low.known_index+1);
+    Ok(first_known==now)
 }
 fn close(active:&ActiveQualification,intervals:&mut[QualificationInterval],now:usize,reason:&str) {
     intervals[active.interval].end_index=Some(now);intervals[active.interval].end_reason=Some(reason.into());
@@ -347,6 +351,31 @@ mod tests {
         let windows=run(&frame,&KernelFrame::empty(1),&bars,&market,true);
         assert_eq!(windows.len(),1);assert_eq!(windows[0].end_index,Some(8));
         assert_eq!(windows[0].end_reason.as_deref(),Some("reversal_low_broken"));
+    }
+    #[test]
+    fn an_old_source_support_break_cannot_close_a_later_qualification(){
+        for level in 1..=3{
+            let(frame,mut bars,mut market)=fixture(level);let mut lower=KernelFrame::empty(level-1);
+            bars[3].high=Decimal::from(32);market[3].high=32.0;
+            bars[5].low=Decimal::from(23);market[5].low=23.0;
+            lower.points=vec![point(level-1,1,1,PointKind::L,24.0),point(level-1,3,3,PointKind::H,32.0)];
+            assert!(last_rise_broken(&lower.points,&bars,5).unwrap());
+            assert!(!last_rise_broken(&lower.points,&bars,6).unwrap());
+            let windows=run(&frame,&lower,&bars,&market,true);
+            assert_eq!(windows.len(),1);assert_eq!(windows[0].start_index,6);assert_eq!(windows[0].end_index,None);
+            bars[8].low=Decimal::from(21);market[8].low=21.0;
+            let windows=run(&frame,&lower,&bars,&market,true);
+            assert_eq!(windows[0].end_index,Some(8));assert_eq!(windows[0].end_reason.as_deref(),Some("reversal_low_broken"));
+        }
+    }
+    #[test]
+    fn a_support_break_is_consumed_once_when_its_source_becomes_known(){
+        let(_,mut bars,_)=fixture(2);bars[3].high=Decimal::from(32);bars[5].low=Decimal::from(23);
+        let points=[point(1,1,1,PointKind::L,24.0),point(1,3,6,PointKind::H,32.0)];
+        assert!(last_rise_broken(&points,&bars,6).unwrap());
+        bars[7].low=Decimal::from(23);assert!(!last_rise_broken(&points,&bars,7).unwrap());
+        bars[8].low=Decimal::from(25);bars[9].low=Decimal::from(23);
+        assert!(!last_rise_broken(&points,&bars,9).unwrap());
     }
     #[test]
     fn a_failed_bear_flip_reaches_qualification_through_the_shared_six_state_events(){

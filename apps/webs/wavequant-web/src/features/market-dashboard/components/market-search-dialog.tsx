@@ -68,19 +68,18 @@ export default function MarketSearchDialog(): JSX.Element {
         </p>
         <div ref={list} id={listId} role="listbox" aria-label="股票与指数联想结果" className="max-h-80 min-h-36 overflow-auto p-2">
             {results.map((stock, index) => <a id={`${listId}-${index}`} key={stock.symbol} href={stock.href}
-                target={stock.kind === "index" ? "_blank" : undefined} rel={stock.kind === "index" ? "noopener noreferrer" : undefined}
                 role="option" aria-selected={index === selected} data-result-index={index} tabIndex={-1}
                 onMouseEnter={() => setActive(index)}
                 className={`flex w-full items-center justify-between rounded-lg px-4 py-3 text-left ${index === selected ? "bg-primary/12 ring-primary/30 ring-1" : "hover:bg-secondary/60"}`}>
                 <span><strong className="block text-sm">{stock.name}</strong><small className="text-muted-foreground">{stock.symbol}</small></span>
-                <span className="text-muted-foreground text-xs">{stock.kind === "index" ? "指数 · 行情 ↗（新窗口）" : "股票 · 行情与复盘"}</span>
+                <span className="text-muted-foreground text-xs">{stock.kind === "index" ? "指数 · 行情与趋势" : "股票 · 行情与复盘"}</span>
             </a>)}
             {!results.length && <div className="text-muted-foreground py-8 text-center text-sm">
                 {loading ? "正在读取完整股票目录…" : "没有匹配的证券，请换用名称、六位代码或交易所代码。"}
             </div>}
         </div>
         <p className="border-border text-muted-foreground border-t px-5 py-3 text-[10px]">
-            ↑↓ 选择 · Enter 打开 · Escape 关闭 · 输入实时联想；指数打开独立行情页
+            ↑↓ 选择 · Enter 打开 · Escape 关闭 · 股票与指数均进入研究页
             {matches.length > results.length && ` · 已显示前 ${results.length} 项，请补充名称或代码`}
         </p>
     </div>;

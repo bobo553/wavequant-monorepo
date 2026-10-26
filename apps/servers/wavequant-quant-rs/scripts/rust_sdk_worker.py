@@ -26,6 +26,17 @@ def records(frame: Any, maximum: int = 20000) -> list[dict[str, object]]:
 def dispatch(sdk: Any, request: dict[str, object]) -> object:
     operation = request.get("operation")
     symbol = request.get("symbol")
+    if operation == "index_daily":
+        asof = request.get("asof")
+        if not isinstance(symbol, str) or not re.fullmatch(r"(?:sh\.000|sz\.(?:399|980)|bj\.899)\d{3}", symbol):
+            raise ValueError("invalid index identity")
+        if not isinstance(asof, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", asof):
+            raise ValueError("index history requires an as-of date")
+        frame = sdk.stock_zh_index_daily_em(symbol=symbol.replace(".", ""), start_date="19900101",
+                                           end_date=asof.replace("-", ""))
+        # 东财K线成交量由手统一为股；指数点位不调用个股复权接口。
+        frame["volume"] = frame["volume"] * 100
+        return records(frame)
     if operation in ("daily", "factors", "minutes"):
         if not isinstance(symbol, str) or not re.fullmatch(r"(?:sh|sz)\.\d{6}", symbol):
             raise ValueError("Sina SDK requires a Shanghai or Shenzhen symbol")

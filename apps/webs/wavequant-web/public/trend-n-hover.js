@@ -1,4 +1,5 @@
 import { nTargetAt } from "./n-target-focus.js";
+import { priceUnit } from "./market-indices.js";
 
 const levelNames = ["折线", "一级趋势", "二级趋势", "三级趋势"];
 const targetNames = ["一饱", "二吐", "五顶", "十满"];
@@ -85,7 +86,7 @@ export function createTrendNReader(data) {
             const attack = record.attackIndex !== null && record.attackIndex <= day ? bars[record.attackIndex] : null;
             if (attack) shape.push({ time: attack.time, value: up ? attack.high : attack.low, ordinal: 0, label: "攻击" });
             const snapshot = latest(record.targets, day, row => row.knownIndex);
-            return { level, path, nIndex: span.nIndex, originIndex: span.originIndex, day, time, up, shape,
+            return { level, path, nIndex: span.nIndex, originIndex: span.originIndex, day, time, up, shape, priceUnit: priceUnit(data.symbol),
                 attack: attack?.time ?? null, squeeze: record.squeezeIndex !== null && record.squeezeIndex <= day ? bars[record.squeezeIndex].time : null,
                 defense: attack ? record.defense : null, snapshotIndex: snapshot?.knownIndex ?? -1,
                 targets: targetNames.map((name, index) => ({ name, price: snapshot?.prices[index] ?? null,
@@ -146,8 +147,8 @@ export function appendTrendNTooltip(host, context) {
     if (!n) { add(context.direction === "up" ? "本上涨段此时尚无有效正 N" : context.direction === "down" ? "本下跌段此时尚无有效倒 N" : "本趋势此时尚无有效 N"); return; }
     add(`${n.up ? "正 N · 轧空" : "倒 N · 杀多"}：${n.squeeze ? `${n.squeeze} 已确认` : "等待确认"}`, true, true);
     add(n.shape.slice(0, 3).map(point => `${point.label} ${point.time} ${priceText.format(point.value)}`).join(" · "));
-    if (n.defense !== null) add(`${n.up ? "轧空低" : "杀多高"} ${priceText.format(n.defense)} 元`, false, true);
-    for (const target of n.targets) add(`${target.name}：${target.price === null ? "待确认" : `${priceText.format(target.price)} 元`}${target.reached ? ` · ${target.reached} 已达` : ""}`, false, true);
+    if (n.defense !== null) add(`${n.up ? "轧空低" : "杀多高"} ${priceText.format(n.defense)} ${n.priceUnit ?? "元"}`, false, true);
+    for (const target of n.targets) add(`${target.name}：${target.price === null ? "待确认" : `${priceText.format(target.price)} ${n.priceUnit ?? "元"}`}${target.reached ? ` · ${target.reached} 已达` : ""}`, false, true);
     add(n.inspected ? `N 目标回看截至 ${n.snapshotTime}；非光标当日状态` : context.sourceReference ? `N 来源快照截至 ${n.time}；仅查看已展示的目标` : `数据截至 ${n.time}；仅显示当时已知目标`);
 }
 

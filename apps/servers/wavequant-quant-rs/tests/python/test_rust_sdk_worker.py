@@ -40,3 +40,30 @@ def test_oversized_frame_is_rejected_before_serializing() -> None:
 
     with pytest.raises(ValueError, match="row limit"):
         records(TooManyRows())
+
+
+def test_index_uses_its_sdk_endpoint_without_stock_adjustment() -> None:
+    import pandas as pd
+
+    calls: list[dict[str, object]] = []
+
+    class IndexSdk:
+        def stock_zh_index_daily_em(self, **kwargs: object) -> object:
+            calls.append(kwargs)
+            return pd.DataFrame([{"date": "2026-10-23", "open": 3000.0, "close": 3050.0,
+                                  "high": 3100.0, "low": 2900.0, "volume": 123, "amount": 123456.0}])
+
+        def __getattr__(self, name: str) -> object:
+            raise AssertionError(f"index must not call stock SDK endpoint: {name}")
+
+    result = dispatch(IndexSdk(), {"operation": "index_daily", "symbol": "sh.000001", "asof": "2026-10-26"})
+    assert calls == [{"symbol": "sh000001", "start_date": "19900101", "end_date": "20261026"}]
+    assert isinstance(result, list) and isinstance(result[0], dict)
+    assert result[0]["close"] == 3050.0
+    assert result[0]["volume"] == 12300
+
+
+@pytest.mark.parametrize("symbol", ["000001", "sh000001", "sz.000001", "sh.000001/../"])
+def test_index_rejects_non_index_identity_before_sdk_call(symbol: str) -> None:
+    with pytest.raises(ValueError, match="invalid index identity"):
+        dispatch(object(), {"operation": "index_daily", "symbol": symbol, "asof": "2026-10-26"})

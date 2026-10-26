@@ -1,3 +1,4 @@
+import { indexName } from "./market-indices.js";
 export const names = {
     "sh.600036": "招商银行",
     "sh.600104": "上汽集团",
@@ -69,7 +70,7 @@ export function label(value) {
     return labels[value] || value || "—";
 }
 export function symbolName(symbol) {
-    return `${symbol.split(".")[1] || symbol} ${names[symbol] || ""}`.trim();
+    return `${symbol.split(".")[1] || symbol} ${names[symbol] || indexName(symbol) || ""}`.trim();
 }
 export const pct = (v, d = 2) => (Number.isFinite(Number(v)) ? (Number(v) * 100).toFixed(d) + "%" : "N/A");
 export const num = (v, d = 2) =>

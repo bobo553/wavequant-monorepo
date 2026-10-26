@@ -1,12 +1,14 @@
 import { num, pct } from "./labels.js";
 import { volumeExpansion } from "./volume-expansion.js";
+import { priceUnit, isIndexSymbol } from "./market-indices.js";
 
 export function previousCandleClose(bars, bar) {
     const index = bars?.findIndex((candidate) => candidate.time === bar.time) ?? -1;
     return index > 0 ? bars[index - 1].close : undefined;
 }
 
-export function candleDetails(bar, previousClose, previousVolume, timeframe = "1d") {
+export function candleDetails(bar, previousClose, previousVolume, timeframe = "1d", symbol = bar.symbol) {
+    const unit = priceUnit(symbol);
     const close = Number(bar.close);
     const priorClose = Number(previousClose);
     const change =
@@ -16,10 +18,10 @@ export function candleDetails(bar, previousClose, previousVolume, timeframe = "1
     const expansion = timeframe === "1d" ? volumeExpansion(bar.volume, previousVolume) : null;
     const details = [
         ["日期", String(bar.time)],
-        ["开盘", `${num(bar.open)} 元`],
-        ["最高", `${num(bar.high)} 元`],
-        ["最低", `${num(bar.low)} 元`],
-        ["收盘", `${num(bar.close)} 元`],
+        ["开盘", `${num(bar.open)} ${unit}`],
+        ["最高", `${num(bar.high)} ${unit}`],
+        ["最低", `${num(bar.low)} ${unit}`],
+        ["收盘", `${num(bar.close)} ${unit}`],
         ["涨跌幅", change === null ? "—" : `${change > 0 ? "+" : ""}${pct(change)}`],
         [
             "成交量",
@@ -34,7 +36,7 @@ export function candleDetails(bar, previousClose, previousVolume, timeframe = "1
         bar.raw_close !== "" &&
         Number.isFinite(Number(bar.raw_close))
     ) {
-        details.push(["原始收盘", `${num(bar.raw_close)} 元`]);
+        details.push(["原始收盘", `${num(bar.raw_close)} ${unit}`]);
     }
     if (timeframe === "1d") {
         details.push(["较前日", expansion ? `${num(expansion.ratio)} 倍` : "—"]);
@@ -43,9 +45,9 @@ export function candleDetails(bar, previousClose, previousVolume, timeframe = "1
     return details;
 }
 
-export function candleCopyText(bar, stockLabel = "", previousClose, previousVolume, timeframe = "1d") {
+export function candleCopyText(bar, stockLabel = "", previousClose, previousVolume, timeframe = "1d", symbol = bar.symbol) {
     return [
-        ...(stockLabel ? [`股票：${stockLabel}`] : []),
-        ...candleDetails(bar, previousClose, previousVolume, timeframe).map(([label, value]) => `${label}：${value}`),
+        ...(stockLabel ? [`${isIndexSymbol(symbol) ? "指数" : "股票"}：${stockLabel}`] : []),
+        ...candleDetails(bar, previousClose, previousVolume, timeframe, symbol).map(([label, value]) => `${label}：${value}`),
     ].join("\n");
 }

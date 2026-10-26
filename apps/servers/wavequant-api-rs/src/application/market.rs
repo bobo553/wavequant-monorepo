@@ -95,22 +95,24 @@ impl OnlineMarket {
     pub fn decorate(&self,view:&mut Value,upstream_version:&str)->Result<()>{
         let version=self.provider()?.version().map_err(provider_error)?;
         view["provider_version"]=json!(format!("akshare-python/{version}"));view["sdk_version"]=json!(version);
-        view["upstream"]=json!("sina");view["history_endpoint"]=json!("stock_zh_a_daily");view["transport"]=json!("python_sdk_process");
+        let index=view["symbol"].as_str().is_some_and(wavequant_quant_rs::data::indices::is_index);
+        view["upstream"]=json!(if index{"eastmoney"}else{"sina"});view["history_endpoint"]=json!(if index{"stock_zh_index_daily_em"}else{"stock_zh_a_daily"});view["transport"]=json!("python_sdk_process");
         view["upstream_version"]=json!(upstream_version);
         view["evidence"]=json!("AKShare Python SDK / 新浪原始不复权行情；未执行回测，除权缺口可能影响形态。");
+        if index{view["evidence"]=json!("AKShare Python SDK / 东方财富指数日线；指数点位不作个股复权，仅供行情及趋势分析。");}
         view["data_version"]=json!(digest(&wavequant_quant_rs::indexed_json::to_vec(&json!(["akshare-sdk-market-v1",view["data_version"],upstream_version]))?));Ok(())
     }
     pub fn view(&self,symbol:&str,asof:&str,timeframe:&str)->Result<Value> {
         let today=(Utc::now()+chrono::Duration::hours(8)).date_naive();
         if parse_day(asof)?>today{return Err(ApiError::invalid("AkShare 回放日期不能晚于今天"));}
-        if symbol.starts_with("bj."){return Err(ApiError::unavailable("当前统一行情源为新浪，暂不支持北交所历史行情"));}
+        if symbol.starts_with("bj.")&&!wavequant_quant_rs::data::indices::is_index(symbol){return Err(ApiError::unavailable("当前统一行情源为新浪，暂不支持北交所历史行情"));}
         let full=self.history(symbol,&today.to_string())?;
         let mut view=render("akshare",&full,asof,timeframe)?;
         self.decorate(&mut view,&full.version)?;
         Ok(view)
     }
     pub(crate) fn daily(&self,symbol:&str,asof:&str)->Result<MarketData>{
-        let today=(Utc::now()+chrono::Duration::hours(8)).date_naive();if parse_day(asof)?>today{return Err(ApiError::invalid("AkShare 回放日期不能晚于今天"));}if symbol.starts_with("bj."){return Err(ApiError::unavailable("当前统一行情源为新浪，暂不支持北交所历史行情"));}self.history(symbol,&today.to_string())
+        let today=(Utc::now()+chrono::Duration::hours(8)).date_naive();if parse_day(asof)?>today{return Err(ApiError::invalid("AkShare 回放日期不能晚于今天"));}if symbol.starts_with("bj.")&&!wavequant_quant_rs::data::indices::is_index(symbol){return Err(ApiError::unavailable("当前统一行情源为新浪，暂不支持北交所历史行情"));}self.history(symbol,&today.to_string())
     }
     fn history(&self,symbol:&str,today:&str)->Result<MarketData> {
         {
@@ -121,7 +123,7 @@ impl OnlineMarket {
             }
         }
         let provider=self.provider()?;
-        let data=provider.daily(symbol,today).map_err(provider_error)?;
+        let data=if wavequant_quant_rs::data::indices::is_index(symbol){provider.index_daily(symbol,today)}else{provider.daily(symbol,today)}.map_err(provider_error)?;
         if data.bars.len()>20000{return Err(ApiError::unavailable("新浪返回日线记录数量异常"));}
         if data.bars.windows(2).any(|rows|rows[0].date>=rows[1].date)||data.bars.iter().any(|bar|[bar.open,bar.high,bar.low,bar.close].iter().any(|value|!value.is_finite()||*value<=0.0)||bar.low>bar.open.min(bar.close)||bar.high<bar.open.max(bar.close)) {return Err(ApiError::unavailable("新浪返回日线价格或日期异常"));}
         let mut cache=self.histories.lock().map_err(|_|ApiError::internal())?;

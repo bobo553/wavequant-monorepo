@@ -16,6 +16,33 @@ pub struct BacktestRequest {
     pub n_target_trend_confirmation_enabled:bool,pub ordinary_trend_completion_enabled:bool,pub buy_interval_level:u8,
     pub initial_capital:Decimal,pub max_position_weight:Decimal,pub job_id:String,pub strategy_version:Option<String>,
 }
+
+#[cfg(test)]
+mod symbol_tests {
+    use super::*;
+
+    fn query(symbol:&str)->BTreeMap<String,String>{
+        [("run","sample"),("variant","lecture_v3"),("symbol",symbol),("asof","2026-10-26"),
+            ("scenario","base"),("start","2018-01-01")].into_iter().map(|(key,value)|(key.into(),value.into())).collect()
+    }
+
+    #[test]
+    fn online_index_requests_keep_exchange_identity_and_stock_requests_still_work(){
+        for symbol in ["sh.000001","sz.399001","bj.899050","sz.000001"]{
+            let request=BacktestRequest::parse("akshare",&query(symbol)).unwrap();
+            assert_eq!(request.symbol,symbol);assert_eq!(request.params()["symbol"],symbol);
+        }
+        assert!(BacktestRequest::parse("tdx",&query("sh.000001")).is_err());
+        assert!(BacktestRequest::parse("tdx",&query("sz.000001")).is_ok());
+    }
+
+    #[test]
+    fn index_support_does_not_accept_ambiguous_or_malformed_symbols(){
+        for symbol in ["000001","sh000001","sh.00000x","sh.000001/../","sz.600519"]{
+            assert!(BacktestRequest::parse("akshare",&query(symbol)).is_err(),"{symbol}");
+        }
+    }
+}
 fn offset_default()->bool{true}
 pub fn boolean(query:&BTreeMap<String,String>,name:&str,default:bool)->Result<bool>{match query.get(name).map(String::as_str){None=>Ok(default),Some("true")=>Ok(true),Some("false")=>Ok(false),_=>Err(ApiError::invalid(format!("{name} must be true or false")))}}
 fn positive(query:&BTreeMap<String,String>,name:&str,default:Decimal,maximum:Decimal)->Result<Decimal>{
@@ -30,7 +57,7 @@ impl BacktestRequest {
         let run=field("run")?;let variant=field("variant")?;let symbol=field("symbol")?.to_lowercase();let asof=field("asof")?;let scenario=field("scenario")?;let start=field("start")?;
         super::market::parse_day(&asof)?;super::market::parse_day(&start)?;
         if start>asof{return Err(ApiError::invalid("start must not exceed asof"));}
-        if !wavequant_quant_rs::data::tdx::is_stock(&symbol){return Err(ApiError::invalid("invalid stock symbol"));}
+        if !wavequant_quant_rs::data::indices::supported(source,&symbol){return Err(ApiError::invalid("invalid security symbol"));}
         let buy_interval_level=match query.get("buy_interval_level").map(String::as_str).unwrap_or("2"){"1"=>1,"2"=>2,"3"=>3,_=>return Err(ApiError::invalid("buy_interval_level must be 1, 2 or 3"))};
         let job_id=query.get("backtest_job").cloned().unwrap_or_else(||uuid::Uuid::new_v4().to_string());super::jobs::validate_id(&job_id)?;
         let strategy_version=query.get("strategy_version").cloned();if let Some(version)=&strategy_version{crate::storage::snapshots::digest(version)?;}

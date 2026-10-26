@@ -13,6 +13,14 @@ test("stock navigation preserves the exact symbol, historical date and preferred
     }
     assert.equal(parseResearchLink("?page=workspace"), null);
 });
+test("指数研究链接保留交易所身份，仅开放已实现的AkShare指数数据通道", () => {
+    const index=parseResearchLink("?symbol=sh.000001&source=akshare");
+    assert.equal(index.symbol,"sh.000001");
+    assert.equal(parseResearchLink("?symbol=sz.000001").symbol,"sz.000001");
+    assert.throws(()=>parseResearchLink("?symbol=sh.000001&source=tdx"),/指数行情/);
+    const catalog={with_daily:1,stocks:[{symbol:"sh.000001",has_data:true}]};
+    assert.equal(resolveResearchLink(index,{akshare:catalog}).symbol,"sh.000001");
+});
 
 test("invalid dates, symbols, repeated parameters and unsupported sources cannot trigger navigation", () => {
     for (const search of [

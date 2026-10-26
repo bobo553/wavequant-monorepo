@@ -40,14 +40,14 @@ impl AdjustedMarketCache{
         fn read(name:&str,default:usize,min:usize,max:usize)->Result<usize>{std::env::var(name).unwrap_or_else(|_|default.to_string()).parse::<usize>().ok().filter(|v|(min..=max).contains(v)).ok_or_else(||ApiError::invalid(format!("{name} outside supported range")))}
         let mut cache=Self::new(redis);cache.policy.max_entries=read("WAVEQUANT_KLINE_MAX_ENTRIES",2048,1,10000)?;cache.policy.max_bytes=read("WAVEQUANT_KLINE_MAX_MIB",512,32,4096)?*1024*1024;cache.policy.max_item=read("WAVEQUANT_KLINE_MAX_ITEM_MIB",16,1,32)?*1024*1024;cache.policy.intraday_seconds=read("WAVEQUANT_KLINE_INTRADAY_SECONDS",60,30,900)? as i64;cache.policy.batch=read("WAVEQUANT_KLINE_REFRESH_BATCH",16,1,64)?;Ok(cache)
     }
-    fn key(request:&MarketRequest)->Result<String>{Ok(digest(&wavequant_quant_rs::indexed_json::to_vec(&json!([POLICY,request.source,request.symbol,request.start,"1d","causal_adjusted_equivalent",std::env::var("WAVEQUANT_AKSHARE_PYTHON").ok()]))?))}
+    fn key(request:&MarketRequest)->Result<String>{let index=wavequant_quant_rs::data::indices::is_index(&request.symbol);Ok(digest(&wavequant_quant_rs::indexed_json::to_vec(&json!([if index{"akshare-eastmoney-index-kline-v1"}else{POLICY},request.source,request.symbol,request.start,"1d",if index{"unadjusted_index"}else{"causal_adjusted_equivalent"},std::env::var("WAVEQUANT_AKSHARE_PYTHON").ok()]))?))}
     fn redis_ready(&self)->bool{self.redis.is_some()&&self.redis_retry.lock().map(|next|next.is_none_or(|next|Instant::now()>=next)).unwrap_or(false)}
     fn redis_failed(&self){self.errors.fetch_add(1,Ordering::Relaxed);if let Ok(mut next)=self.redis_retry.lock(){*next=Some(Instant::now()+Duration::from_secs(30));}tracing::warn!("Kline Redis unavailable; bounded memory/source fallback for 30 seconds");}
     fn decode(&self,payload:&[u8],key:&str)->Option<Envelope>{
         if payload.len()>self.policy.max_item{return None;}
         let entry:Envelope=wavequant_quant_rs::indexed_json::from_slice(payload).ok()?;
         if entry.schema!=2||entry.key!=key||Self::key(&entry.request).ok()?.as_str()!=key||entry.request.source!="akshare"||entry.created_at>Utc::now().timestamp()+5||entry.refresh_after<=entry.created_at||entry.market.bars.is_empty()||entry.market.bars.len()>20000||entry.market.version.len()!=64{return None;}
-        if super::market::parse_day(&entry.request.asof).is_err()||super::market::parse_day(&entry.request.start).is_err()||!wavequant_quant_rs::data::tdx::is_stock(&entry.request.symbol){return None;}
+        if super::market::parse_day(&entry.request.asof).is_err()||super::market::parse_day(&entry.request.start).is_err()||!wavequant_quant_rs::data::indices::supported(&entry.request.source,&entry.request.symbol){return None;}
         if entry.market.bars.iter().any(|bar|bar.symbol!=entry.request.symbol||bar.timestamp<entry.request.start||bar.timestamp>entry.request.asof||[bar.open,bar.high,bar.low,bar.close,bar.volume,bar.adjustment_factor].iter().any(|n|!n.is_finite())||bar.low<=0.0||bar.low>bar.open.min(bar.close)||bar.high<bar.open.max(bar.close)||bar.volume<0.0||bar.adjustment_factor<=0.0)||entry.market.bars.windows(2).any(|pair|pair[0].timestamp>=pair[1].timestamp){return None;}
         Some(entry)
     }
@@ -116,7 +116,7 @@ impl AdjustedMarketCache{
     pub fn get_or_load(&self,request:&MarketRequest,_engine:&str,minutes:bool,_fallback:bool,cancel:Option<&Arc<AtomicBool>>,timeout:Duration,load:impl Fn(&MarketRequest)->Result<LoadedMarket>)->Result<LoadedMarket>{
         if minutes||request.source!="akshare"{return load(request);}
         super::market::parse_day(&request.start)?;super::market::parse_day(&request.asof)?;
-        if request.start>request.asof||request.asof>local_day(Utc::now())||!wavequant_quant_rs::data::tdx::is_stock(&request.symbol){return Err(ApiError::invalid("invalid cached Kline selection"));}
+        if request.start>request.asof||request.asof>local_day(Utc::now())||!wavequant_quant_rs::data::indices::supported(&request.source,&request.symbol){return Err(ApiError::invalid("invalid cached Kline selection"));}
         let started=Instant::now();let key=Self::key(request)?;
         if let Some((entry,backend))=self.get(&key,true){if self.fresh(&entry,request){tracing::info!(symbol=%request.symbol,backend,lookup_ms=started.elapsed().as_secs_f64()*1000.0,"kline_cache_hit");return Self::project(entry,request,backend,true);}let reason=if request.asof>entry.request.asof{"coverage_extended"}else if Utc::now().timestamp()>=entry.refresh_after{"logical_refresh_due"}else{"calendar_phase_changed"};tracing::info!(symbol=%request.symbol,backend,reason,created_at=entry.created_at,refresh_after=entry.refresh_after,"kline_cache_refresh_required");}else{tracing::info!(symbol=%request.symbol,reason="absent_or_invalid","kline_cache_miss");}
         let stripe=key.bytes().fold(0usize,|n,b|n.wrapping_mul(31).wrapping_add(usize::from(b)))%self.gates.len();

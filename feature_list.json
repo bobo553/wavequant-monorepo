@@ -15736,6 +15736,31 @@
                     "command": "Node N/目标/索引定向检查；隔离配置Vitest证券搜索；Python技能脚本语法；git diff --check",
                     "status": "passed",
                     "summary": "2026-10-26 Node47项、证券搜索4项及3脚本语法通过；新增正倒N整段固定目标15项已复验。首轮旧contracts导出和共享Vitest产物缺失导致入口失败；改用当前worktree契约loader及忽略目录jsdom/OXC配置后通过，限制保留。必要前端启动编译/重启PID21856/3003；不跑全量检查、浏览器或新股票。"
+                },
+                {
+                    "command": "指数原生行情必要Rust/Next启动编译；用户授权上证指数联调",
+                    "status": "failed",
+                    "summary": "2026-10-26 指数内部搜索、研究身份、专用AKShare指数日线、因子1/不可成交及独立缓存输入已实现，启动编译完成。上证指数首次2136根K线及四级结构成功，取数610.7ms/分析92.139ms/后端1361.082ms；Ctrl+K上证返回两个本地指数链接。随后API退出原因未明，恢复后同源请求ProxyError，临时直连仍ConnectionError；临时环境已恢复，当前页面取数失败，不能标记最终验收通过。API32868/8010、前端19800/3003，禁用自动回测与旧数据路径保留。Redis不可连接，无缓存命中结论。未执行测试套件/lint/独立类型/格式/Git状态差异检查，新增回归待实际提交时验证；本轮未提交推送，整体仍in-progress。详见docs/diagnostics/index-market-data-2026-10-26.md。"
+                },
+                {
+                    "command": "只读解析既有海洋王v30本地缓存；源码修复与回归源码编写",
+                    "status": "not-run",
+                    "summary": "2026-10-26 v31：既有缓存显示二级2025-07-03高点及2026-06-29低点均被旧六态标为多空交替；正N204在7/27攻击、7/29轧空且未失效，但只有一级使用，二级仍维护旧倒N。共同趋势已签发的本级endpoint证明未传给六态；现在由观察游标保留证明索引，发展端与闭合端共用，核实本级同路径起点/关键位和知识时钟后接纳严格反向翻转。同向延伸保留原整波起点，无股票日期等级特判，不改几何、N及资格外层阈值。沿退出链修正last_rise_broken：同一末升低破位只在首次因果可知日消费，旧破位不逐日关闭新资格；当前资格低点新破位等风控保持。新增旧来源破位、迟知一次消费和新资格低点退出回归源码未运行。新增三级镜像、闭合保留/去重、未来/异路径/攻击日才知关键位回归源码未运行；修复后最早资格日期、跨股票与性能待验证，不预设8/7或8/12。Mermaid和诊断同步；必要启动编译及重启另记，未运行测试、股票回测、浏览器、lint、格式、独立类型或Git状态差异，未提交合并推送，362仍in-progress。"
+                },
+                {
+                    "command": "cargo +stable build --locked -p wavequant-api-rs -p wavequant-quant-rs --bins (isolated target); foreground API startup",
+                    "status": "passed",
+                    "summary": "2026-10-26 v31必要启动编译在独立target完成35.06s，API PID25100/8010、保留会话60642，日志starting HTTP service。保留原数据路径、Redis、SDK、前端3003及关闭自动回测。初次编译补基础折线新增参数；后续共享二进制被另一启动流程占用，最终独立目录构建运行，保留既有未使用MemoryPoint::read告警。没有运行测试、股票回测、浏览器、HTTP探针、lint/格式/独立类型或Git状态差异；只记录启动，不宣称最早资格日、跨股票或性能已验收。日志.codex-runtime/squeeze-qualification/build-rust-isolated.log、backend-console.log。未提交合并推送，362仍in-progress。"
+                },
+                {
+                    "command": "quant-performance-compare/scripts/compare.py --before-exe before.exe --after-exe after.exe --input input.json --warmups 1 --samples 5",
+                    "status": "passed",
+                    "summary": "2026-10-26 用户授权海洋王2133根冻结同输入v30/v31离线计时：同探针/Rust1.98.1/dev/default features，旧源码fbea9ea隔离导出。分析中位41.2147→47.0659ms（+5.8512ms/+14.1969%），一级2.6310→5.0708ms，N/资格16.0413→19.2240ms，二级资格消费者3.5027→6.1195ms。完整探针326.9365→372.2212ms含隔离SQLite，写入波动大，不等于页面耗时。坐标/来源/时钟字段一致；完整结构和geometry_equal均false，六态/key/anchor/state变化，N记录208→240、资格5→13（旧2条零长度）。该样本7/29开启二级资格、低点6/29、至10/23未结束；两版各自输出确定，行情快照相同。VO节点表292484→311660B，缓存BLOB68832→74219B，RSS中位30.55→32.33MiB。报告docs/diagnostics/qualification-timing-v31-2026-10-26.md，原始证据.codex-runtime/qualification-time-v31/。不请求SDK/HTTP/Redis，不跑账户/浏览器/测试套件，不改业务源码/运行服务/生产缓存；新增回归、独立前缀及跨股票仍待验收，未提交合并推送，362仍in-progress。"
+                },
+                {
+                    "command": "合并阶段：Rust kernel/indices/API请求；Node29、搜索Vitest4、SDK桥接pytest11；前端tsc；git diff --check；Rust/Next启动编译",
+                    "status": "passed",
+                    "summary": "2026-10-26 MONOREPO-362 按用户要求整合指数与v31资格：feat-轧空确认资格与当前分支同基线fbea9ea，其未提交的6个Rust核心文件、2份诊断及流程/状态记录已保存patch、文件副本和SHA256后合入当前工作树；来源工作树文件与索引未改，快照后摘要仍一致。保留v31本级严格翻转证明、旧支撑破位只消费一次、指数专用数据接口与完整交易所身份，旧Python业务无差异。最小合并检查：Rust共用内核31、指数身份2、API指数请求2、Node29、证券搜索4、离线SDK桥接11通过，前端严格类型检查通过；首次Node命令Windows绝对路径未转file URL及API误选bin筛选0项已修正，最终实际用例通过。git diff --check初次仅文档尾空行，修整后通过。必要Rust/Next生产启动编译完成；停止来源工作树API25100及其Worker，统一API15876/8010、前端32568/3003，数据路径、Redis配置、SDK解释器和--no-watchlist-refresh保留，不启用8011。浏览器与真实行情未重跑，先前ProxyError/ConnectionError及Redis不可连接限制仍保留；全量lint/共享工具配置检查沿用用户此前允许最小检查继续的安排，本机Node24.14.1与.nvmrc24.16.0有版本差异，未安装或修改系统Node。原有MemoryPoint::read未使用告警保留。准备提交并按仓库流程本地合并main，不推送；整体362仍in-progress。"
                 }
             ]
         }
