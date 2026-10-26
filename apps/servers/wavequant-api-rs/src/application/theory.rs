@@ -147,20 +147,22 @@ mod polyline_tests{
     use super::*;
     use wavequant_quant_rs::analysis::analyzer::{AnalysisRequest,TrendAnalyzer};
     #[test]
-    fn final_polyline_projects_without_a_daily_trading_observation(){
+    fn final_four_levels_project_without_a_daily_trading_observation(){
         let request:AnalysisRequest=wavequant_quant_rs::indexed_json::from_value(json!({"identity":{"symbol":"sz.002724","source_version":"fixture",
             "adjustment":"raw","timeframe":"1d"},"bars":[
             {"index":0,"time":"2020-01-02","open":10.0,"high":12.0,"low":9.0,"close":11.0,"volume":"1000"},
             {"index":1,"time":"2020-01-03","open":11.0,"high":14.0,"low":10.0,"close":13.0,"volume":"1000"}]})).unwrap();
         let mut analyzer=TrendAnalyzer::new(request).unwrap();
         while analyzer.advance_polyline_index().unwrap(){}
-        analyzer.finish_polyline_array().unwrap();let response=analyzer.response();
+        analyzer.finish_polyline_array().unwrap();
+        for level in 1..=3{analyzer.finish_level_array(level).unwrap();}
+        analyzer.finish_qualification_arrays(None).unwrap();let response=analyzer.response();
         assert!(response.daily_trading.is_none());
         let bars=vec![json!({"time":"2020-01-02"}),json!({"time":"2020-01-03"})];
         let result=project(&response,&bars,&[],"fixture-engine").unwrap();
-        assert_eq!(result["calculation_mode"],"polyline_only");assert_eq!(result["trading_applicable"],false);
-        assert_eq!(result["reversal_trends"]["enabled"],false);
+        assert_eq!(result["calculation_mode"],"third_level_only");assert_eq!(result["trading_applicable"],false);
         for field in ["reversal_trends","secondary_trends","tertiary_trends"]{
+            assert_eq!(result[field]["enabled"],true);
             for array in ["strokes","developing_strokes","events","issues","structural_points","qualification_events","abc_observations"]{
                 assert!(result[field][array].as_array().unwrap().is_empty());
             }

@@ -197,10 +197,36 @@ impl PolylineCursor {
         frame.direction=self.direction;
         let current:Vec<_>=frame.points.iter().copied().filter(|id|pool.view(*id,bars).path==self.epoch).collect();
         // 六态证明也使用点号，不展开历史点。
-        let state=super::structure::six_state_indices(pool,bars,&current,0)?;
+        let mut six_state=super::structure::SixStateCursor::default();
+        six_state.sync_from(pool,bars,0,current.iter().copied(),0)?;
+        let state=six_state.frame(0);
         frame.state=state.state;frame.structure_direction=state.direction;frame.key=state.key;frame.anchor=state.anchor;
         frame.preceding_start=state.preceding_start;
-        frame.events=state.events;
+        frame.segment_states=state.segment_states;
+        frame.contexts=state.contexts;frame.events=state.events;
+        // 已结束路径的资格仍需自己的历史六态时钟；只补只读上下文，不重连几何。
+        let mut historical=std::collections::BTreeMap::<usize,Vec<_>>::new();
+        for id in &frame.points{let path=pool.view(*id,bars).path;if path!=self.epoch{historical.entry(path).or_default().push(*id);}}
+        let mut segment_states=std::collections::BTreeMap::new();
+        for (id,state) in current.iter().zip(&frame.segment_states){segment_states.insert(*id,*state);}
+        for points in historical.values(){
+            let history=super::structure::six_state_indices(pool,bars,points,0)?;
+            for (id,state) in points.iter().zip(&history.segment_states){segment_states.insert(*id,*state);}
+            frame.contexts.extend(history.contexts);frame.events.extend(history.events);
+        }
+        frame.segment_states=frame.points.iter().map(|id|segment_states.get(id).copied().flatten()).collect();
+        if let Some(id)=frame.candidate{
+            let tail=pool.view(id,bars);
+            // 发展端尚未构成严格交替入段时保留未知，附加标签不能令合法几何失败。
+            let observable=current.last().is_none_or(|last|{let last=pool.view(*last,bars);
+                tail.order()>last.order()&&tail.kind!=last.kind&&tail.kind.sign()*(tail.value-last.value)>0.0});
+            if observable{
+                let mut node=pool.nodes[id.0];node.state=PointState::Reversal;node.known_index=bars.last().map_or(node.known_index,|bar|bar.index);
+                let known=node.known_index;let id=pool.push(node);let mut tail=six_state.before(current.len());
+                let observed=tail.advance(pool,bars,id,0)?;frame.candidate_trend_state=observed.state;frame.candidate_state_known=Some(known);
+            }
+        }
+        frame.contexts.sort_by_key(|c|c.known_index);frame.events.sort_by_key(|e|e.known_index);
         Ok(frame)
     }
 }

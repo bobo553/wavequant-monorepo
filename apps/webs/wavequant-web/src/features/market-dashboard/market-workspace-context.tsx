@@ -73,7 +73,6 @@ function triggerDownload(name: string, type: string, content: string): void {
 /** 保存并共享看盘日期、时点、范围、观察组和用户偏好。 */
 export function MarketWorkspaceProvider({
     children,
-    researchMode = false,
 }: {
     children: ReactNode;
     researchMode?: boolean;
@@ -92,14 +91,7 @@ export function MarketWorkspaceProvider({
         toastTimerRef.current = setTimeout(() => setToast(null), 2600);
     }, []);
 
-    const openSearch = useCallback((): void => {
-        if (researchMode) {
-            setDialog(null);
-            window.dispatchEvent(new Event("wavequant:focus-stock-search"));
-            return;
-        }
-        setDialog({ kind: "search" });
-    }, [researchMode]);
+    const openSearch = useCallback((): void => setDialog({ kind: "search" }), []);
 
     useEffect(() => {
         const timer = window.setTimeout(() => {

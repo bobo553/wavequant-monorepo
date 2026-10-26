@@ -13,6 +13,9 @@ fn shallow(origin:Decimal,high:Decimal,close:Decimal,a:usize,b:usize)->bool {
 }
 pub fn confirm_volume_breakout_alternation(bars:&[RuleCandle],now:usize,origin:&KernelPoint,high:&KernelPoint,
     pair:Option<(&KernelPoint,&KernelPoint)>,confirmed_n_squeeze:bool)->Result<Option<AlternationProof>,String> {
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("volume_confirmation");
+
     if !(origin.index<high.index&&high.index<now&&now<bars.len())||origin.known_index.max(high.known_index)>now{return Ok(None);}
     let (bar,previous)=(&bars[now],&bars[now-1]);let doubled=entries::double_volume_bullish_breakout(bar,previous);
     if confirmed_n_squeeze {
@@ -34,6 +37,9 @@ pub fn confirm_volume_breakout_alternation(bars:&[RuleCandle],now:usize,origin:&
 }
 pub fn confirm_body_gap_alternation(bars:&[RuleCandle],now:usize,origin:&KernelPoint,high:&KernelPoint,
     polyline:&[KernelPoint],pair:Option<(&KernelPoint,&KernelPoint)>)->Result<Option<AlternationProof>,String>{
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("gap_confirmation");
+
     if !(origin.index<high.index&&high.index<now&&now<bars.len())||origin.known_index.max(high.known_index)>now{return Ok(None);}
     let (bar,previous)=(&bars[now],&bars[now-1]);
     if !entries::medium_bullish_body(bar)||previous.volume<=Decimal::ZERO||bar.volume<=previous.volume||bar.open<=previous.open.max(previous.close){return Ok(None);}
@@ -57,6 +63,9 @@ pub fn confirm_body_gap_alternation(bars:&[RuleCandle],now:usize,origin:&KernelP
 }
 pub fn confirm_double_n_pullback(bars:&[RuleCandle],now:usize,attack:usize,origin:&KernelPoint,high:&KernelPoint,polyline:&[KernelPoint])
     ->Result<Option<AlternationProof>,String>{
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("double_n_pullback");
+
     if !(origin.index<high.index&&high.index<attack&&attack<now&&now<bars.len())||origin.known_index.max(high.known_index)>attack{return Ok(None);}
     let(n,previous,bar)=(&bars[attack],&bars[attack-1],&bars[now]);
     if previous.volume<=Decimal::ZERO||n.volume<Decimal::TWO*previous.volume||n.close<=n.open||bar.close<=n.close

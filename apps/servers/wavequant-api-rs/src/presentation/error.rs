@@ -3,6 +3,7 @@ use axum::{ http::StatusCode, response::{IntoResponse, Response}};
 use wavequant_quant_rs::indexed_json::json;
 use crate::storage::watchlists::StoreError;
 
+#[cfg_attr(test, derive(Debug))]
 pub struct ApiError(pub StatusCode, pub &'static str, pub String);
 impl ApiError {
     pub fn invalid(message: impl Into<String>) -> Self { Self(StatusCode::BAD_REQUEST, "INVALID_ARGUMENT", message.into()) }

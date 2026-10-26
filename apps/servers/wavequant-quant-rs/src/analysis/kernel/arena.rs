@@ -90,16 +90,19 @@ pub struct RefEvent {
     pub title: &'static str, pub known_index: usize, pub point: PointId,
     pub key: Option<PointId>, pub origin: Option<PointId>, pub proof: EventProof,
 }
+#[derive(Debug, Clone, Copy)]
+pub struct RefContext { pub known_index:usize,pub path:usize,pub state:Option<TrendState>,pub direction:Option<Direction>,pub key:Option<PointId>,pub anchor:Option<PointId> }
 #[derive(Debug, Clone)]
 pub struct RefFrame {
     pub level:u8, pub points:Vec<PointId>, pub candidate:Option<PointId>,
+    pub segment_states:Vec<Option<TrendState>>,pub candidate_trend_state:Option<TrendState>,pub candidate_state_known:Option<usize>,
     pub direction:Option<Direction>, pub structure_direction:Option<Direction>, pub state:Option<TrendState>,
     pub key:Option<PointId>, pub anchor:Option<PointId>, pub preceding_start:Option<PointId>,
-    pub events:Vec<RefEvent>, pub blocked_at:Option<usize>, pub issues:Vec<String>,
+    pub observations:Vec<super::observations::TrendObservation>,pub observed_events:Vec<RefEvent>,pub contexts:Vec<RefContext>, pub events:Vec<RefEvent>, pub blocked_at:Option<usize>, pub issues:Vec<String>,
 }
 impl RefFrame {
-    pub fn empty(level:u8)->Self{Self{level,points:Vec::new(),candidate:None,direction:None,structure_direction:None,
-        state:None,key:None,anchor:None,preceding_start:None,events:Vec::new(),blocked_at:None,issues:Vec::new()}}
+    pub fn empty(level:u8)->Self{Self{level,points:Vec::new(),candidate:None,segment_states:Vec::new(),candidate_trend_state:None,candidate_state_known:None,direction:None,structure_direction:None,
+        state:None,key:None,anchor:None,preceding_start:None,observations:Vec::new(),observed_events:Vec::new(),contexts:Vec::new(),events:Vec::new(),blocked_at:None,issues:Vec::new()}}
     pub fn offset(&self,pool:&PointArena,bars:&[KernelBar])->Result<usize,String>{
         let Some(origin)=self.preceding_start else{return Ok(0);};let origin=pool.view(origin,bars);
         self.points.iter().position(|id|{let p=pool.view(*id,bars);p.order()==origin.order()&&p.kind==origin.kind&&p.value==origin.value})
@@ -159,12 +162,13 @@ impl PointArena {
             PriceRef::Imported(i)=>self.imported[i].evidence.get("price_body").cloned().unwrap_or(Value::Null),
         }
     }
-    fn time<'a>(&'a self,id:PointId,bars:&'a[KernelBar])->&'a str{match self.nodes[id.0].price{PriceRef::Bar(i)=>&bars[i].time,PriceRef::Imported(i)=>&self.imported[i].time}}
+    pub(super) fn time<'a>(&'a self,id:PointId,bars:&'a[KernelBar])->&'a str{match self.nodes[id.0].price{PriceRef::Bar(i)=>&bars[i].time,PriceRef::Imported(i)=>&self.imported[i].time}}
     pub fn materialize(&self,frame:&RefFrame,bars:&[KernelBar])->KernelFrame{
         let mut cache=BTreeMap::new();let mut get=|id|self.expand(id,bars,&mut cache);
         let mut result=KernelFrame::empty(frame.level);result.points=frame.points.iter().map(|id|get(*id)).collect();
         result.candidate=frame.candidate.map(&mut get);result.key=frame.key.map(&mut get);result.anchor=frame.anchor.map(&mut get);
         result.preceding_start=frame.preceding_start.map(&mut get);result.direction=frame.direction;result.structure_direction=frame.structure_direction;
+        result.segment_states=frame.segment_states.clone();result.candidate_trend_state=frame.candidate_trend_state;result.candidate_state_known=frame.candidate_state_known;
         result.state=frame.state;result.blocked_at=frame.blocked_at;result.issues=frame.issues.clone();
         result.events=frame.events.iter().map(|e|KernelEvent{title:e.title.into(),known_index:e.known_index,
             point:self.expand(e.point,bars,&mut cache),key:e.key.map(|id|self.expand(id,bars,&mut cache)),

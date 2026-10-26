@@ -1,0 +1,4 @@
+interface:
+  display_name: "量化性能与缓存对照"
+  short_description: "同输入统计 Rust 量化修改前后的耗时、结果体积、内存与缓存变化"
+  default_prompt: "使用 $quant-performance-compare 对本轮修改做同输入前后统计，并记录分阶段耗时、数据量、结果差异与缓存变化。"

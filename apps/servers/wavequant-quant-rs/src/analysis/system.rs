@@ -445,6 +445,10 @@ fn run_polyline_arrays<F:FnMut(&SystemProgress)>(sessions:&[BacktestSession],con
             let phase=std::time::Instant::now();analyzer.finish_level_array(level)?;
             *timings.entry(format!("level{level}_total")).or_default()+=phase.elapsed().as_secs_f64();
         }
+        progress(&SystemProgress{analysis_elapsed_seconds:analysis_started.elapsed().as_secs_f64(),percent:100,processed,total,
+            symbol:symbol.clone(),asof:bars.last().map_or_else(String::new,|b|b.timestamp.clone()),
+            stage:"趋势已完成，计算已开启级别的资格确认与结束区间".into(),analysis:None,account:None,audit:Vec::new(),signals:Vec::new()});
+        analyzer.finish_qualification_arrays(cancel.as_deref())?;
         for(key,seconds)in analyzer.analysis_timings(){*timings.entry(key.clone()).or_default()+=seconds;}
         let phase=std::time::Instant::now();outputs.insert(symbol.clone(),analyzer.indexed_response());market.insert(symbol,bars);
         *timings.entry("indexed_result".into()).or_default()+=phase.elapsed().as_secs_f64();

@@ -9,7 +9,7 @@ publish.workspace = true
 
 [dependencies]
 serde.workspace = true
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 
 rust_decimal.workspace = true
 chrono.workspace = true
@@ -29,3 +29,8 @@ sha2.workspace = true
 
 [lints]
 workspace = true
+
+
+[features]
+# 仅用户授权的离线细分计时启用；默认构建不注入计时。
+qualification-timing = []

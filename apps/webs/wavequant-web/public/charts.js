@@ -45,6 +45,9 @@ import { num } from "./labels.js";
 import { LectureOverlay, bullishObservationLabels, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
 import { drawdownCandleRange } from "./max-drawdown.js";
 import { NStructureOverlay } from "./n-structure-overlay.js";
+import { createTrendNReader, trendSegmentAt, trendStageAt, trendNColor, appendTrendNTooltip, trendNTargetGuides } from "./trend-n-hover.js";
+import { TrendNHoverOverlay } from "./trend-n-hover-overlay.js";
+import { selectPublishedTrendSegments } from "./lecture-overlay.js";
 import {
     isNTargetStage,
     isPositiveNTarget,
@@ -281,6 +284,10 @@ export class PriceChart {
         this.candles.attachPrimitive(this.targetGuideOverlay);
         this.nStructureOverlay = new NStructureOverlay(container);
         this.candles.attachPrimitive(this.nStructureOverlay);
+        this.trendNHoverOverlay = new TrendNHoverOverlay();
+        this.candles.attachPrimitive(this.trendNHoverOverlay);
+        this.trendNGuideOverlay = new TargetGuideOverlay();
+        this.candles.attachPrimitive(this.trendNGuideOverlay);
         this.combinedAGuideOverlay = new TargetGuideOverlay();
         this.candles.attachPrimitive(this.combinedAGuideOverlay);
         this.focusFlashOverlay = new FocusFlashOverlay(container);
@@ -340,6 +347,7 @@ export class PriceChart {
                 if (!p.point || !bar) return;
                 container.focus({ preventScroll: true });
             }
+            this.updateTrendNHover(p, bar?.time);
             this.updateWaveProjectionHover(p.point && bar ? bar.time : null, p.hoveredObjectId);
             if (bar) onHover(bar);
             const candleItems = this.itemsAt(p.time, p.hoveredObjectId);
@@ -356,7 +364,9 @@ export class PriceChart {
             }
             clearTimeout(this.tooltipHideTimer);
             // 同一根K线保留卡片位置，让鼠标能穿过间隙点击复制按钮。
-            const positionTooltip = this.tooltip.hidden || this.tooltipBarTime !== bar.time;
+            const nKey = this.trendNHovered ? `${this.trendNHovered.level}/${this.trendNHovered.n?.nIndex ?? "none"}/${this.trendNHovered.state}` : "";
+            const positionTooltip = this.tooltip.hidden || this.tooltipBarTime !== bar.time || this.tooltipNKey !== nKey;
+            this.tooltipNKey = nKey;
             this.tooltipBarTime = bar.time;
             this.tooltipLayer.show();
             this.tooltip.replaceChildren();
@@ -385,9 +395,10 @@ export class PriceChart {
             }
             if (this.buyEligibilityOverlay.contains(barIndex)) {
                 const eligibility = document.createElement("div");
-                eligibility.textContent = `${["", "一级", "二级", "三级"][this.buyEligibilityOverlay.level]}资格结构区间（淡红背景；确认后可交易，跌破日停止买入）`;
+                eligibility.textContent = this.data.trendState?.qualification ? "已开启级别的有效资格区间（淡红背景；从确认日开始，结束日停止新增买入）" : `${["", "一级", "二级", "三级"][this.buyEligibilityOverlay.level]}资格结构区间（淡红背景；确认后可交易，跌破日停止买入）`;
                 this.tooltip.append(eligibility);
             }
+            appendTrendNTooltip(this.tooltip, this.trendNHovered);
             const previousClose = barIndex > 0 ? marketBars[barIndex - 1].close : undefined;
             for (const [label, value] of candleDetails(bar, previousClose, marketBars[barIndex - 1]?.volume, this.data.timeframe || "1d").slice(1)) {
                 const line = document.createElement("div");
@@ -476,10 +487,65 @@ export class PriceChart {
             this.updateViewport();
         });
     }
+    trendNStageGroups() {
+        const projected = this.lectureOverlay.projected;
+        if (this.trendNProjected !== projected) {
+            this.trendNProjected = projected;
+            this.trendNSegments = selectPublishedTrendSegments(projected);
+        }
+        return this.trendNSegments ?? [];
+    }
+    trendNContextAt(time, level) {
+        if (!this.trendNReader?.available || !this.geometryVisible) return null;
+        const visible = [this.polylineEnabled, this.showTrend, this.showSecondaryTrend, this.showTertiaryTrend];
+        const requested = level ?? 1;
+        const selected = visible[requested] ? requested : [2, 0, 3].find(candidate => visible[candidate]);
+        if (selected === undefined) return null;
+        const asof = this.theory?.asof && this.theory.asof < this.data?.asof ? this.theory.asof : this.data?.asof;
+        const stage = trendStageAt(this.trendNStageGroups(), time, selected);
+        if (!stage?.direction) return { level: selected, direction: null, state: null, n: null };
+        return { level: selected, path: stage.path, direction: stage.direction, state: null, sourceReference: true,
+            n: this.trendNReader.inspectStage(stage, time, asof) };
+    }
+    refreshTrendNDisplay() {
+        const context = this.trendNHovered ?? this.focusedTrendN;
+        const model = this.options.levels && this.geometryVisible && context?.n ? { ...context.n, color: trendNColor(context.n.up, colors) } : null;
+        this.trendNHoverOverlay.setModel(model);
+        const key = model ? `${model.level}/${model.nIndex}/${model.snapshotIndex}/${model.day}/${model.attack ?? model.shape[2].time}/${model.color}` : "";
+        if (key !== this.trendNGuideKey) { this.trendNGuideKey = key; this.trendNGuideOverlay.setGuides(trendNTargetGuides(model)); }
+    }
+    updateTrendNHover(event, time) {
+        if (!event.point || !time || !this.trendNReader?.available || !this.geometryVisible || event.paneIndex > 0) {
+            this.trendNHovered = null; this.refreshTrendNDisplay(); return;
+        }
+        const asof = this.theory?.asof && this.theory.asof < this.data?.asof ? this.theory.asof : this.data?.asof;
+        const hit = this.options.levels && this.trendNHoverOverlay.hitTest(event.point.x, event.point.y);
+        const source = hit && this.trendNHoverOverlay.model;
+        if (source && source.time <= asof) {
+            const direction = source.up ? "up" : "down";
+            const n = this.trendNReader.inspect(source.level, source.path, source.time, asof, direction) ?? source;
+            this.trendNHovered = { level: source.level, direction, state: null, sourceReference: true, n };
+            this.refreshTrendNDisplay(); return;
+        }
+        const segment = trendSegmentAt(this.trendNStageGroups(), event.point.x, event.point.y);
+        const primary = this.showTrend ? this.trendNContextAt(time, 1) : null;
+        if (primary?.n && (!segment || segment.level < 2)) {
+            this.trendNHovered = primary; this.refreshTrendNDisplay(); return;
+        }
+        if (segment) {
+            const n = segment.direction ? this.trendNReader.inspect(segment.level, segment.path, time, asof, segment.direction) : null;
+            const day = Math.min(this.trendNReader.indexAt(time) ?? -1, this.trendNReader.indexAt(asof) ?? -1);
+            const state = segment.endpoint.trend_state_known_index <= day ? segment.endpoint.trend_state : null;
+            this.trendNHovered = { level: segment.level, direction: segment.direction, state, n };
+        } else this.trendNHovered = this.trendNContextAt(time);
+        this.refreshTrendNDisplay();
+    }
     hideTooltip() {
         clearTimeout(this.tooltipHideTimer);
         this.tooltipHovered = false;
         hideChartTooltip(this.tooltip);
+        this.trendNHovered = null;
+        this.refreshTrendNDisplay();
     }
     setData(data, options = {}) {
         const oldData = this.data;
@@ -504,6 +570,9 @@ export class PriceChart {
         this.tooltipHovered = false;
         this.tooltipBarTime = null;
         this.data = data;
+        this.trendNReader = createTrendNReader(data);
+        this.focusedTrendN = null;
+        this.trendNHovered = null;
         this.theory = null;
         this.geometryVisible = false;
         this.selected = null;
@@ -548,6 +617,9 @@ export class PriceChart {
         const samePrefix = previousBars.length <= bars.length
             && previousBars.every((bar, index) => bar.time === bars[index].time);
         this.data = data;
+        this.trendNReader = createTrendNReader(data);
+        this.focusedTrendN = null;
+        this.trendNHovered = null;
         if (samePrefix) {
             bars.forEach((bar, index) => {
                 const old = previousBars[index];
@@ -629,6 +701,7 @@ export class PriceChart {
     }
     setAnnotationOptions(options) {
         Object.assign(this.options, options);
+        this.refreshTrendNDisplay();
         this.annotations = buildAnnotations(this.data, this.theory);
         this.annotations.push(
             ...this.autoWaveEvidence,
@@ -737,6 +810,9 @@ export class PriceChart {
             this.drawLevels();
     }
     focusNTargets(time, id, redraw = true) {
+        const hovered = this.trendNHovered;
+        this.focusedTrendN = hovered?.sourceReference && hovered.n ? hovered : this.trendNContextAt(time, hovered?.n?.time === time ? hovered.level : undefined);
+        this.refreshTrendNDisplay();
         this.focusedNTime = this.data?.bars.some((bar) => bar.time === time) ? time : null;
         this.focusedNTarget = nTargetAt(
             this.nTargetObservations || [],
@@ -1402,6 +1478,9 @@ export class PriceChart {
         this.container.dataset.polylineConnections = "0";
     }
     clearTheory() {
+        this.focusedTrendN = null;
+        this.trendNHovered = null;
+        this.refreshTrendNDisplay();
         this.nTargetObservations = [];
         this.hoveredNTarget = null;
         this.focusedNTarget = null;
@@ -1600,6 +1679,8 @@ export class PriceChart {
             this.polylineEnabled = Boolean(theory && geometry);
         } else this.clearTheory();
         this.geometryVisible = geometry;
+        this.trendNHovered = null;
+        this.refreshTrendNDisplay();
         const projections = theory && this.data ? waveCProjectionsFromStructure(this.data.bars, theory) : [];
         const asof = theory?.asof && theory.asof < this.data?.asof ? theory.asof : this.data?.asof;
         this.buyEligibilityOverlay.setData(this.data, asof);

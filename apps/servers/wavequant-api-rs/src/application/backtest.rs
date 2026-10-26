@@ -141,14 +141,14 @@ impl BacktestService {
             let mut view=cached.as_object_mut().and_then(|row|row.remove("view")).ok_or_else(ApiError::internal)?;view["backtest"]["source"]=loaded.provenance.clone();view["performance"]=json!({"cache":"disk","elapsed_seconds":0.0,"analysis_elapsed_seconds":0.0,"data_request_seconds":data_request_seconds,"total_elapsed_seconds":started.elapsed().as_secs_f64(),"timing_scope":"analysis"});view["performance"]["data_cache"]=view["backtest"]["source"]["adjusted_cache"].clone();reporter.progress(99,"读取同源同版本账户与趋势缓存")?;return Ok(view);
         }}}
         let artifact_lookup_ms=trace_cache_started.elapsed().as_secs_f64()*1000.0;let trace_input_started=std::time::Instant::now();
-        let mut analyzer=AnalyzerConfig::default();analyzer.trading=profile.strategy.clone();analyzer.kernel.trend_offset_enabled=request.trend_offset_enabled;analyzer.kernel.ordinary_trend_completion_enabled=request.ordinary_trend_completion_enabled;analyzer.n_target_trend_confirmation_enabled=request.n_target_trend_confirmation_enabled;
+        let mut analyzer=AnalyzerConfig::default();analyzer.trading=profile.strategy.clone();analyzer.enable_secondary_reversal=std::array::from_fn(|level|level==usize::from(request.buy_interval_level));analyzer.kernel.trend_offset_enabled=request.trend_offset_enabled;analyzer.kernel.ordinary_trend_completion_enabled=request.ordinary_trend_completion_enabled;analyzer.n_target_trend_confirmation_enabled=request.n_target_trend_confirmation_enabled;
         let minute_inputs=BTreeMap::from([(request.symbol.clone(),loaded.minutes.clone())]);
         let sessions=loaded.bars.iter().cloned().map(|daily|{let minutes=loaded.minutes.remove(&daily.timestamp);let has_minutes=minutes.is_some();BacktestSession{daily,source:request.source.clone(),data_version:loaded.version.clone(),minutes,minute_source:has_minutes.then(||request.source.clone()),minute_data_version:has_minutes.then(||loaded.version.clone())}}).collect::<Vec<_>>();
         let chart_bars=loaded.bars.iter().map(|bar|{
             let decimal=|value:f64|value.to_string().parse::<Decimal>().map_err(|_|ApiError::invalid("price exceeds decimal range"));
             Ok(wavequant_quant_rs::analysis::trading::RuleCandle{symbol:bar.symbol.clone(),timestamp:bar.timestamp.clone(),open:decimal(bar.open)?,high:decimal(bar.high)?,low:decimal(bar.low)?,close:decimal(bar.close)?,volume:decimal(bar.volume)?,adjustment_factor:decimal(bar.adjustment_factor)?,raw_trading_active:bar.raw_trading_active,raw_is_st:bar.raw_is_st})
         }).collect::<Result<Vec<_>>>()?;
-        reporter.progress(30,if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{"逐日计算折线及一、二、三级趋势"}else{"逐日结构、买卖判断与账户同步"})?;
+        reporter.progress(30,if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{"计算四级趋势及已开启级别的资格区间"}else{"逐日结构、买卖判断与账户同步"})?;
         let recorder=std::cell::RefCell::new(super::calculation::Recorder::new(self.diagnostics_root.as_deref(),json!({"timeframe":"1d","engine":self.engine_version,"run":request.run,"variant":request.variant,"scenario":request.scenario,"source":request.source,"source_version":loaded.version,"profile":profile}),&sessions,self.record_details)?);
         if let Some(pipeline)=recorder.borrow_mut().pipeline_due(true){reporter.pipeline(pipeline)?;}
         let mut progress_error=None;
@@ -198,7 +198,7 @@ impl BacktestService {
             tracing::info!(symbol=%request.symbol,job=%request.job_id,profile_ms,data_ms=data_request_seconds*1000.0,artifact_lookup_ms,input_preparation_ms,worker_roundtrip_ms=worker_roundtrip_seconds*1000.0,analysis_ms=result.analysis_elapsed_seconds*1000.0,worker_metrics=%computation,final_validation_ms,indexed_view_ms,snapshot_reused,snapshot_write_ms,result_cache_write_ms,total_ms=started.elapsed().as_secs_f64()*1000.0,"backtest_stage_timing");
             value["timing"]["totalMs"]=json!(started.elapsed().as_secs_f64()*1000.0);
             // 100%由任务注册表在接收成功结果后统一发布，运行中进度最高99%。
-            reporter.progress(99,"折线及一、二、三级趋势计算完成")?;return Ok(value);
+            reporter.progress(99,"四级趋势及资格区间计算完成")?;return Ok(value);
         }
         reporter.progress(91,"分析完成，整理图表结果")?;
         reporter.analysis_timing(result.analysis_elapsed_seconds)?;

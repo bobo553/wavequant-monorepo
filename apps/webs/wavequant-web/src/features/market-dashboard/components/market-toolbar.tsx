@@ -146,7 +146,7 @@ export function MarketHeaderActions(): JSX.Element {
             </Button>
             <Button size="sm" onClick={workspace.openSearch}>
                 <IconSearch data-icon="inline-start" aria-hidden="true" />
-                找股票 / 题材
+                找股票 / 指数
             </Button>
         </div>
     );

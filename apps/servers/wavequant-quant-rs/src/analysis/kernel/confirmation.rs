@@ -116,25 +116,38 @@ fn origin_from_event(event:&KernelEvent)->Option<KernelPoint> {
         .and_then(|raw|crate::indexed_json::from_value(raw.clone()).ok())
 }
 fn ordinary_bull_counter(cycle:&Cycle,points:&[KernelPoint],bars:&[KernelBar],now:usize)->Result<Option<(KernelPoint,&'static str)>,String> {
-    if cycle.origin.index>=cycle.impulse.index || cycle.impulse.index>=now {return Ok(None);}
-    if bars[cycle.origin.index+1..=now].iter().any(|bar|bar.low<cycle.origin.value) {return Ok(None);}
-    let counter=points.iter().filter(|p|p.path==cycle.origin.path && p.kind==PointKind::L && p.is_closed()
-        && p.index>cycle.impulse.index && p.known_index<=now)
+    confirm_ordinary_bull_counter(&cycle.origin,&cycle.impulse,points,bars,now)
+}
+/// 资格与旧生命周期共用普通确认规则；结构六态的 67% 不替代严格 2/3。
+pub(crate) fn confirm_ordinary_bull_counter(origin:&KernelPoint,impulse:&KernelPoint,points:&[KernelPoint],bars:&[KernelBar],now:usize)
+    ->Result<Option<(KernelPoint,&'static str)>,String> {
+    confirm_ordinary_bull_counter_after(origin,impulse,points,bars,now,None)
+}
+/// 重开确认先排除旧窗口已消费的低点，沿用 Python 的 after_index 语义。
+pub(crate) fn confirm_ordinary_bull_counter_after(origin:&KernelPoint,impulse:&KernelPoint,points:&[KernelPoint],bars:&[KernelBar],now:usize,after:Option<usize>)
+    ->Result<Option<(KernelPoint,&'static str)>,String> {
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("ordinary_confirmation");
+
+    if origin.index>=impulse.index || impulse.index>=now || after.is_some_and(|after|now<=after) {return Ok(None);}
+    if bars[origin.index+1..=now].iter().any(|bar|bar.low<origin.value) {return Ok(None);}
+    let counter=points.iter().filter(|p|p.path==origin.path && p.kind==PointKind::L && p.is_closed()
+        && p.index>impulse.index && p.known_index<=now && after.is_none_or(|after|p.known_index>after))
         .min_by(|a,b|a.value.total_cmp(&b.value).then(a.order().cmp(&b.order())));
     let Some(counter)=counter else{return Ok(None);};
-    if counter.value<=cycle.origin.value || counter.value>=cycle.impulse.value
+    if counter.value<=origin.value || counter.value>=impulse.value
         || bars[counter.index+1..=now].iter().any(|bar|bar.low<counter.value) {return Ok(None);}
-    let span=dec(cycle.impulse.value)?-dec(cycle.origin.value)?;
-    let depth=dec(cycle.impulse.value)?-dec(counter.value)?;
-    let rebreak=points.iter().find(|p|p.path==cycle.origin.path && p.kind==PointKind::H && p.is_closed()
-        && p.index>counter.index && p.value>cycle.impulse.value && p.known_index<=now);
+    let span=dec(impulse.value)?-dec(origin.value)?;
+    let depth=dec(impulse.value)?-dec(counter.value)?;
+    let rebreak=points.iter().find(|p|p.path==origin.path && p.kind==PointKind::H && p.is_closed()
+        && p.index>counter.index && p.value>impulse.value && p.known_index<=now);
     let shallow=depth*Decimal::from(3)<span*Decimal::from(2);
     if !shallow && rebreak.is_none() {return Ok(None);}
-    let minimum_close=bars[cycle.impulse.index+1..=counter.index].iter().map(|bar|bar.close).min_by(f64::total_cmp).ok_or("missing pullback candles")?;
-    let short_shallow=(dec(cycle.impulse.value)?-dec(minimum_close)?)*Decimal::from(3)<span*Decimal::from(2)
-        && (counter.index-cycle.impulse.index)*2<cycle.impulse.index-cycle.origin.index;
+    let minimum_close=bars[impulse.index+1..=counter.index].iter().map(|bar|bar.close).min_by(f64::total_cmp).ok_or("missing pullback candles")?;
+    let short_shallow=(dec(impulse.value)?-dec(minimum_close)?)*Decimal::from(3)<span*Decimal::from(2)
+        && (counter.index-impulse.index)*2<impulse.index-origin.index;
     if short_shallow {
-        let crossing=(counter.index+1..=now).find(|i|bars[*i].close>cycle.impulse.value);
+        let crossing=(counter.index+1..=now).find(|i|bars[*i].close>impulse.value);
         let Some(crossing)=crossing else{return Ok(None);};
         if bars[counter.index..=crossing].iter().any(|bar|bar.low<counter.value) {return Ok(None);}
     }

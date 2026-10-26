@@ -1,6 +1,6 @@
 //! A/B/C 生命周期与五顶十满投射；来源 Python a_wave / wave_projection / wave_continuation。
 //! 结构观察、目标触达和实际入场分别记账，首日新目标只允许使用收盘价。
-use super::{RuleCandle, validate_bars, ratio};
+use super::{RuleCandle, validate_bars, ratio, Direction};
 use crate::analysis::kernel::{KernelPoint, PointKind};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -188,9 +188,12 @@ pub struct WaveProjectionSetup {
     pub origin:Decimal,pub box_anchor:Decimal,pub two_t:Decimal,pub defense:Decimal,
 }
 impl WaveProjectionSetup {
-    pub fn validate(&self)->Result<(),String> {
+    pub fn validate(&self)->Result<(),String>{self.validate_direction(Direction::Up)}
+    fn validate_direction(&self,direction:Direction)->Result<(),String> {
+        let sign=if direction==Direction::Up{Decimal::ONE}else{-Decimal::ONE};
         if !(self.origin_index<self.attack_index && self.attack_index<self.squeeze_index)
-            || !(Decimal::ZERO<self.origin && self.origin<=self.defense && self.defense<self.box_anchor && self.box_anchor<self.two_t)
+            || !(self.origin>Decimal::ZERO&&self.defense>Decimal::ZERO&&self.box_anchor>Decimal::ZERO&&self.two_t>Decimal::ZERO
+                &&sign*(self.defense-self.origin)>=Decimal::ZERO&&sign*(self.box_anchor-self.defense)>Decimal::ZERO&&sign*(self.two_t-self.box_anchor)>Decimal::ZERO)
             || self.two_t!=Decimal::from(3)*self.box_anchor-Decimal::TWO*self.origin {return Err("projection requires chronological anchors and two-T from the frozen N box".into());}Ok(())
     }
 }
@@ -204,8 +207,10 @@ pub struct WaveProjectionEvent {
     pub a_high_index:usize,pub b_low:Option<Decimal>,pub b_low_index:Option<usize>,pub reached_target:Option<Decimal>,
     pub crossed_boxes:u32,pub target_stage:String,pub projection_span:Decimal,pub reached_stage:Option<String>,pub rule:String,
 }
+fn projection_up()->Direction{Direction::Up}
 #[derive(Debug,Clone,Serialize,Deserialize)]
 struct ProjectionState {
+    #[serde(default="projection_up")] direction:Direction,
     setup:WaveProjectionSetup,policy:TargetPolicy,start:usize,through:Option<usize>,ended:bool,
     peak:Decimal,peak_index:usize,a_high:Decimal,a_index:usize,b_low:Option<Decimal>,b_index:Option<usize>,
     reached:bool,state:String,target:Option<Decimal>,stage:String,span:Decimal,extension:usize,events:Vec<WaveProjectionEvent>,
@@ -217,7 +222,7 @@ impl ProjectionState {
         let first=setup.attack_index.max(start);
         let ended=((setup.origin_index+1).max(start)..=setup.attack_index).any(|i|a_origin_broken(bars[i].low,setup.origin));
         let span=Decimal::from(3)*(setup.box_anchor-setup.origin);
-        Ok(Self{setup,policy,start,through:first.checked_sub(1),ended,peak:attack.high,peak_index:0,
+        Ok(Self{direction:Direction::Up,setup,policy,start,through:first.checked_sub(1),ended,peak:attack.high,peak_index:0,
             a_high:attack.high,a_index:0,b_low:None,b_index:None,reached:false,state:"await_two_t".into(),target:None,
             stage:"five_top".into(),span,extension:0,events:vec![]}.with_attack())
     }
@@ -233,48 +238,56 @@ impl ProjectionState {
         if self.ended{self.through=Some(end);return;}
         let first=self.setup.attack_index.max(self.start);
         for i in self.through.map_or(first,|j|j+1)..=end {
-            self.through=Some(i);let bar=&bars[i];
-            let adverse=if i==first && self.start>self.setup.attack_index{bar.close}else{bar.low};
-            if i>self.setup.attack_index && a_origin_broken(adverse,self.setup.origin) {
+            self.advance_bar(&bars[i],&bars[i-1],i);
+            if self.ended {break;}
+        }
+    }
+    fn advance_bar(&mut self,bar:&RuleCandle,previous:&RuleCandle,i:usize) {
+        if self.ended{return;}let sign=if self.direction==Direction::Up{Decimal::ONE}else{-Decimal::ONE};
+        let high=if self.direction==Direction::Up{bar.high}else{bar.low};let low=if self.direction==Direction::Up{bar.low}else{bar.high};
+        let previous_high=if self.direction==Direction::Up{previous.high}else{previous.low};let previous_low=if self.direction==Direction::Up{previous.low}else{previous.high};
+        let first=self.setup.attack_index.max(self.start);
+            self.through=Some(i);
+            let adverse=if i==first && self.start>self.setup.attack_index{bar.close}else{low};
+            if i>self.setup.attack_index && sign*(adverse-self.setup.origin)<Decimal::ZERO {
                 if self.state!="await_two_t"{self.state="invalidated".into();self.target=None;self.emit(i,"wave_projection_invalidated",None,None);}
-                self.ended=true;break;
+                self.ended=true;return;
             }
             let previous_peak=self.peak;
-            if bar.high>self.peak{self.peak=bar.high;self.peak_index=i;}
-            let mut observed=if i==first{bar.close}else{bar.high};
-            self.reached|=observed>=self.setup.two_t;
+            if sign*(high-self.peak)>Decimal::ZERO{self.peak=high;self.peak_index=i;}
+            let mut observed=if i==first{bar.close}else{high};
+            self.reached|=sign*(observed-self.setup.two_t)>=Decimal::ZERO;
             if self.state=="await_two_t" {
-                if !self.reached || i<self.setup.squeeze_index {continue;}
+                if !self.reached || i<self.setup.squeeze_index {return;}
                 self.state="ready".into();self.a_high=self.peak;self.a_index=self.peak_index;
                 self.emit(i,"wave_projection_ready",None,None);
-                if bar.close>=bars[i-1].close {continue;}
+                if sign*(bar.close-previous.close)>=Decimal::ZERO {return;}
             }
-            if self.state!="pullback" && bar.close<bars[i-1].close {
+            if self.state!="pullback" && sign*(bar.close-previous.close)<Decimal::ZERO {
                 self.state="pullback".into();self.target=None;
                 let same_a=self.peak_index==self.a_index;self.a_high=self.peak;self.a_index=self.peak_index;
-                if !same_a || self.b_low.is_none(){self.b_low=(i>self.peak_index).then_some(bar.low);self.b_index=(i>self.peak_index).then_some(i);}
-                else if self.b_low.is_some_and(|low|bar.low<low){self.b_low=Some(bar.low);self.b_index=Some(i);}
+                if !same_a || self.b_low.is_none(){self.b_low=(i>self.peak_index).then_some(low);self.b_index=(i>self.peak_index).then_some(i);}
+                else if self.b_low.is_some_and(|old|sign*(low-old)<Decimal::ZERO){self.b_low=Some(low);self.b_index=Some(i);}
                 if self.stage!="five_top"{self.span=self.a_high-self.setup.origin;}
-                self.emit(i,"wave_projection_pullback",None,None);continue;
+                self.emit(i,"wave_projection_pullback",None,None);return;
             }
             if self.state=="pullback" {
-                if self.b_low.is_none_or(|low|bar.low<low){self.b_low=Some(bar.low);self.b_index=Some(i);}
-                let prev=&bars[i-1];
-                if self.b_index.is_some_and(|j|j<i) && bar.low>=prev.low && bar.close>prev.high && bar.close>bar.open {
+                if self.b_low.is_none_or(|old|sign*(low-old)<Decimal::ZERO){self.b_low=Some(low);self.b_index=Some(i);}
+                if self.b_index.is_some_and(|j|j<i) && sign*(low-previous_low)>=Decimal::ZERO && sign*(bar.close-previous_high)>Decimal::ZERO && sign*(bar.close-bar.open)>Decimal::ZERO {
                     self.state="pushing".into();self.target=self.b_low.map(|low|low+if self.policy==TargetPolicy::NamedStages{self.span}else{self.a_high-self.setup.origin});
                     self.emit(i,"wave_projection_push",None,None);observed=bar.close;
-                }else{continue;}
+                }else{return;}
             }else if self.state=="ready" {
-                if bar.high<=previous_peak{continue;}
+                if sign*(high-previous_peak)<=Decimal::ZERO{return;}
                 self.state="stacking".into();self.target=Some(self.setup.two_t+if self.policy==TargetPolicy::NamedStages{self.span}else{self.setup.box_anchor-self.setup.origin});
                 self.emit(i,"wave_projection_stack",None,None);observed=bar.close;
             }
-            if let Some(target)=self.target.filter(|target|observed>=*target) {
+            if let Some(target)=self.target.filter(|target|sign*(observed-*target)>=Decimal::ZERO) {
                 let hit_stage=self.stage.clone();
                 if self.policy==TargetPolicy::NearestBox {
                     let box_height=self.setup.box_anchor-self.setup.origin;
                     self.target=Some(target+((observed-target)/box_height).floor()*box_height+box_height);
-                    self.state="stacking".into();self.emit(i,"wave_projection_target_reached",Some(target),None);continue;
+                    self.state="stacking".into();self.emit(i,"wave_projection_target_reached",Some(target),None);return;
                 }
                 if self.stage=="five_top"{self.stage="ten_full".into();}
                 else{self.extension+=1;self.stage=format!("extension_{}",self.extension);}
@@ -282,7 +295,7 @@ impl ProjectionState {
                 self.target=Some(self.a_high+self.span);self.b_low=None;self.b_index=None;self.state="stacking".into();
                 self.emit(i,"wave_projection_target_reached",Some(target),Some(hit_stage));
             }
-        }
+
     }
 }
 #[derive(Debug,Clone,Serialize,Deserialize)]
@@ -546,4 +559,100 @@ pub fn advance_daily_waves(bars:&[RuleCandle],now:usize,seeds:&[AWaveSeed],turns
         }
     }
     output.events.sort_by_key(|event|field_index(event,"bar_index").unwrap_or(usize::MAX));Ok(output)
+}
+
+/// 单 N 仅保留当前目标状态；不持有行情数组或累计事件历史。
+#[derive(Debug,Clone)]
+pub struct IncrementalProjection(ProjectionState);
+#[derive(Debug,Clone)]
+pub struct ProjectionUpdate {pub stage:String,pub target:Option<Decimal>,pub five_top:Option<Decimal>,pub ten_full:Option<Decimal>}
+impl IncrementalProjection {
+    pub fn new(setup:WaveProjectionSetup,bar:&RuleCandle,now:usize,peak:Decimal,peak_index:usize)->Result<Self,String>{
+        Self::directional(setup,bar,now,peak,peak_index,Direction::Up)
+    }
+    pub fn directional(setup:WaveProjectionSetup,_bar:&RuleCandle,now:usize,peak:Decimal,peak_index:usize,direction:Direction)->Result<Self,String>{
+        setup.validate_direction(direction)?;let span=Decimal::from(3)*(setup.box_anchor-setup.origin);
+        Ok(Self(ProjectionState{direction,setup,policy:TargetPolicy::NamedStages,start:now,through:now.checked_sub(1),ended:false,
+            peak,peak_index,a_high:peak,a_index:peak_index,b_low:None,b_index:None,reached:false,state:"await_two_t".into(),
+            target:None,stage:"five_top".into(),span,extension:0,events:vec![]}))
+    }
+    pub fn advance(&mut self,bar:&RuleCandle,previous:&RuleCandle,now:usize)->Result<ProjectionUpdate,String>{
+        if self.0.through.is_some_and(|i|now!=i+1){return Err("projection requires consecutive dates".into());}
+        self.0.advance_bar(bar,previous,now);
+        let mut result=ProjectionUpdate{stage:if self.0.state=="await_two_t"{"await_two_t".into()}else{self.0.stage.clone()},target:self.0.target.or_else(||(self.0.state=="await_two_t").then_some(self.0.setup.two_t)),five_top:None,ten_full:None};
+        if self.0.stage=="five_top" {result.five_top=self.0.target;}else if self.0.stage=="ten_full" {result.ten_full=self.0.target;}
+        for event in &self.0.events {match event.reached_stage.as_deref(){Some("five_top")=>result.five_top=event.reached_target,Some("ten_full")=>result.ten_full=event.reached_target,_=>{}}}
+        // 下跌投射允许数学结果越过零，但价格域消费者不能收到非正价格。
+        if result.target.is_some_and(|price|price<=Decimal::ZERO){result.target=None;result.stage="price_target_unavailable".into();}
+        result.five_top=result.five_top.filter(|price|*price>Decimal::ZERO);
+        result.ten_full=result.ten_full.filter(|price|*price>Decimal::ZERO);
+        self.0.events.clear();Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod projection_regression_tests {
+    use super::*;
+
+    fn bar(day:usize,open:i64,high:i64,low:i64,close:i64)->RuleCandle {
+        RuleCandle{symbol:"projection".into(),timestamp:format!("2026-01-{:02}",day+1),
+            open:Decimal::from(open),high:Decimal::from(high),low:Decimal::from(low),close:Decimal::from(close),
+            volume:Decimal::from(100),adjustment_factor:Decimal::ONE,raw_is_st:None,raw_trading_active:None}
+    }
+    fn fixture()->(Vec<RuleCandle>,WaveProjectionSetup) {
+        (vec![bar(0,10,11,10,10),bar(1,11,12,11,11),bar(2,12,15,12,14),
+              bar(3,14,17,14,16),bar(4,16,18,16,17),bar(5,18,23,18,22),bar(6,23,37,23,36)],
+         WaveProjectionSetup{origin_index:0,attack_index:1,squeeze_index:3,
+             origin:Decimal::from(10),box_anchor:Decimal::from(12),two_t:Decimal::from(16),defense:Decimal::from(11)})
+    }
+    #[test]
+    fn named_targets_advance_causally_in_batch_and_single_bar_paths() {
+        let (bars,setup)=fixture();
+        let events=WaveProjectionHistory::new(&bars,3,None).unwrap()
+            .advance(&setup,6,TargetPolicy::NamedStages,None,None).unwrap();
+        let reached:Vec<_>=events.iter().filter_map(|event|event.reached_stage.as_deref()
+            .map(|stage|(event.bar_index,stage,event.reached_target.unwrap()))).collect();
+        assert_eq!(reached,vec![(5,"five_top",Decimal::from(22)),(6,"ten_full",Decimal::from(36))]);
+        let mut stream=IncrementalProjection::new(setup,&bars[3],3,bars[3].high,3).unwrap();
+        let ready=stream.advance(&bars[3],&bars[2],3).unwrap();
+        assert!(ready.five_top.is_none());assert!(ready.ten_full.is_none());
+        let stacking=stream.advance(&bars[4],&bars[3],4).unwrap();
+        assert_eq!(stacking.five_top,Some(Decimal::from(22)));assert!(stacking.ten_full.is_none());
+        let five=stream.advance(&bars[5],&bars[4],5).unwrap();
+        assert_eq!(five.stage,"ten_full");assert_eq!(five.five_top,Some(Decimal::from(22)));
+        assert_eq!(five.ten_full,Some(Decimal::from(36)));
+        let ten=stream.advance(&bars[6],&bars[5],6).unwrap();
+        assert_eq!(ten.stage,"extension_1");assert_eq!(ten.ten_full,Some(Decimal::from(36)));
+        assert_eq!(ten.target,Some(Decimal::from(64)));
+        assert!(stream.0.events.is_empty());
+    }
+    #[test]
+    fn origin_break_removes_target_and_repeated_dates_are_rejected() {
+        let (bars,setup)=fixture();
+        let mut stream=IncrementalProjection::new(setup,&bars[3],3,bars[3].high,3).unwrap();
+        stream.advance(&bars[3],&bars[2],3).unwrap();
+        assert!(stream.advance(&bars[3],&bars[2],3).is_err());
+        stream.advance(&bars[4],&bars[3],4).unwrap();
+        let broken=bar(5,10,11,9,10);
+        assert!(stream.advance(&broken,&bars[4],5).unwrap().target.is_none());
+    }
+}
+
+#[cfg(test)]
+mod inverse_projection_price_tests {
+    use super::*;
+    fn candle(day:usize,open:&str,high:&str,low:&str,close:&str)->RuleCandle{
+        RuleCandle{symbol:"inverse".into(),timestamp:format!("2026-01-{day:02}"),open:open.parse().unwrap(),high:high.parse().unwrap(),low:low.parse().unwrap(),close:close.parse().unwrap(),
+            volume:100.into(),adjustment_factor:Decimal::ONE,raw_is_st:None,raw_trading_active:None}
+    }
+    #[test]
+    fn nonpositive_downward_price_target_is_unavailable(){
+        let previous=candle(2,"4","5","3","4");let squeeze=candle(3,"3","4","1","2");
+        let mut stream=IncrementalProjection::directional(WaveProjectionSetup{origin_index:0,attack_index:1,squeeze_index:3,
+            origin:20.into(),box_anchor:14.into(),two_t:2.into(),defense:17.into()},&squeeze,3,1.into(),3,Direction::Down).unwrap();
+        stream.advance(&squeeze,&previous,3).unwrap();
+        let result=stream.advance(&candle(4,"2","2","0.5","1"),&squeeze,4).unwrap();
+        assert_eq!(result.stage,"price_target_unavailable");assert!(result.target.is_none());assert!(result.five_top.is_none());
+        assert!(!stream.0.ended);
+    }
 }

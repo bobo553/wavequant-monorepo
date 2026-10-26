@@ -179,3 +179,37 @@ mod transport_tests{
         assert!(is_capacity_rejection(&error));
     }
 }
+
+#[cfg(test)]
+mod digest_roundtrip_tests {
+    use super::*;
+
+    #[test]
+    fn request_digest_survives_json_and_compressed_pipe() {
+        // 复权价必须按原始 f64 精确往返；摘要校验不能忽略最后一位变化。
+        let mut state = 0x7a91_3344_5512_9999_u64;
+        let mut prices = Vec::new();
+        for _ in 0..4096 {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let price = f64::from_bits((state & ((1_u64 << 52) - 1)) | (1026_u64 << 52));
+            prices.push(price);
+        }
+        prices.extend([6.165274123456789, 7.199363584352192, 8.887759321806618]);
+        let request = crate::indexed_json::to_value(&prices).unwrap();
+        let digest = sha256(canonical(&request).unwrap());
+        let envelope = Envelope { schema: SCHEMA, request_sha256: digest.clone(),
+            engine_sha256: "test-engine".into(), timeframe: "1d".into(), request };
+        let raw = encode(&envelope, PAYLOAD_BYTES).unwrap();
+        let mut pipe = Vec::new();
+        frame(&mut pipe, &raw).unwrap();
+        let decoded = read_frame(&mut pipe.as_slice()).unwrap().unwrap();
+        let received: Envelope = crate::indexed_json::wire::from_slice(&decoded).unwrap();
+        assert_eq!(digest, sha256(canonical(&received.request).unwrap()));
+        let restored: Vec<f64> = crate::indexed_json::from_value(received.request.clone()).unwrap();
+        assert_eq!(prices.iter().map(|p| p.to_bits()).collect::<Vec<_>>(),
+                   restored.iter().map(|p| p.to_bits()).collect::<Vec<_>>());
+        let mut changed = received.request;
+        changed[0] = crate::indexed_json::to_value(prices[0] + 1.0).unwrap();
+        assert_ne!(digest, sha256(canonical(&changed).unwrap()));
+    }
+}

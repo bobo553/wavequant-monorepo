@@ -17,3 +17,5 @@ pub mod calculation;
 
 pub mod adjusted_market_cache;
 pub mod trend_state;
+
+mod trend_n;

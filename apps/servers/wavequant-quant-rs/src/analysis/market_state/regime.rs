@@ -31,6 +31,9 @@ pub fn observe_market_regime(bars:&[RuleCandle],setup:&NSetup,timeframe:&str,pol
 }
 pub fn observe_prepared_regime(bars:&[RuleCandle],setup:&NSetup,policy:&RegimePolicy,
     measurement_start:Option<usize>,n:&NObservation)->Result<RegimeObservation,String> {
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("regime_history");
+
     if n.asof_index>=bars.len() || measurement_start.is_some_and(|i|i>n.asof_index) {return Err("regime prefix unavailable".into());}
     if let Some(policy)=policy.shadow_policy {policy.validate()?;}
     let mut result=RegimeObservation{asof_index:n.asof_index,n_status:n.status,policy:policy.clone(),
