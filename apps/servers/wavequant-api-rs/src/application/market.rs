@@ -96,10 +96,11 @@ impl OnlineMarket {
         let version=self.provider()?.version().map_err(provider_error)?;
         view["provider_version"]=json!(format!("akshare-python/{version}"));view["sdk_version"]=json!(version);
         let index=view["symbol"].as_str().is_some_and(wavequant_quant_rs::data::indices::is_index);
-        view["upstream"]=json!(if index{"eastmoney"}else{"sina"});view["history_endpoint"]=json!(if index{"stock_zh_index_daily_em"}else{"stock_zh_a_daily"});view["transport"]=json!("python_sdk_process");
+        let symbol=view["symbol"].as_str().unwrap_or("").to_owned();
+        view["upstream"]=json!(if index{wavequant_quant_rs::data::indices::upstream(&symbol)}else{"sina"});view["history_endpoint"]=json!(if index{wavequant_quant_rs::data::indices::endpoint(&symbol)}else{"stock_zh_a_daily"});view["transport"]=json!("python_sdk_process");
         view["upstream_version"]=json!(upstream_version);
         view["evidence"]=json!("AKShare Python SDK / 新浪原始不复权行情；未执行回测，除权缺口可能影响形态。");
-        if index{view["evidence"]=json!("AKShare Python SDK / 东方财富指数日线；指数点位不作个股复权，仅供行情及趋势分析。");}
+        if index{view["evidence"]=json!(format!("AKShare Python SDK / {}指数日线；指数点位不作个股复权，仅供行情及趋势分析。",if wavequant_quant_rs::data::indices::upstream(&symbol)=="sina"{"新浪"}else{"东方财富"}));}
         view["data_version"]=json!(digest(&wavequant_quant_rs::indexed_json::to_vec(&json!(["akshare-sdk-market-v1",view["data_version"],upstream_version]))?));Ok(())
     }
     pub fn view(&self,symbol:&str,asof:&str,timeframe:&str)->Result<Value> {

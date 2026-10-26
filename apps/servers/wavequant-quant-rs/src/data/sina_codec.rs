@@ -91,7 +91,7 @@ pub fn decode_daily(text: &str) -> Result<Vec<DailyBar>,DataError> {
                             if separate && index == 0 { for price in &mut prices { *price=rescale(*price,old,precision[0])?; } }
                         }
                     }
-                    if !average_amount && previous_average { units[2] = rescale(result.last().map_or(0.0,|bar|bar.amount),0,precision[2])?; }
+                    if !average_amount && previous_average { units[2] = rescale(result.last().and_then(|bar|bar.amount).unwrap_or(0.0),0,precision[2])?; }
                 }
                 if bits.bit()? {
                     control_count += 1;
@@ -132,8 +132,8 @@ pub fn decode_daily(text: &str) -> Result<Vec<DailyBar>,DataError> {
         let price_scale=scale(precision[0])?;
         let volume=units[1]/scale(precision[1])?;
         if volume < 0.0 || !volume.is_finite() || volume.fract() != 0.0 || volume > u64::MAX as f64 { return Err(invalid("invalid KLC volume")); }
-        let bar=DailyBar{date,open:prices[0]/price_scale,high:prices[1]/price_scale,low:prices[2]/price_scale,close:prices[3]/price_scale,volume:volume as u64,amount};
-        if [bar.open,bar.high,bar.low,bar.close,bar.amount].iter().any(|v|!v.is_finite()) || bar.low <= 0.0 || bar.low > bar.open.min(bar.close) || bar.high < bar.open.max(bar.close) || result.last().is_some_and(|b|b.date >= bar.date) { return Err(invalid("invalid KLC OHLC/date")); }
+        let bar=DailyBar{date,open:prices[0]/price_scale,high:prices[1]/price_scale,low:prices[2]/price_scale,close:prices[3]/price_scale,volume:volume as u64,amount:Some(amount)};
+        if [bar.open,bar.high,bar.low,bar.close,amount].iter().any(|v|!v.is_finite()) || bar.low <= 0.0 || bar.low > bar.open.min(bar.close) || bar.high < bar.open.max(bar.close) || result.last().is_some_and(|b|b.date >= bar.date) { return Err(invalid("invalid KLC OHLC/date")); }
         result.push(bar);
         if result.len() > 100000 { return Err(invalid("KLC daily record limit exceeded")); }
     }

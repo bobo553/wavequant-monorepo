@@ -35,7 +35,8 @@ pub struct DailyBar {
     pub low: f64,
     pub close: f64,
     pub volume: u64,
-    pub amount: f64,
+    /// 未提供成交额的指数接口保留None；不能用零或价格乘成交量冒充真实成交额。
+    pub amount: Option<f64>,
 }
 #[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct MarketData { pub symbol: String, pub asof: String, pub version: String, pub bars: Vec<DailyBar> }
@@ -64,7 +65,7 @@ pub fn decode_day(bytes: &[u8]) -> Result<Vec<DailyBar>,DataError> {
         let (open,high,low,close) = (integer(record,4),integer(record,8),integer(record,12),integer(record,16));
         let amount = f64::from(f32::from_le_bytes([record[20],record[21],record[22],record[23]]));
         if open == 0 || close == 0 || low == 0 || low > open.min(close) || high < open.max(close) || !amount.is_finite() { return Err(invalid("invalid TDX OHLC or amount")); }
-        result.push(DailyBar{date,open:f64::from(open)/100.0,high:f64::from(high)/100.0,low:f64::from(low)/100.0,close:f64::from(close)/100.0,volume:u64::from(integer(record,24)),amount});
+        result.push(DailyBar{date,open:f64::from(open)/100.0,high:f64::from(high)/100.0,low:f64::from(low)/100.0,close:f64::from(close)/100.0,volume:u64::from(integer(record,24)),amount:Some(amount)});
     }
     Ok(result)
 }

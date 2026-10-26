@@ -523,8 +523,9 @@ export class PriceChart {
         const source = hit && this.trendNHoverOverlay.model;
         if (source && source.time <= asof) {
             const direction = source.up ? "up" : "down";
-            const n = this.trendNReader.inspect(source.level, source.path, source.time, asof, direction) ?? source;
-            this.trendNHovered = { level: source.level, direction, state: null, sourceReference: true, n };
+            const n = source.displayStage ? this.trendNReader.inspectStage(source.displayStage, source.time, asof)
+                : this.trendNReader.inspect(source.level, source.path, source.time, asof, direction) ?? source;
+            this.trendNHovered = { level: source.displayStage?.level ?? source.level, direction, state: null, sourceReference: true, n };
             this.refreshTrendNDisplay(); return;
         }
         const segment = trendSegmentAt(this.trendNStageGroups(), event.point.x, event.point.y);

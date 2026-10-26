@@ -183,7 +183,8 @@ pub fn join_share_amounts(bars:&[super::tdx::DailyBar],shares:&[ShareAmount],aso
         if let Some(bar)=bar {latest_bar=Some(bar);}
         if let Some(shares)=shares {latest_shares=Some(shares);}
         let Some(mut bar)=latest_bar.clone() else {continue};
-        let raw_key=[bar.open.to_bits(),bar.high.to_bits(),bar.low.to_bits(),bar.close.to_bits(),bar.volume,bar.amount.to_bits()];
+        let amount=bar.amount.ok_or_else(||invalid("Sina stock history amount missing"))?;
+        let raw_key=[bar.open.to_bits(),bar.high.to_bits(),bar.low.to_bits(),bar.close.to_bits(),bar.volume,amount.to_bits()];
         // Python 先依据原始OHLCV/amount去重，再round和dropna。
         if !raw_seen.insert(raw_key) {continue;}
         let Some(outstanding_share)=latest_shares else {continue};
@@ -193,7 +194,7 @@ pub fn join_share_amounts(bars:&[super::tdx::DailyBar],shares:&[ShareAmount],aso
         bar.low=(bar.low*100.0).round_ties_even()/100.0;
         bar.close=(bar.close*100.0).round_ties_even()/100.0;
         let turnover=bar.volume as f64/outstanding_share;
-        let key=[bar.open.to_bits(),bar.high.to_bits(),bar.low.to_bits(),bar.close.to_bits(),bar.volume,bar.amount.to_bits(),outstanding_share.to_bits(),turnover.to_bits()];
+        let key=[bar.open.to_bits(),bar.high.to_bits(),bar.low.to_bits(),bar.close.to_bits(),bar.volume,amount.to_bits(),outstanding_share.to_bits(),turnover.to_bits()];
         if normalized_seen.insert(key) {result.push(SinaDailyRecord{bar,outstanding_share,turnover});}
     }
     Ok(result)

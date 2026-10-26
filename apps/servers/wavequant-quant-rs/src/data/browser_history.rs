@@ -17,7 +17,7 @@ fn validate(bars:&[DailyBar])->Result<(),DataError> {
     if bars.is_empty() || bars.len()>20000 {return Err(invalid("online bars empty or exceed limit"));}
     for bar in bars {
         parse_date(&bar.date)?;
-        if [bar.open,bar.high,bar.low,bar.close,bar.amount].iter().any(|v|!v.is_finite()) || bar.low<=0.0 || bar.low>bar.open.min(bar.close) || bar.high<bar.open.max(bar.close) {return Err(invalid("invalid online OHLC"));}
+        if [bar.open,bar.high,bar.low,bar.close].iter().any(|v|!v.is_finite()) || bar.amount.is_none_or(|amount|!amount.is_finite()) || bar.low<=0.0 || bar.low>bar.open.min(bar.close) || bar.high<bar.open.max(bar.close) {return Err(invalid("invalid online OHLC"));}
     }
     if bars.windows(2).any(|p|p[0].date>=p[1].date) {return Err(invalid("online dates duplicate or non-increasing"));}Ok(())
 }
@@ -40,7 +40,7 @@ impl SinaProvider {
             if fields.len()<11 {return Err(invalid("Eastmoney row missing fields"));}
             let number=|index:usize|fields[index].parse::<f64>().map_err(|_|invalid("invalid Eastmoney numeric field"));
             if fields[0]>asof {continue;}
-            bars.push(DailyBar{date:fields[0].into(),open:number(1)?,close:number(2)?,high:number(3)?,low:number(4)?,volume:shares(number(5)?*100.0)?,amount:number(6)?});
+            bars.push(DailyBar{date:fields[0].into(),open:number(1)?,close:number(2)?,high:number(3)?,low:number(4)?,volume:shares(number(5)?*100.0)?,amount:Some(number(6)?)});
         }
         bars.sort_by(|a,b|a.date.cmp(&b.date));validate(&bars)?;
         Ok(MarketData{symbol:symbol.into(),asof:asof.into(),version:format!("{:x}",Sha256::digest(format!("eastmoney-raw-v1:{symbol}:{asof}:{body}").as_bytes())),bars})
@@ -73,7 +73,7 @@ impl SinaProvider {
                 let date=fields[0].as_str().ok_or_else(||invalid("Tencent date missing"))?;
                 let day=parse_date(date)?;if day<first || day>last {continue;}
                 let volume_scale=if code.starts_with("sh688") || code.starts_with("sz399") || code.starts_with("sh000") || code.starts_with("sz000"){1.0}else{100.0};
-                let bar=DailyBar{date:date.into(),open:numeric(&fields[1])?,close:numeric(&fields[2])?,high:numeric(&fields[3])?,low:numeric(&fields[4])?,volume:shares(numeric(&fields[5])?*volume_scale)?,amount:numeric(&fields[8])?*10000.0};
+                let bar=DailyBar{date:date.into(),open:numeric(&fields[1])?,close:numeric(&fields[2])?,high:numeric(&fields[3])?,low:numeric(&fields[4])?,volume:shares(numeric(&fields[5])?*volume_scale)?,amount:Some(numeric(&fields[8])?*10000.0)};
                 if let Some(old)=unique.get(date) {if old.open!=bar.open || old.high!=bar.high || old.low!=bar.low || old.close!=bar.close || old.volume!=bar.volume || old.amount!=bar.amount {return Err(invalid("conflicting overlapping Tencent history"));}}
                 unique.insert(date.into(),bar);
             }

@@ -318,9 +318,14 @@ async fn backtest_job(State(state):State<AppState>,RawQuery(raw):RawQuery)->Resu
     let (done,payload)=state.jobs.outcome(field(&q,"job")?)?;
     Ok((if done {StatusCode::OK} else {StatusCode::ACCEPTED},Json(payload)).into_response())
 }
+fn terminal_backtest_error(payload:&Value)->Value{
+    let code=if payload["code"]=="BACKTEST_VERSION_CHANGED"{"BACKTEST_VERSION_CHANGED"}else{"BACKTEST_JOB_FAILED"};
+    let mut error=json!({"error":payload["error"],"code":code});
+    if payload["code"].is_string(){error["cause_code"]=payload["code"].clone();}error
+}
 fn backtest_response(done:bool,mut payload:Value)->Response {
     if !done{return (StatusCode::ACCEPTED,Json(payload)).into_response();}
-    if payload["status"]=="failed" {let status=payload["http_status"].as_u64().and_then(|v|u16::try_from(v).ok()).and_then(|v|StatusCode::from_u16(v).ok()).filter(|v|v.is_client_error()||v.is_server_error()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);let mut error=json!({"error":payload["error"]});if let Some(code)=payload.get("code"){error["code"]=code.clone();}return(status,Json(error)).into_response();}
+    if payload["status"]=="failed" {let status=payload["http_status"].as_u64().and_then(|v|u16::try_from(v).ok()).and_then(|v|StatusCode::from_u16(v).ok()).filter(|v|v.is_client_error()||v.is_server_error()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);return(status,Json(terminal_backtest_error(&payload))).into_response();}
     let Some(result)=payload.as_object_mut().and_then(|value|value.remove("result")) else{return ApiError::internal().into_response();};
     (StatusCode::OK,Json(result)).into_response()
 }
@@ -439,3 +444,15 @@ async fn buy_signals(State(state):State<AppState>,RawQuery(raw):RawQuery)->Resul
 }
 
 pub mod indexed_response;
+
+#[cfg(test)]
+mod terminal_failure_tests{
+    use super::*;
+    #[test]
+    fn failed_jobs_are_terminal_even_when_the_upstream_status_is_503(){
+        let error=terminal_backtest_error(&json!({"status":"failed","http_status":503,"code":"SERVICE_UNAVAILABLE","error":"index source unavailable"}));
+        assert_eq!(error["code"],"BACKTEST_JOB_FAILED");assert_eq!(error["cause_code"],"SERVICE_UNAVAILABLE");
+        assert_eq!(error["error"],"index source unavailable");
+        assert_eq!(terminal_backtest_error(&json!({"code":"BACKTEST_VERSION_CHANGED"}))["code"],"BACKTEST_VERSION_CHANGED");
+    }
+}

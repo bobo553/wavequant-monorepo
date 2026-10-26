@@ -101,6 +101,10 @@ impl BacktestJobs {
                 for key in ["holding_drawdown_version","holding_drawdown_status","holding_current_drawdown_status"] {if result["metrics"][key].is_string(){item[key]=result["metrics"][key].clone();}}
             }
         }
+        if let Err(failure)=&outcome{
+            item["error"]=json!(failure.message);item["http_status"]=json!(failure.http_status);item["progress_stage"]=json!(job.stage);
+            if let Some(code)=&failure.code{item["code"]=json!(code);}
+        }
         job.outcome=Some(outcome);job.finished.notify_waiters();
         let signature=job.signature.clone();let completed=epoch();registry.history.insert(signature.clone(),(completed,item.clone()));Self::prune(&mut registry);drop(registry);
         if let Some(mut connection)=self.connection()? {

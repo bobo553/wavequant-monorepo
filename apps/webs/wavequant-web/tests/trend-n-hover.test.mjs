@@ -152,3 +152,58 @@ test("正N和倒N在一级整段内回看，目标固定攻击日而不随鼠标
         assert.ok(trendNTargetGuides({...waiting,targets:early.targets}).every(guide=>guide.display_at==="2020-01-03"));
     }
 });
+
+// 海洋王已有v31结果的N45：只被二级订阅，但ABC和攻击位于12/02至01/06的一级上涨段。
+function sharedStageFixture() {
+    const rows = [
+        ["2018-10-19", 6, 5], ["2019-12-02", 7.791401254678171, 7.382631395529714],
+        ["2019-12-03", 7.77901428924943, 7.506501049817125], ["2019-12-04", 7.7542403583919475, 7.568435876960831],
+        ["2019-12-05", 8.026753597824253, 7.605596773247053], ["2019-12-06", 8.125849321254181, 7.927657874394324],
+        ["2019-12-09", 8.274492906399075, 8.051527528681735], ["2019-12-13", 8.683262765547532, 8.435523456972708],
+        ["2020-01-06", 9.711380896133045, 8.980549935837319], ["2020-01-20", 9.389319794985777, 8.980549935837319],
+        ["2020-02-04", 7.865723047250617, 7.258761741242303],
+    ];
+    const record = { direction: "up", points: [{barIndex:1,ordinal:0},{barIndex:2,ordinal:1},{barIndex:3,ordinal:1}],
+        knownIndex:4, attackIndex:4, squeezeIndex:6, defense:7.605596773247053, observedThrough:10, invalidatedIndex:10,
+        targets:[{knownIndex:6,prices:[8.670875800118791,9.31499800241333,null,null],reachedAt:[null,null]},
+            {knownIndex:9,prices:[8.670875800118791,9.31499800241333,10.863368681005973,null],reachedAt:[7,8]}] };
+    return {symbol:"sz.002724",bars:rows.map(([time,high,low])=>({time,high,low})),
+        trendState:{n:{records:[record],spans:[[],[],[{nIndex:0,path:0,originIndex:0,startIndex:4,endIndex:10}],[]]}}};
+}
+
+test("一级段展示仅由二级订阅的同段共享N，保留来源及已发布目标", () => {
+    const data=sharedStageFixture(), frozen=structuredClone(data), reader=createTrendNReader(data);
+    const stage={level:1,path:0,direction:"up",from:"2019-12-02",to:"2020-01-06"};
+    assert.equal(reader.read(1,0,"2019-12-05","2020-02-04"),null);
+    const n=reader.inspectStage(stage,"2019-12-05","2020-02-04");
+    assert.equal(n.level,2);assert.equal(n.displayStage.level,1);assert.equal(n.nIndex,0);
+    assert.equal(n.squeeze,"2019-12-09");assert.equal(n.targets[0].price,8.670875800118791);
+    assert.equal(n.targets[1].price,9.31499800241333);assert.equal(n.targets[2].price,10.863368681005973);
+    assert.ok(trendNTargetGuides(n).every(guide=>guide.display_at==="2019-12-05"));
+    const causal=reader.read(2,0,"2019-12-05","2020-02-04");
+    assert.equal(causal.squeeze,null);assert.ok(causal.targets.every(target=>target.price===null));
+    assert.ok(reader.inspectStage(stage,"2019-12-05","2019-12-05").targets.every(target=>target.price===null));
+    assert.deepEqual(data,frozen);
+});
+
+test("共享N展示不跨方向、路径或一级段，失效后不沿用，二三级入口不借其他级别", () => {
+    const data=sharedStageFixture(), reader=createTrendNReader(data);
+    const stage={level:1,path:0,direction:"up",from:"2019-12-02",to:"2020-01-06"};
+    for(const changed of [{direction:"down"},{path:1},{from:"2019-12-03"},{to:"2019-12-04"}])
+        assert.equal(reader.inspectStage({...stage,...changed},"2019-12-05","2020-02-04"),null);
+    assert.equal(reader.inspectStage({...stage,to:"2020-02-04"},"2020-02-04","2020-02-04"),null);
+    data.trendState.n.spans[3]=data.trendState.n.spans[2];data.trendState.n.spans[2]=[];
+    assert.equal(createTrendNReader(data).inspectStage({...stage,level:2},"2019-12-05","2020-02-04"),null);
+});
+
+test("倒N共享参考及N字母命中保留一级展示归属，不改变实际来源级别", () => {
+    const data=sharedStageFixture();
+    data.bars=data.bars.map(bar=>({...bar,high:20-bar.low,low:20-bar.high}));
+    const record=data.trendState.n.records[0];record.direction="down";record.defense=20-record.defense;
+    for(const snapshot of record.targets) snapshot.prices=snapshot.prices.map(price=>price===null?null:20-price);
+    const stage={level:1,path:0,direction:"down",from:"2019-12-02",to:"2020-01-06"};
+    const n=createTrendNReader(data).inspectStage(stage,"2019-12-05","2020-02-04");
+    assert.equal(n.up,false);assert.equal(n.level,2);assert.deepEqual(n.displayStage,stage);
+    const overlay=new TrendNHoverOverlay();overlay.setModel(n);assert.deepEqual(overlay.model.displayStage,stage);
+    overlay.setModel({...n,displayStage:undefined});assert.equal(overlay.model.displayStage,undefined);
+});
