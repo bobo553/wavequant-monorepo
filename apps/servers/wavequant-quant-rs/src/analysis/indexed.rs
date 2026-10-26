@@ -13,6 +13,9 @@ pub struct PointIndex(pub usize);
 #[serde(rename_all="camelCase")]
 pub struct IndexedLevel{
     pub bar_indices:Vec<BarIndex>,pub source_indices:Vec<Option<PointIndex>>,
+    /// 本表点对应入段的六态与可知时钟，辅助引用点可为 None。
+    #[serde(default)] pub trend_states:Vec<Option<TrendState>>,
+    #[serde(default)] pub trend_state_known_indices:Vec<BarIndex>,
     pub kinds:Vec<PointKind>,pub known_indices:Vec<BarIndex>,pub ordinals:Vec<usize>,pub paths:Vec<usize>,pub states:Vec<PointState>,
     pub points:Vec<PointIndex>,pub candidate:Option<PointIndex>,pub publication:Vec<PointIndex>,
     pub key:Option<PointIndex>,pub anchor:Option<PointIndex>,pub preceding_start:Option<PointIndex>,
@@ -21,6 +24,8 @@ pub struct IndexedLevel{
 #[derive(Debug,Clone,Serialize,Deserialize)]
 #[serde(rename_all="camelCase")]
 pub struct IndexedAnalysis{
+    #[serde(default)] pub n_memory:[super::kernel::n_memory::LevelNMemory;4],
+    #[serde(default)] pub n_records:Vec<super::kernel::n_memory::SharedNRecord>,
     #[serde(default)] pub qualification_intervals:[Vec<super::kernel::QualificationInterval>;4],
     pub schema_version:u32,pub state:TrendAnalyzerState,pub levels:[IndexedLevel;4],pub complete:bool,pub unavailable_rules:Vec<String>,
 }
@@ -31,7 +36,7 @@ fn intern<'a>(table:&mut Vec<&'a KernelPoint>,point:&'a KernelPoint)->PointIndex
 impl IndexedAnalysis{
     pub fn from_response(response:&AnalysisResponse)->Self{
         let mut value=Self::from_frames(response.state.clone(),&response.levels,response.complete,response.unavailable_rules.clone());
-        value.qualification_intervals=response.qualification_intervals.clone();value
+        value.qualification_intervals=response.qualification_intervals.clone();value.n_memory=response.n_memory.clone();value.n_records=response.n_records.clone();value
     }
     pub fn from_frames(state:TrendAnalyzerState,frames:&[KernelFrame;4],complete:bool,unavailable_rules:Vec<String>)->Self{
         let mut tables:Vec<Vec<&KernelPoint>>=Vec::new();
@@ -42,13 +47,16 @@ impl IndexedAnalysis{
             let publication=frame.publication.iter().map(&mut intern).collect();let key=frame.key.as_ref().map(&mut intern);
             let anchor=frame.anchor.as_ref().map(&mut intern);let preceding_start=frame.preceding_start.as_ref().map(&mut intern);
             let source_indices=table.iter().map(|p|level.checked_sub(1).and_then(|parent|tables[parent].iter().position(|source|source.index==p.index&&source.ordinal==p.ordinal&&source.kind==p.kind&&source.path==p.path)).map(PointIndex)).collect();
-            let output=IndexedLevel{bar_indices:table.iter().map(|p|BarIndex(p.index)).collect(),source_indices,
+            let trend_states=table.iter().map(|p|if frame.candidate.as_ref().is_some_and(|c|same(c,p)){frame.candidate_trend_state}else{
+                frame.points.iter().position(|own|same(own,p)).and_then(|i|frame.segment_states.get(i).copied().flatten())}).collect();
+            let trend_state_known_indices=table.iter().map(|p|BarIndex(if frame.candidate.as_ref().is_some_and(|c|same(c,p)){frame.candidate_state_known.unwrap_or(p.known_index)}else{p.known_index})).collect();
+            let output=IndexedLevel{trend_states,trend_state_known_indices,bar_indices:table.iter().map(|p|BarIndex(p.index)).collect(),source_indices,
                 kinds:table.iter().map(|p|p.kind).collect(),known_indices:table.iter().map(|p|BarIndex(p.known_index)).collect(),
                 ordinals:table.iter().map(|p|p.ordinal).collect(),paths:table.iter().map(|p|p.path).collect(),states:table.iter().map(|p|p.state).collect(),
                 points,candidate,publication,key,anchor,preceding_start,direction:frame.direction,structure_direction:frame.structure_direction,state:frame.state,blocked_at:frame.blocked_at.map(BarIndex)};
             tables.push(table);output
         });
-        Self{qualification_intervals:std::array::from_fn(|_|Vec::new()),schema_version:1,state,levels,complete,unavailable_rules}
+        Self{n_records:Vec::new(),n_memory:std::array::from_fn(|level|super::kernel::n_memory::LevelNMemory{level:level as u8,..Default::default()}),qualification_intervals:std::array::from_fn(|_|Vec::new()),schema_version:1,state,levels,complete,unavailable_rules}
     }
     /// 内核直接导出平行列；不先展开 KernelPoint 或递归证明。
     pub(crate) fn from_arena(state:TrendAnalyzerState,frames:&[super::kernel::arena::RefFrame;4],pool:&super::kernel::arena::PointArena,
@@ -57,21 +65,24 @@ impl IndexedAnalysis{
         let mut parent_tables:Vec<BTreeMap<(usize,usize,u8,usize),usize>>=Vec::with_capacity(4);
         let levels=std::array::from_fn(|level|{
             let frame=&frames[level];let mut table=Vec::new();let mut positions=BTreeMap::new();
+            let mut segment_states:BTreeMap<_,_>=frame.points.iter().enumerate().map(|(i,id)|(*id,(frame.segment_states.get(i).copied().flatten(),pool.view(*id,bars).known_index))).collect();
+            if let Some(id)=frame.candidate{segment_states.insert(id,(frame.candidate_trend_state,frame.candidate_state_known.unwrap_or(pool.view(id,bars).known_index)));}
             let mut intern=|id|{let p=pool.view(id,bars);let key=(p.index,p.ordinal,p.kind as u8,p.path,p.known_index,p.state as u8);
                 let next=table.len();let i=*positions.entry(key).or_insert_with(||{table.push(id);next});PointIndex(i)};
             let points=frame.points.iter().copied().map(&mut intern).collect();let candidate=frame.candidate.map(&mut intern);
             let key=frame.key.map(&mut intern);let anchor=frame.anchor.map(&mut intern);let preceding_start=frame.preceding_start.map(&mut intern);
-            let mut coordinates=BTreeMap::new();let mut output=IndexedLevel{bar_indices:Vec::with_capacity(table.len()),source_indices:Vec::with_capacity(table.len()),
+            let mut coordinates=BTreeMap::new();let mut output=IndexedLevel{trend_states:Vec::with_capacity(table.len()),trend_state_known_indices:Vec::with_capacity(table.len()),bar_indices:Vec::with_capacity(table.len()),source_indices:Vec::with_capacity(table.len()),
                 kinds:Vec::with_capacity(table.len()),known_indices:Vec::with_capacity(table.len()),ordinals:Vec::with_capacity(table.len()),paths:Vec::with_capacity(table.len()),states:Vec::with_capacity(table.len()),
                 points,candidate,publication:Vec::new(),key,anchor,preceding_start,direction:frame.direction,structure_direction:frame.structure_direction,state:frame.state,blocked_at:frame.blocked_at.map(BarIndex)};
             for(i,id)in table.into_iter().enumerate(){let p=pool.view(id,bars);let coordinate=(p.index,p.ordinal,p.kind as u8,p.path);
                 coordinates.entry(coordinate).or_insert(i);output.bar_indices.push(BarIndex(p.index));output.kinds.push(p.kind);output.known_indices.push(BarIndex(p.known_index));
                 output.ordinals.push(p.ordinal);output.paths.push(p.path);output.states.push(p.state);
+                let (state,known)=segment_states.get(&id).copied().unwrap_or((None,p.known_index));output.trend_states.push(state);output.trend_state_known_indices.push(BarIndex(known));
                 output.source_indices.push(level.checked_sub(1).and_then(|parent|parent_tables[parent].get(&coordinate)).copied().map(PointIndex));
             }
             parent_tables.push(coordinates);output
         });
-        Self{qualification_intervals:std::array::from_fn(|_|Vec::new()),schema_version:1,state,levels,complete,unavailable_rules}
+        Self{n_records:Vec::new(),n_memory:std::array::from_fn(|level|super::kernel::n_memory::LevelNMemory{level:level as u8,..Default::default()}),qualification_intervals:std::array::from_fn(|_|Vec::new()),schema_version:1,state,levels,complete,unavailable_rules}
     }
     /// 仅为旧图表适配器读取坐标，不识别趋势或重建判定证据。
     pub fn chart_response(&self,bars:&[RuleCandle])->Result<AnalysisResponse,String>{
@@ -90,8 +101,11 @@ impl IndexedAnalysis{
             let mut frame=KernelFrame::empty(level as u8);frame.points=data.points.iter().map(|i|get(*i)).collect::<Result<_,_>>()?;
             frame.candidate=data.candidate.map(get).transpose()?;frame.publication=data.publication.iter().map(|i|get(*i)).collect::<Result<_,_>>()?;
             frame.key=data.key.map(get).transpose()?;frame.anchor=data.anchor.map(get).transpose()?;frame.preceding_start=data.preceding_start.map(get).transpose()?;
+            frame.segment_states=data.points.iter().map(|i|data.trend_states.get(i.0).copied().flatten()).collect();
+            frame.candidate_trend_state=data.candidate.and_then(|i|data.trend_states.get(i.0).copied().flatten());
+            frame.candidate_state_known=data.candidate.and_then(|i|data.trend_state_known_indices.get(i.0).map(|known|known.0));
             frame.direction=data.direction;frame.structure_direction=data.structure_direction;frame.state=data.state;frame.blocked_at=data.blocked_at.map(|i|i.0);frames.push(frame);
         }
-        Ok(AnalysisResponse{qualification_intervals:self.qualification_intervals.clone(),state:self.state.clone(),levels:frames.try_into().map_err(|_|"indexed levels differ")?,last_execution:Vec::new(),cache_status:"indexed".into(),complete:self.complete,unavailable_rules:self.unavailable_rules.clone(),daily_trading:None,structure_cache:Default::default()})
+        Ok(AnalysisResponse{n_records:self.n_records.clone(),n_memory:self.n_memory.clone(),qualification_intervals:self.qualification_intervals.clone(),state:self.state.clone(),levels:frames.try_into().map_err(|_|"indexed levels differ")?,last_execution:Vec::new(),cache_status:"indexed".into(),complete:self.complete,unavailable_rules:self.unavailable_rules.clone(),daily_trading:None,structure_cache:Default::default()})
     }
 }

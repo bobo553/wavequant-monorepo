@@ -40,8 +40,6 @@ struct Search {
     key: KernelPoint,
     started: usize,
     phase: QualificationPhase,
-    n: crate::analysis::trading::single_n::SingleNState,
-    squeeze: crate::analysis::trading::single_n::SqueezeState,
 }
 fn price(p: &KernelPoint) -> Result<Decimal, String> {
     p.value.to_string().parse().map_err(|_|"qualification price exceeds decimal range".into())
@@ -58,7 +56,9 @@ pub(crate) fn scalar_frame(pool:&PointArena,bars:&[KernelBar],frame:&RefFrame)->
 
     let mut out=KernelFrame::empty(frame.level);
     out.points=frame.points.iter().map(|id|scalar(pool,bars,*id)).collect();
-    for event in &frame.events {
+    out.segment_states=frame.segment_states.clone();out.candidate_trend_state=frame.candidate_trend_state;out.candidate_state_known=frame.candidate_state_known;
+    let events=if frame.observed_events.is_empty(){&frame.events}else{&frame.observed_events};
+    for event in events {
         if !matches!(event.title,"翻空为多"|"翻多为空"|"多空交替"){continue;}
         let facts=match &event.proof{EventProof::Shared(i)=>&pool.proofs[*i],EventProof::Inline(f)=>f};
         let anchor=facts.iter().find_map(|(key,fact)|{
@@ -66,7 +66,7 @@ pub(crate) fn scalar_frame(pool:&PointArena,bars:&[KernelBar],frame:&RefFrame)->
             if let Fact::Point(id)=fact{Some(scalar(pool,bars,*id))}else{None}
         });
         let mut point=scalar(pool,bars,event.point);
-        let path=out.points.iter().find(|p|p.order()==point.order()&&p.kind==point.kind&&p.value==point.value).map_or(point.path,|p|p.path);
+        let path=out.points.iter().find(|p|p.order()==point.order()&&p.kind==point.kind&&p.value==point.value).map(|p|p.path).or_else(||frame.observations.iter().rev().find(|o|o.known_index<=event.known_index&&pool.view(o.extreme,bars).path==point.path).map(|o|o.path)).unwrap_or(point.path);
         point.path=path;
         let mut key=event.key.map(|id|scalar(pool,bars,id));if let Some(key)=&mut key{key.path=path;}
         let mut anchor=anchor;if let Some(anchor)=&mut anchor{anchor.path=path;}
@@ -87,8 +87,7 @@ fn seed(event:&KernelEvent,up:bool)->Option<Search> {
         ||key.known_index>=high.index
         ||[origin,key,high].iter().any(|p|p.known_index>event.known_index){return None;}
     Some(Search{origin:origin.clone(),high:high.clone(),key:key.clone(),started:event.known_index,
-        phase:QualificationPhase::AwaitingAlternationEnd{after:None},
-        n:crate::analysis::trading::single_n::SingleNState::new(high.index),squeeze:Default::default()})
+        phase:QualificationPhase::AwaitingAlternationEnd{after:None}})
 }
 fn path_points(frame:&KernelFrame)->BTreeMap<usize,Vec<KernelPoint>> {
     let mut paths:BTreeMap<usize,Vec<KernelPoint>>=BTreeMap::new();
@@ -113,20 +112,27 @@ pub(crate) fn state_contexts(frame:&RefFrame)->Vec<StateContext>{
     #[cfg(feature="qualification-timing")]
     let _profile_scope=crate::analysis::kernel::qualification_profile::enter("state_contexts");
 
-    frame.contexts.iter().map(|context|StateContext{known:context.known_index,path:context.path,state:context.state}).collect()
+    if frame.observations.is_empty(){
+        frame.contexts.iter().map(|context|StateContext{known:context.known_index,path:context.path,state:context.state}).collect()
+    }else{frame.observations.iter().map(|context|StateContext{known:context.known_index,path:context.path,state:context.state}).collect()}
 }
 /// 对应 Python confirm_bull_alternation：返回证明表示空多交替已结束，才能开启资格。
+#[derive(Clone,Copy,PartialEq,Eq,PartialOrd,Ord)]
+struct NOrder([(usize,usize);3]);
+fn n_order(n:&crate::analysis::trading::single_n::SingleNData)->NOrder{NOrder([&n.a,&n.b,&n.c].map(|p|(p.bar_index,p.ordinal)))}
+type AvailableNs=BTreeMap<NOrder,(super::n_memory::NIndex,super::n_memory::NConfirmationSnapshot)>;
 fn confirm_bull_alternation_end(search:&Search,own:&[KernelPoint],polyline:&[KernelPoint],bars:&[RuleCandle],market:&[KernelBar],
-    now:usize,level:u8,_config:&TradingDayConfig,pair:Option<(&KernelPoint,&KernelPoint)>,after:Option<usize>,allow_gap:bool)
+    now:usize,level:u8,_config:&TradingDayConfig,ns:&AvailableNs,records:&[super::n_memory::SharedNRecord],pair:Option<(&KernelPoint,&KernelPoint)>,after:Option<usize>,allow_gap:bool)
     ->Result<Option<AlternationProof>,String> {
     #[cfg(feature="qualification-timing")]
     let _profile_scope=crate::analysis::kernel::qualification_profile::enter("confirm_start");
 
     if now<search.started||after.is_some_and(|after|now<=after){return Ok(None);}
     let path=format!("lecture-{}",search.origin.path);
-    if let Some(n)=&search.n.candidate{
-        if let Some(proof)=n_alternation::confirm_single_n(bars,now,&search.origin,&search.high,&search.key,
-            polyline,n,level,&path,after)? {return Ok(Some(proof));}
+    for (index,snapshot) in ns.values(){
+        let n=&records.get(index.0).ok_or("qualification N index outside shared array")?.data;
+        if let Some(proof)=n_alternation::confirm_single_n_snapshot(bars,now,&search.origin,&search.high,&search.key,
+            polyline,n,*snapshot,level,&path,after)? {return Ok(Some(proof));}
     }
     if let Some(proof)=confirmation::confirm_volume_breakout_alternation(bars,now,&search.origin,&search.high,pair,false)?{
         return Ok(Some(proof));
@@ -167,7 +173,7 @@ fn source_path(paths:&BTreeMap<(usize,usize),(usize,usize)>,path:usize,index:usi
 /// 每级一次按日期推进；空翻多只创建 AwaitingAlternationEnd，只有 Active 才调用结束条件。
 /// source_paths 显式绑定直接下级路径，不能把其他来源的翻空拿来关闭本级资格。
 pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFrame,source_paths:&BTreeMap<(usize,usize),(usize,usize)>,
-    bars:&[RuleCandle],market:&[KernelBar],config:&TradingDayConfig,pairs:&[PairContext],states:&[StateContext],enabled:bool,cancel:Option<&AtomicBool>)
+    bars:&[RuleCandle],market:&[KernelBar],config:&TradingDayConfig,pairs:&[PairContext],states:&[StateContext],enabled:bool,cancel:Option<&AtomicBool>,n_facts:&[super::n_memory::NFact],records:&[super::n_memory::SharedNRecord])
     ->Result<Vec<QualificationInterval>,String> {
     #[cfg(feature="qualification-timing")]
     let _profile_scope=crate::analysis::kernel::qualification_profile::enter("daily_eligibility");
@@ -181,9 +187,16 @@ pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFr
     let mut current_states=BTreeMap::new();
     let path_starts:BTreeMap<_,_>=line.iter().filter_map(|(path,p)|p.first().map(|p|(*path,p.known_index))).collect();
     let mut searches:BTreeMap<usize,Search>=BTreeMap::new();let mut intervals=Vec::new();
-    let(mut event_index,mut lower_index,mut state_index)=(0,0,0);
+    let(mut event_index,mut lower_index,mut state_index,mut n_index)=(0,0,0,0);
+    let mut current_ns:BTreeMap<usize,AvailableNs>=BTreeMap::new();
+    let empty_ns=BTreeMap::new();
     for now in 0..bars.len(){
         if cancel.is_some_and(|flag|flag.load(Ordering::Relaxed)){return Err("qualification calculation cancelled".into());}
+        while n_index<n_facts.len()&&n_facts[n_index].known<=now{
+            let fact=&n_facts[n_index];let ns=current_ns.entry(fact.path).or_default();
+            match &fact.change{super::n_memory::NChange::Put(index,snapshot)=>{let data=&records.get(index.0).ok_or("qualification N fact outside shared table")?.data;ns.insert(n_order(data),(*index,*snapshot));},super::n_memory::NChange::Remove(index)=>{let data=&records.get(index.0).ok_or("qualification removed N outside shared table")?.data;ns.remove(&n_order(data));}}
+            n_index+=1;
+        }
         let first=event_index;while event_index<events.len()&&events[event_index].known_index<=now{event_index+=1;}
         let lower_first=lower_index;while lower_index<lower_events.len()&&lower_events[lower_index].known_index<=now{lower_index+=1;}
         let state_first=state_index;
@@ -202,8 +215,8 @@ pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFr
                 if let Some(previous)=searches.get_mut(&path){
                     if matches!(previous.phase,QualificationPhase::Active(_)){continue;}
                     // 延续同一轮空翻多只提高攻击高点，保留首次起点、关键位及重开门槛。
-                    if previous.n.candidate.is_none()&&next.high.order()>previous.high.order()&&next.high.value>previous.high.value{
-                        previous.n.restart(next.high.index);previous.squeeze=Default::default();previous.high=next.high;
+                    if current_ns.get(&path).is_none_or(|ns|!ns.values().any(|(index,_)|records.get(index.0).is_some_and(|n|n.data.a.bar_index>previous.high.index)))&&next.high.order()>previous.high.order()&&next.high.value>previous.high.value{
+                        previous.high=next.high;
                     }
                 }else{searches.insert(path,next);}
             }
@@ -221,22 +234,12 @@ pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFr
             let origin_broken=bars[now].low<price(&search.origin)?;
             let invalid_candidate=path_ended||bear_state||bear_flip||bear_alternation||origin_broken;
             let pair=pairs.iter().rev().find(|p|p.path==base&&p.known<=now).and_then(|p|p.pair.as_ref()).map(|(key,low)|(key,low));
-            // 每个级别/路径在当前日只推进一个N；Active期间也维护同一N及目标，不另找候选。
-            if !invalid_candidate{
-                let step=crate::analysis::trading::single_n::advance_n(&mut search.n,polyline,&bars[now],now,now.checked_sub(1).and_then(|i|bars.get(i)),|index|bars.get(index).map(|b|b.close))?;
-                if step.invalidated{search.squeeze=Default::default();}
-                if step.formed&&config.strict_n_attack_quality&&now>0
-                    &&crate::analysis::trading::entries::v3_positive_n_attack_rejection(&bars[now],Some(bars[now].volume>bars[now-1].volume)).is_some(){
-                    search.n.retire(now);search.squeeze=Default::default();
-                }
-                if let (Some(n),Some(previous))=(&mut search.n.candidate,now.checked_sub(1).and_then(|i|bars.get(i))){
-                    crate::analysis::trading::single_n::advance_squeeze(&mut search.squeeze,n,&bars[now],previous,now,config.shadow_fraction)?;
-                }
-            }
+            // N 已由本级记忆簿推进；资格消费者只读当日已知记录，不再搜索或清空 N。
+            let ns=current_ns.get(&path).unwrap_or(&empty_ns);
             if let QualificationPhase::AwaitingAlternationEnd{after}=search.phase{
                 // 没有有效资格可关闭；仅撤销已经失效的翻多候选，不生成结束区间。
                 if invalid_candidate{retired.push(path);continue;}
-                let Some(proof)=confirm_bull_alternation_end(search,own,polyline,bars,market,now,frame.level,config,pair,after,true)? else{continue;};
+                let Some(proof)=confirm_bull_alternation_end(search,own,polyline,bars,market,now,frame.level,config,ns,records,pair,after,true)? else{continue;};
                 let active=ActiveQualification{interval:intervals.len(),low:proof.low.clone(),gap:gap_lower(&proof)};
                 // 空多交替结束的真实确认日就是交易资格开始日，不回填翻多或结构低点日期。
                 intervals.push(QualificationInterval{path,start_index:now,low_index:proof.low.index,end_index:None,
@@ -248,7 +251,7 @@ pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFr
             let start=intervals[active.interval].start_index;
             // Python 的独立确认可解除缺口依赖；这里只更新现有窗口，不重复开启资格。
             if active.gap.is_some()&&now>start&&!invalid_candidate
-                &&confirm_bull_alternation_end(search,own,polyline,bars,market,now,frame.level,config,pair,None,false)?.is_some(){
+                &&confirm_bull_alternation_end(search,own,polyline,bars,market,now,frame.level,config,ns,records,pair,None,false)?.is_some(){
                 active.gap=None;
             }
             // 以下结束规则仅 Active 可达；确认当日也执行，空头具有强制关闭优先级。
@@ -269,7 +272,6 @@ pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFr
                 // 沿用 Python resume_qualification_search：本级翻多仍成立才等待新证据。
                 // 本级空头/反向事实/起点或路径失效必须回到等待新的空翻多。
                 if invalid_candidate{retired.push(path);}else{
-                    search.n.retire(now);search.squeeze=Default::default();
                     search.phase=QualificationPhase::AwaitingAlternationEnd{after:Some(now)};
                 }
             }else{search.phase=QualificationPhase::Active(active);}
@@ -308,7 +310,7 @@ mod tests {
         run_with_states(frame,lower,bars,market,&states,enabled)
     }
     fn run_with_states(frame:&KernelFrame,lower:&KernelFrame,bars:&[RuleCandle],market:&[KernelBar],states:&[StateContext],enabled:bool)->Vec<QualificationInterval>{
-        calculate(frame,lower,&KernelFrame::empty(0),&BTreeMap::new(),bars,market,&TradingDayConfig::lecture(),&[],states,enabled,None).unwrap()
+        calculate(frame,lower,&KernelFrame::empty(0),&BTreeMap::new(),bars,market,&TradingDayConfig::lecture(),&[],states,enabled,None,&[],&[]).unwrap()
     }
     #[test]
     fn enabled_and_bear_to_bull_are_both_required_at_each_level(){

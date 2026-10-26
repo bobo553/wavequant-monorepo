@@ -86,7 +86,13 @@ pub fn confirm_n_squeeze_alternation(bars:&[RuleCandle],now:usize,origin:&Kernel
 /// 只验证已锁定 N 的外层交替条件；不再枚举候选或重跑 N/轧空历史。
 pub fn confirm_single_n(bars:&[RuleCandle],now:usize,origin:&KernelPoint,high:&KernelPoint,key:&KernelPoint,
     polyline:&[KernelPoint],n:&super::single_n::SingleNData,level:u8,path:&str,after:Option<usize>)->Result<Option<AlternationProof>,String>{
-    let (Some(attack),Some(defense),Some(squeeze))=(n.attack_index,n.defense,n.squeeze_index)else{return Ok(None);};
+    confirm_single_n_snapshot(bars,now,origin,high,key,polyline,n,crate::analysis::kernel::n_memory::NConfirmationSnapshot::of(n),level,path,after)
+}
+pub(crate) fn confirm_single_n_snapshot(bars:&[RuleCandle],now:usize,origin:&KernelPoint,high:&KernelPoint,key:&KernelPoint,
+    polyline:&[KernelPoint],n:&super::single_n::SingleNData,snapshot:crate::analysis::kernel::n_memory::NConfirmationSnapshot,level:u8,path:&str,after:Option<usize>)->Result<Option<AlternationProof>,String>{
+    if n.direction!=super::Direction::Up||now>=bars.len()||n.known_index>now{return Ok(None);}
+    let (Some(attack),Some(defense),Some(squeeze))=(snapshot.attack,snapshot.defense,snapshot.squeeze)else{return Ok(None);};
+    if attack>now||squeeze>now{return Ok(None);}
     if bar_low_broken(&bars[now],defense)||after.is_some_and(|i|squeeze<=i)||n.a.bar_index<=high.index{return Ok(None);}
     let make=|r:&super::single_n::NPointRef,kind,value|KernelPoint::new(crate::analysis::kernel::KernelPointData{
         index:r.bar_index,ordinal:r.ordinal,known_index:r.known_index,kind,value,time:bars[r.bar_index].timestamp.clone(),
@@ -95,7 +101,7 @@ pub fn confirm_single_n(bars:&[RuleCandle],now:usize,origin:&KernelPoint,high:&K
     let vertices=[make(&n.a,PointKind::L,n.origin.to_f64().ok_or("N origin unavailable")?),
         make(&n.b,PointKind::H,n.neckline.to_f64().ok_or("N neckline unavailable")?),
         make(&n.c,PointKind::L,n.pullback.to_f64().ok_or("N pullback unavailable")?)];
-    let Some(proof)=candidate_proof(bars,now,origin,high,key,&vertices,attack,level,path,None,n.regime,false)? else{return Ok(None);};
+    let Some(proof)=candidate_proof(bars,now,origin,high,key,&vertices,attack,level,path,None,snapshot.regime,false)? else{return Ok(None);};
     if let Some(low)=polyline.iter().find(|p|p.kind==PointKind::L&&Some(p.index)==super::qualification::index(&proof,"b_low_index")
         &&value(p).ok()==super::qualification::price(&proof,"b_low_price")){
         return Ok(Some(AlternationProof{low:low.clone(),rule:"single_n_and_squeeze_after_qualified_b".into(),evidence:proof}));

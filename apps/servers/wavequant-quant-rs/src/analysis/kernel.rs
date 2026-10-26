@@ -14,6 +14,8 @@ mod local_publication;
 mod publication;
 mod geometry;
 mod structure;
+mod observations;
+pub mod n_memory;
 mod waves;
 mod landmarks;
 mod qualification_projection;
@@ -49,6 +51,7 @@ impl Direction {
     pub fn sign(self) -> f64 { self.target().sign() }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// 四级共用六态；Option::None 表示背景尚未形成，不属于第七种趋势。
 pub enum TrendState {
     #[serde(rename = "空翻多")] BearToBull,
     #[serde(rename = "空多交替")] BearBullAlternation,
@@ -105,6 +108,10 @@ pub struct KernelEvent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct KernelFrame {
     pub level: u8, pub points: Vec<KernelPoint>, pub candidate: Option<KernelPoint>,
+    /// 与 points 对齐，表示以本点结束的入段六态；首端及证据不足为 None。
+    #[serde(default)] pub segment_states:Vec<Option<TrendState>>,
+    #[serde(default)] pub candidate_trend_state:Option<TrendState>,
+    #[serde(default)] pub candidate_state_known:Option<usize>,
     /// 正式方向许可链；原始结构和下一级来源始终使用points。
     #[serde(default)] pub publication: Vec<KernelPoint>,
     pub direction: Option<Direction>, pub structure_direction: Option<Direction>, pub state: Option<TrendState>, pub key: Option<KernelPoint>, pub anchor: Option<KernelPoint>,
@@ -113,7 +120,7 @@ pub struct KernelFrame {
 }
 impl KernelFrame {
     pub fn empty(level: u8) -> Self {
-        Self { level, points: Vec::new(), candidate: None, publication: Vec::new(), direction: None, structure_direction: None, state: None,
+        Self { level, points: Vec::new(), candidate: None, segment_states:Vec::new(),candidate_trend_state:None,candidate_state_known:None, publication: Vec::new(), direction: None, structure_direction: None, state: None,
             key: None, anchor: None, preceding_start: None, events: Vec::new(), blocked_at: None, issues: Vec::new() }
     }
 }

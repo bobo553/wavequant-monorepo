@@ -43,7 +43,6 @@ export function MarketHeaderActions({ researchMode = false }: { researchMode?: b
                         autoComplete="off"
                         aria-label="搜索股票"
                         aria-controls="watchlist-stock-list"
-                        aria-keyshortcuts="Control+K Meta+K"
                         placeholder="搜索当前分类自选 / 名称 / 代码"
                         className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-sm outline-none"
                         onFocus={activateResearchSearch}
@@ -60,9 +59,11 @@ export function MarketHeaderActions({ researchMode = false }: { researchMode?: b
                             }
                         }}
                     />
-                    <kbd className="border-border text-muted-foreground hidden shrink-0 rounded border px-1.5 py-0.5 text-[10px] md:inline-flex">
+                    <button type="button" aria-label="搜索全市场股票和指数" aria-keyshortcuts="Control+K Meta+K"
+                        onClick={(event) => { event.preventDefault(); openSearch(); }}
+                        className="border-border text-muted-foreground hover:text-primary hidden shrink-0 rounded border px-1.5 py-0.5 text-[10px] md:inline-flex">
                         Ctrl K
-                    </kbd>
+                    </button>
                 </label>
             ) : (
                 <Button

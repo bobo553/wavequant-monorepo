@@ -27,7 +27,7 @@ export function trendStateView(raw,snapshotRaw,{parseState=globalThis.window?.wa
         const bar=bars[source.barIndex],known=bars[point.knownIndex];
         if(!bar||!known)throw new Error("趋势行情索引越界");
         return {index:source.barIndex,barIndex:source.barIndex,time:bar.time,value:source.kind==="H"?bar.high:bar.low,kind:source.kind,label:source.kind,ordinal:source.ordinal,path:point.path??0,source_path:level?"level"+(level-1)+"-lecture-"+(rawLevels[level-1][point.sourceIndex].path??0):null,
-            state:point.confirmed?(level===0?"confirmed":"reversal"):"developing",confirmed_at:known.time,available_at:known.time,trend_level:level,referenceOnly:point.referenceOnly===true};
+            state:point.confirmed?(level===0?"confirmed":"reversal"):"developing",confirmed_at:known.time,available_at:known.time,trend_level:level,trend_state:point.trendState??null,trend_state_known_index:point.trendStateKnownIndex??point.knownIndex,referenceOnly:point.referenceOnly===true};
     }));
     // 向下逐级读取同一引用，不通过日期或价格猜测对应点。
     function levelsSource(level,index){let point=rawLevels[level-1]?.[index];if(!point)throw new Error("趋势来源索引越界");while(--level>0){point=rawLevels[level-1]?.[point.sourceIndex];if(!point)throw new Error("趋势来源索引越界");}return point;}

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use super::{kernel::{self, KernelBar, KernelFrame, KernelOptions, TrendState}, trading::{self, RuleCandle, qualification::TradingEligibility, FrameTradeEvaluation}};
 
-pub const VERSION: u32 = 26;
+pub const VERSION: u32 = 30;
 // 结构模式计算全部四级；账户交易保持独立停用。
 pub const STRUCTURE_ONLY:bool=true;
 const MAX_BARS: usize = 250_000;
@@ -116,6 +116,8 @@ pub struct TrendExecutionResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnalysisResponse {
+    #[serde(default)] pub n_memory:[kernel::n_memory::LevelNMemory;4],
+    #[serde(default)] pub n_records:Vec<kernel::n_memory::SharedNRecord>,
     #[serde(default)] pub qualification_intervals:[Vec<kernel::QualificationInterval>;4],
     pub state: TrendAnalyzerState,
     pub levels: [KernelFrame; 4],
@@ -171,6 +173,8 @@ pub struct TrendAnalyzer {
     array_compat:std::sync::OnceLock<[KernelFrame;4]>,
     eligibility: [TradingEligibility;4],
     qualification_intervals: [Vec<kernel::QualificationInterval>;4],
+    n_memory:[kernel::n_memory::LevelNMemory;4],
+    n_records:Vec<kernel::n_memory::SharedNRecord>,
     source_changed: [bool;4],
     last_execution: Vec<TrendExecutionResult>,
     evaluations: [Option<FrameTradeEvaluation>;4],
@@ -231,7 +235,7 @@ impl TrendAnalyzer {
             promotion_receipts:array::from_fn(|_|Vec::new()),level_versions:array::from_fn(|_|None),
             caches:array::from_fn(|_|None),frames:array::from_fn(|level|KernelFrame::empty(level as u8)),
             array_frames:None,array_compat:std::sync::OnceLock::new(),
-            eligibility:array::from_fn(|_|TradingEligibility::default()),qualification_intervals:array::from_fn(|_|Vec::new()),
+            eligibility:array::from_fn(|_|TradingEligibility::default()),n_records:Vec::new(),n_memory:array::from_fn(|level|kernel::n_memory::LevelNMemory{level:level as u8,..Default::default()}),qualification_intervals:array::from_fn(|_|Vec::new()),
             source_changed:[false;4],last_execution:Vec::new(),evaluations:array::from_fn(|_|None),prepared_at:None,cache_status,
             unavailable_rules:Vec::new(),trading_state,daily_trading:None,
             structure_cache:None,structure_cache_stats:Default::default(),phase_timings:BTreeMap::new(),
@@ -320,27 +324,42 @@ impl TrendAnalyzer {
     let _profile_scope=crate::analysis::kernel::qualification_profile::enter("qualification_total");
 
         let Some(frames)=&self.array_frames else{return Ok(());};
-        if !self.state.config.enable_secondary_reversal.iter().any(|enabled|*enabled){return Ok(());}
         let phase=Instant::now();
         let scalar:[KernelFrame;4]=array::from_fn(|level|kernel::eligibility::scalar_frame(&self.polyline_cursor.arena,&self.kernel_bars,&frames[level]));
         let pairs=kernel::eligibility::pair_contexts(&self.polyline_cursor.arena,&self.kernel_bars,&frames[0]);
-        for level in 0_usize..4{
-            if !self.state.config.enable_secondary_reversal[level]{continue;}
-            let started=Instant::now();let mut paths=BTreeMap::new();
+        let paths:[BTreeMap<_,_>;4]=array::from_fn(|level|{
+            let mut paths=BTreeMap::new();
             for id in &frames[level].points{
                 let pool=&self.polyline_cursor.arena;let own=pool.view(*id,&self.kernel_bars);
                 let direct=pool.nodes[id.0].source.unwrap_or(*id);let mut base=direct;
                 while let Some(source)=pool.nodes[base.0].source{base=source;}
                 paths.insert((own.path,own.index),(pool.view(direct,&self.kernel_bars).path,pool.view(base,&self.kernel_bars).path));
             }
-            let states=kernel::eligibility::state_contexts(&frames[level]);
-            self.qualification_intervals[level]=kernel::eligibility::calculate(&scalar[level],&scalar[level.saturating_sub(1)],&scalar[0],&paths,
-                &self.candles[..self.state.current_index],&self.kernel_bars[..self.state.current_index],&self.state.config.trading,&pairs,&states,true,cancel)?;
+            for observation in &frames[level].observations{
+                let pool=&self.polyline_cursor.arena;let direct=observation.extreme;let mut base=direct;
+                while let Some(source)=pool.nodes[base.0].source{base=source;}
+                paths.insert((observation.path,pool.view(direct,&self.kernel_bars).index),(pool.view(direct,&self.kernel_bars).path,pool.view(base,&self.kernel_bars).path));
+            }
+            paths
+        });
+        let memory_started=Instant::now();
+        let memory=kernel::n_memory::calculate_all(&self.polyline_cursor.arena,&self.kernel_bars,frames,&scalar,&paths,
+            &self.candles[..self.state.current_index],&self.state.config.trading,cancel)?;
+        self.phase_timings.insert("n_memory_total".into(),memory_started.elapsed().as_secs_f64());
+        self.phase_timings.insert("n_memory_shared".into(),memory.shared_seconds);
+        self.n_memory=memory.memory;self.n_records=memory.records;
+        for level in 0_usize..4{
+            self.phase_timings.insert(format!("level{level}.n_memory"),memory.seconds[level]);
+            let started=Instant::now();let states=kernel::eligibility::state_contexts(&frames[level]);
+            self.qualification_intervals[level]=kernel::eligibility::calculate(&scalar[level],&scalar[level.saturating_sub(1)],&scalar[0],&paths[level],
+                &self.candles[..self.state.current_index],&self.kernel_bars[..self.state.current_index],&self.state.config.trading,&pairs,&states,self.state.config.enable_secondary_reversal[level],cancel,&memory.facts[level],&self.n_records)?;
             self.phase_timings.insert(format!("level{level}.qualification"),started.elapsed().as_secs_f64());
         }
+        kernel::n_memory::compact(&mut self.n_memory,&mut self.n_records)?;
         self.phase_timings.insert("qualification_total".into(),phase.elapsed().as_secs_f64());Ok(())
     }
     pub fn trading_state(&self)->&trading::day::TradingDayState{&self.trading_state}
+    pub fn n_memory(&self)->&[kernel::n_memory::LevelNMemory;4]{&self.n_memory}
     pub fn eligibilities(&self)->&[TradingEligibility;4]{&self.eligibility}
     /// 合并已观察分钟的机会消费记录；结构仍只在日收对完整K线推进一次。
     pub fn accept_intraday(&mut self,asof:usize,arbiter:&trading::arbiter::EntryArbiterState,events:&[crate::indexed_json::Value])->Result<(),String>{
@@ -612,14 +631,14 @@ impl TrendAnalyzer {
             Some(frames)=>super::indexed::IndexedAnalysis::from_arena(self.export_state(),frames,&self.polyline_cursor.arena,&self.kernel_bars,complete,self.unavailable_rules.clone()),
             None=>super::indexed::IndexedAnalysis::from_frames(self.export_state(),&self.frames,complete,self.unavailable_rules.clone()),
         };
-        response.qualification_intervals=self.qualification_intervals.clone();response
+        response.qualification_intervals=self.qualification_intervals.clone();response.n_memory=self.n_memory.clone();response.n_records=self.n_records.clone();response
     }
     pub fn response(&self)->AnalysisResponse {
         let unavailable_rules=self.unavailable_rules.clone();
         // complete 是本次输入处理状态；源码迁移尚未执行的验收记录独立保留在工程状态中。
         let complete=self.state.current_index==self.bars.len()&&unavailable_rules.is_empty();
         AnalysisResponse {
-            qualification_intervals:self.qualification_intervals.clone(),state:self.export_state(),levels:self.levels().clone(),last_execution:self.last_execution.clone(),
+            n_memory:self.n_memory.clone(),n_records:self.n_records.clone(),qualification_intervals:self.qualification_intervals.clone(),state:self.export_state(),levels:self.levels().clone(),last_execution:self.last_execution.clone(),
             cache_status:self.cache_status.clone(),complete,unavailable_rules,daily_trading:self.daily_trading.clone(),
             structure_cache:self.structure_cache_stats.clone(),
         }

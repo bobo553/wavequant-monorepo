@@ -46,16 +46,22 @@ pub fn six_state(points:&[KernelPoint],level:u8)->Result<KernelFrame,String>{
     let mut pool=PointArena::default();let ids=points.iter().map(|p|pool.import(p)).collect::<Vec<_>>();
     let frame=six_state_indices(&mut pool,&[],&ids,level)?;Ok(pool.materialize(&frame,&[]))
 }
-pub(crate) fn six_state_indices(pool:&mut PointArena,bars:&[KernelBar],points:&[PointId],level:u8)->Result<RefFrame,String>{
-    if level>3{return Err("trend level must be 0 through 3".into());}
-    let mut result=RefFrame::empty(level);let(mut highs,mut lows)=(Vec::with_capacity(2),Vec::with_capacity(2));
-    let mut extremes:[Option<(PointId,Option<PointId>)>;2]=[None,None];
-    // Python _initial_context_key：首端没有前驱时，只排除首端，保留后续完整背景。
-    let mut anchored_extremes:[Option<(PointId,Option<PointId>)>;2]=[None,None];
-    let(mut direction,mut anchor,mut key,mut attack)=(None,None,None,None::<Attack>);
-    let mut suspicion=false;let mut previous=None;let mut trend_origin=None;
-    for id in points.iter().copied(){
-        let point=pool.view(id,bars);if !point.is_closed(){continue;}
+/// 有界六态状态：冻结关键位与翻向背景跨点保留，不持有行情前缀。
+#[derive(Clone,Default)]
+pub(super) struct SixStateMachine {
+    highs:Vec<f64>,lows:Vec<f64>,extremes:[Option<(PointId,Option<PointId>)>;2],
+    anchored_extremes:[Option<(PointId,Option<PointId>)>;2],direction:Option<Direction>,
+    anchor:Option<PointId>,key:Option<PointId>,attack:Option<Attack>,suspicion:bool,
+    previous:Option<PointId>,trend_origin:Option<PointId>,state:Option<TrendState>,preceding_start:Option<PointId>,
+}
+impl SixStateMachine {
+    pub(super) fn advance(&mut self,pool:&mut PointArena,bars:&[KernelBar],id:PointId,level:u8)->Result<RefFrame,String>{
+        if level>3{return Err("trend level must be 0 through 3".into());}
+        let Self{mut highs,mut lows,mut extremes,mut anchored_extremes,mut direction,mut anchor,mut key,mut attack,
+            mut suspicion,mut previous,mut trend_origin,state,preceding_start}=std::mem::take(self);
+        let mut result=RefFrame::empty(level);result.state=state;result.preceding_start=preceding_start;
+    'point: {
+        let point=pool.view(id,bars);if !point.is_closed(){break 'point;}
         if point.known_index<point.index||!point.value.is_finite()||point.value<=0.0{return Err("invalid causal trend point".into());}
         if let Some(prior)=previous.map(|p|pool.view(p,bars)){
             if point.order()<=prior.order()||point.known_index<prior.known_index||point.kind==prior.kind
@@ -75,7 +81,7 @@ pub(crate) fn six_state_indices(pool:&mut PointArena,bars:&[KernelBar],points:&[
                 let slot=if current==Direction::Up{0}else{1};if let Some((a,k))=extremes[slot].filter(|(_,key)|key.is_some()).or(anchored_extremes[slot]){anchor=Some(a);key=k;}
                 result.state=Some(if current==Direction::Up{TrendState::Bull}else{TrendState::Bear});
             }
-            context(&mut result,point,direction,key,anchor);previous=Some(id);continue;
+            context(&mut result,point,direction,key,anchor);previous=Some(id);break 'point;
         }
         let current=direction.ok_or("missing structure direction")?;
         if key.is_none(){
@@ -86,7 +92,7 @@ pub(crate) fn six_state_indices(pool:&mut PointArena,bars:&[KernelBar],points:&[
                 direction=Some(selected);anchor=Some(a);key=k;
                 result.state=Some(if selected==Direction::Up{TrendState::Bull}else{TrendState::Bear});
             }
-            context(&mut result,point,direction,key,anchor);previous=Some(id);continue;
+            context(&mut result,point,direction,key,anchor);previous=Some(id);break 'point;
         }
         let mut active_anchor=anchor.ok_or("missing structure anchor")?;let mut active_key=key.ok_or("missing structure key")?;
         let reversal=current.opposite();let attack_kind=reversal.target();let sign=reversal.sign();
@@ -147,7 +153,51 @@ pub(crate) fn six_state_indices(pool:&mut PointArena,bars:&[KernelBar],points:&[
         }
         context(&mut result,point,direction,key,anchor);previous=Some(id);
     }
-    result.direction=direction;result.structure_direction=direction;result.key=key;result.anchor=anchor;result.points=points.to_vec();Ok(result)
+        result.direction=direction;result.structure_direction=direction;result.key=key;result.anchor=anchor;
+        *self=Self{highs,lows,extremes,anchored_extremes,direction,anchor,key,attack,suspicion,previous,trend_origin,
+            state:result.state,preceding_start:result.preceding_start};Ok(result)
+    }
+}
+/// 每个已闭合点保存推进后状态；尾部修订只撤回受影响的后缀。
+#[derive(Clone,Default)]
+pub(super) struct SixStateCursor {
+    pub(super) points:Vec<PointId>,snapshots:Vec<SixStateMachine>,contexts:Vec<super::arena::RefContext>,
+    events:Vec<Vec<RefEvent>>,state:SixStateMachine,
+}
+impl SixStateCursor {
+    pub(super) fn sync_from(&mut self,pool:&mut PointArena,bars:&[KernelBar],start:usize,points:impl Iterator<Item=PointId>,level:u8)->Result<(),String>{
+        if start>self.points.len(){return Err("six-state checkpoint exceeds retained points".into());}
+        self.points.truncate(start);self.snapshots.truncate(start);self.contexts.truncate(start);self.events.truncate(start);
+        self.state=self.snapshots.last().cloned().unwrap_or_default();
+        for id in points {
+            let next=self.state.advance(pool,bars,id,level)?;
+            let context=next.contexts.first().copied().ok_or("six-state input must be a closed point")?;
+            self.points.push(id);self.snapshots.push(self.state.clone());self.contexts.push(context);self.events.push(next.events);
+        }
+        Ok(())
+    }
+    pub(super) fn before(&self,count:usize)->SixStateMachine{count.checked_sub(1).map(|i|self.snapshots[i].clone()).unwrap_or_default()}
+    pub(super) fn events_from(&self,start:usize,end:usize)->impl Iterator<Item=&RefEvent>{self.events[start.min(end)..end].iter().flatten()}
+    pub(super) fn summary(&self,level:u8)->RefFrame {
+        let mut result=RefFrame::empty(level);result.state=self.state.state;result.direction=self.state.direction;
+        result.structure_direction=self.state.direction;result.key=self.state.key;result.anchor=self.state.anchor;result.preceding_start=self.state.preceding_start;result
+    }
+    pub(super) fn frame(&self,level:u8)->RefFrame {
+        let mut result=self.summary(level);result.points=self.points.clone();result.contexts=self.contexts.clone();
+        result.segment_states=self.contexts.iter().map(|context|context.state).collect();
+        result.events=self.events.iter().flatten().cloned().collect();result.state=self.state.state;
+        result.direction=self.state.direction;result.structure_direction=self.state.direction;result.key=self.state.key;
+        result.anchor=self.state.anchor;result.preceding_start=self.state.preceding_start;result
+    }
+}
+pub(crate) fn six_state_indices(pool:&mut PointArena,bars:&[KernelBar],points:&[PointId],level:u8)->Result<RefFrame,String>{
+    if level>3{return Err("trend level must be 0 through 3".into());}
+    let mut cursor=SixStateCursor::default();
+    let closed:Vec<_>=points.iter().copied().filter(|id|pool.view(*id,bars).is_closed()).collect();
+    cursor.sync_from(pool,bars,0,closed.into_iter(),level)?;
+    let mut result=cursor.frame(level);let mut closed_states=result.segment_states.into_iter();
+    result.segment_states=points.iter().map(|id|if pool.view(*id,bars).is_closed(){closed_states.next().flatten()}else{None}).collect();
+    result.points=points.to_vec();Ok(result)
 }
 
 /// polyline_lifecycle.polyline_last_fall_pair：几何接缝只保留同类更强极值。
@@ -253,5 +303,36 @@ mod context_tests {
                 assert_eq!(event.origin.as_ref().unwrap().index,3);
             }
         }
+    }
+}
+#[cfg(test)]
+mod incremental_segment_tests {
+    use super::*;
+    use super::super::{KernelPointData,PointState};
+    fn input(level:u8,mirror:bool)->Vec<KernelPoint>{
+        [13.0,4.6,6.4,4.7,9.0,3.8,10.0,5.0,12.0].into_iter().enumerate().map(|(index,value)|{
+            let kind=if (index%2==0)^mirror{PointKind::H}else{PointKind::L};
+            KernelPoint::new(KernelPointData{index,ordinal:0,time:format!("2020-01-{:02}",index+1),kind,
+                value:if mirror{30.0-value}else{value},known_index:index,level,path:0,state:PointState::Confirmed,evidence:crate::indexed_json::Value::Null})
+        }).collect()
+    }
+    #[test]
+    fn every_level_keeps_segment_states_and_events_when_appending_or_revising_a_tail(){
+        for level in 0..=3{for mirror in [false,true]{
+            let source=input(level,mirror);let mut pool=PointArena::default();
+            let ids:Vec<_>=source.iter().map(|point|pool.import(point)).collect();let mut cursor=SixStateCursor::default();
+            for end in 1..=ids.len(){
+                cursor.sync_from(&mut pool,&[],end-1,ids[end-1..end].iter().copied(),level).unwrap();
+                let expected=six_state_indices(&mut pool,&[],&ids[..end],level).unwrap();
+                assert_eq!(pool.materialize(&cursor.frame(level),&[]),pool.materialize(&expected,&[]));
+                assert_eq!(cursor.frame(level).segment_states.len(),end);
+            }
+            // 更早的确认时钟修订必须撤回该点后的状态，而不是沿用最终快照。
+            let mut revised=source[6].clone();revised.known_index=7;let replacement=pool.import(&revised);
+            let mut changed=ids.clone();changed[6]=replacement;
+            cursor.sync_from(&mut pool,&[],6,changed[6..].iter().copied(),level).unwrap();
+            let expected=six_state_indices(&mut pool,&[],&changed,level).unwrap();
+            assert_eq!(pool.materialize(&cursor.frame(level),&[]),pool.materialize(&expected,&[]));
+        }}
     }
 }

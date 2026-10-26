@@ -2,7 +2,7 @@
 
 > A modern, production-ready monorepo template to kickstart your Full-stack development with Next.js, NestJS, Expo, and shared configuration packages.
 
-[项目路线图](./ROADMAP.md) · [智能体工作流](./AGENTS.md)
+[项目路线图](./ROADMAP.md) · [智能体工作流](./AGENTS.md) · [待解决事项](./docs/pending-issues.md)
 
 ## What's inside?
 

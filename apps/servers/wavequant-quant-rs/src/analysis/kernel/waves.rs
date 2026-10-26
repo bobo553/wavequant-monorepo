@@ -41,7 +41,7 @@ impl RangeExtremes {
     }
 }
 fn publish(pool:&mut PointArena,bars:&[KernelBar],point:PointId,level:u8,known:usize,rule:&'static str,proof:Proof,
-    closed:&mut BTreeMap<(usize,usize),PointId>,events:&mut Vec<RefEvent>,key:Option<PointId>,origin:Option<PointId>){
+    closed:&mut BTreeMap<(usize,usize),PointId>,observer:&mut super::observations::ObservationCursor,events:&mut Vec<RefEvent>,key:Option<PointId>,origin:Option<PointId>){
     let proof=pool.proof(proof);let mut node=pool.nodes[point.0].clone();
     node.level=level;node.known_index=known;node.state=PointState::Reversal;node.source=Some(point);
     node.evidence=Evidence::Published{rule,proof};node.strict_breaks=None;let published=pool.push(node);
@@ -50,17 +50,18 @@ fn publish(pool:&mut PointArena,bars:&[KernelBar],point:PointId,level:u8,known:u
     if rule=="strict_known_trend_key_break"{
         if let Some(retained)=closed.get_mut(&order){let mut node=pool.nodes[retained.0].clone();node.strict_breaks=Some(pool.append_strict(node.strict_breaks,proof));*retained=pool.push(node);}
     }
+    observer.changed(order);
     events.push(RefEvent{title:rule,known_index:known,point:published,key,origin,proof:EventProof::Shared(proof)});
 }
 #[derive(Clone)]
 struct PathState {
-    frame:RefFrame,extremes:[RangeExtremes;2],closed:BTreeMap<(usize,usize),PointId>,
+    frame:RefFrame,observer:super::observations::ObservationCursor,extremes:[RangeExtremes;2],closed:BTreeMap<(usize,usize),PointId>,
     keys:[BTreeMap<usize,PointId>;2],recent:[Vec<usize>;2],latest:[Option<usize>;2],preceding:Vec<Option<usize>>,
     owned:Option<Direction>,origin:Option<usize>,extreme:Option<usize>,pending_origin:Option<usize>,pending_extreme:Option<usize>,
     marker:[Option<usize>;2],known:usize,body_rejection:Option<(usize,usize,usize)>,latest_upgrade:Option<usize>,
 }
 impl PathState {
-    fn new(level:u8,length:usize)->Self{Self{frame:RefFrame::empty(level),
+    fn new(level:u8,length:usize)->Self{Self{frame:RefFrame::empty(level),observer:Default::default(),
         extremes:[RangeExtremes::new(length,PointKind::H),RangeExtremes::new(length,PointKind::L)],
         closed:BTreeMap::new(),keys:[BTreeMap::new(),BTreeMap::new()],recent:[Vec::new(),Vec::new()],latest:[None,None],
         preceding:Vec::new(),owned:None,origin:None,extreme:None,pending_origin:None,pending_extreme:None,
@@ -94,7 +95,7 @@ impl PathCursor {
 }
 fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u8, options: &KernelOptions,saved:Option<PathState>,processed:usize,checkpoint_at:Option<usize>) -> Result<(RefFrame,PathState,Option<Checkpoint>),String> {
     macro_rules! at {($i:expr)=>{pool.view(source[$i],bars)}}
-    let PathState{mut frame,mut extremes,mut closed,mut keys,mut recent,mut latest,mut preceding,
+    let PathState{mut frame,mut observer,mut extremes,mut closed,mut keys,mut recent,mut latest,mut preceding,
         mut owned,mut origin,mut extreme,mut pending_origin,mut pending_extreme,mut marker,
         mut known,mut body_rejection,mut latest_upgrade}=saved.unwrap_or_else(||PathState::new(level,source.len()));
     for tree in &mut extremes{tree.reserve(source.len(),source,pool,bars,processed);}
@@ -114,9 +115,10 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
         }
     }
     let mut checkpoint=None;
-    macro_rules! save_checkpoint {()=>{PathState{frame:frame.clone(),extremes:extremes.clone(),closed:closed.clone(),keys:keys.clone(),recent:recent.clone(),latest,preceding:preceding.clone(),owned,origin,extreme,pending_origin,pending_extreme,marker,known,body_rejection,latest_upgrade}}}
+    macro_rules! save_checkpoint {()=>{PathState{frame:frame.clone(),observer:observer.clone(),extremes:extremes.clone(),closed:closed.clone(),keys:keys.clone(),recent:recent.clone(),latest,preceding:preceding.clone(),owned,origin,extreme,pending_origin,pending_extreme,marker,known,body_rejection,latest_upgrade}}}
     let mut cursor_position=processed;
     while cursor_position<source.len(){
+        super::observations::observe_path(pool,bars,source,&closed,origin,extreme,owned,known,level,&mut observer,&mut frame)?;
         let cursor=cursor_position;if checkpoint_at==Some(cursor){checkpoint=Some(Checkpoint{position:cursor,state:save_checkpoint!()});}cursor_position+=1;let attack=at!(cursor);
         known=known.max(attack.known_index);
         let kind=slot(attack.kind); let opposite_kind=1-kind;
@@ -153,7 +155,7 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
                 let evidence=vec![("anchor",Fact::Point(source[peak])),("counter",Fact::Point(source[counter])),("rebound",Fact::Point(source[rebound])),
                     ("endpoint",Fact::Point(source[cursor])),("available_index",Fact::Number(known)),("direction_after",Fact::Static("down"))];
                 publish(pool,bars,source[peak],level,known,"lower_bear_flip_close_rejection_then_lower_low",evidence,
-                    &mut closed,&mut frame.events,None,prior_origin);
+                    &mut closed,&mut observer,&mut frame.events,None,prior_origin);
                 let published=*closed.get(&at!(peak).order()).ok_or("missing body reversal")?;
                 keys[slot(pool.view(published,bars).kind)].insert(peak,published);
                 frame.preceding_start=prior_origin;
@@ -176,7 +178,7 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
                         let evidence=vec![("origin",Fact::Point(source[start])),("endpoint",Fact::Point(source[end])),("confirmed_by",Fact::Point(source[cursor])),
                             ("direction",Fact::Direction(direction)),("definition",Fact::Points(proof_positions.clone().map(|i|source[*i]).collect())),
                             ("initial_boundary",Fact::Bool(true)),("interior",Fact::OptionalPoint((end>start+1).then(||source[start+1])))];
-                        publish(pool,bars,source[start],level,known,"ordinary_initial_whole_wave",evidence,&mut closed,&mut frame.events,None,None);
+                        publish(pool,bars,source[start],level,known,"ordinary_initial_whole_wave",evidence,&mut closed,&mut observer,&mut frame.events,None,None);
                         let published=*closed.get(&at!(start).order()).ok_or("missing published origin")?;
                         keys[slot(pool.view(published,bars).kind)].insert(start,published);
                         owned=Some(direction); origin=Some(start); extreme=Some(end);
@@ -213,7 +215,7 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
                                 ("direction_before",Fact::Direction(direction)),("direction_after",Fact::Direction(reversed)),("reversal_key",Fact::OptionalPoint(key)),
                                 ("higher_trend_promotion",Fact::Legacy(crate::indexed_json::to_value(promotion).map_err(|_|"invalid promotion proof")?)),
                                 ("interior",Fact::OptionalPoint((counter>peak+1).then(||source[peak+1])))];
-                            publish(pool,bars,source[peak],level,known,"ordinary_whole_wave_reversal",evidence,&mut closed,&mut frame.events,key,preceding_start);
+                            publish(pool,bars,source[peak],level,known,"ordinary_whole_wave_reversal",evidence,&mut closed,&mut observer,&mut frame.events,key,preceding_start);
                             let published=*closed.get(&at!(peak).order()).ok_or("missing published reversal")?;
                             keys[slot(pool.view(published,bars).kind)].insert(peak,published);
                             frame.preceding_start=preceding_start;
@@ -250,7 +252,7 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
         let evidence=vec![("origin",Fact::Point(source[start])),("broken_key",Fact::Point(key)),("confirmed_by",Fact::Point(source[cursor])),
             ("direction",Fact::Direction(attack_direction)),("available_index",Fact::Number(known)),("role",Fact::Static("origin"))];
         if !continuing{
-            publish(pool,bars,source[start],level,known,"strict_known_trend_key_break",evidence,&mut closed,&mut frame.events,Some(key),previous_start);
+            publish(pool,bars,source[start],level,known,"strict_known_trend_key_break",evidence,&mut closed,&mut observer,&mut frame.events,Some(key),previous_start);
             let published=*closed.get(&at!(start).order()).ok_or("missing promoted origin")?;
             keys[slot(pool.view(published,bars).kind)].insert(start,published);frame.preceding_start=previous_start;origin=Some(start);
             extreme=extremes[kind].query(start+1,cursor+1,source,pool,bars);
@@ -261,7 +263,9 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
             ("origin",Fact::Point(source[start])),("broken_key",Fact::Point(key)),("confirmed_by",Fact::Point(source[cursor]))]));
         owned=Some(attack_direction);
     }
-    let state=PathState{frame:frame.clone(),extremes,closed,keys,recent,latest,preceding,owned,origin,extreme,
+    super::observations::observe_path(pool,bars,source,&closed,origin,extreme,owned,known,level,&mut observer,&mut frame)?;
+    let annotated=observer.frame(level);
+    let state=PathState{frame:frame.clone(),observer,extremes,closed,keys,recent,latest,preceding,owned,origin,extreme,
         pending_origin,pending_extreme,marker,known,body_rejection,latest_upgrade:latest_upgrade.clone()};
     if checkpoint_at==Some(source.len()){checkpoint=Some(Checkpoint{position:source.len(),state:state.clone()});}
     frame.points=state.closed.values().cloned().collect();
@@ -272,7 +276,7 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
         node.evidence=Evidence::Candidate{origin:origin.map(|p|source[p]),upgrade};pool.push(node)
     });
     frame.direction=owned;
-    let annotated=super::structure::six_state_indices(pool,bars,&frame.points,level)?;
+    frame.segment_states=annotated.segment_states;
     frame.state=annotated.state.or(owned.map(|d|if d==Direction::Up {TrendState::Bull} else {TrendState::Bear}));
     frame.structure_direction=annotated.direction;
     frame.anchor=annotated.anchor;
@@ -372,13 +376,14 @@ impl TrendCursor {
             let mut frame=self.paths.entry(path).or_default().advance(pool,bars,&group,offsets.get(&path).copied().unwrap_or(0),level,options,&mut self.statistics)?;
             if let(Some(left),Some(right))=(result.points.last().copied(),frame.points.first().copied()){
                 if let Some(bridges)=continuity_bridge(pool,bars,left,right,points,level){
-                    let path=pool.view(left,bars).path;result.points.extend(bridges);
-                    for context in &mut frame.contexts{context.path=path;}
+                    let path=pool.view(left,bars).path;result.segment_states.extend(std::iter::repeat_n(None,bridges.len()));result.points.extend(bridges);
+                    for context in &mut frame.contexts{context.path=path;} for observation in &mut frame.observations{observation.path=path;}
                     for id in &mut frame.points{let mut node=pool.nodes[id.0].clone();node.path=path;*id=pool.push(node);}
                     if let Some(id)=frame.candidate.as_mut(){let mut node=pool.nodes[id.0].clone();node.path=path;*id=pool.push(node);}
                 }
             }
-            result.contexts.extend(frame.contexts);result.points.extend(frame.points);result.events.extend(frame.events);result.candidate=frame.candidate;
+            result.segment_states.extend(frame.segment_states);result.candidate_trend_state=frame.candidate_trend_state;result.candidate_state_known=frame.candidate_state_known;
+            result.observations.extend(frame.observations);result.observed_events.extend(frame.observed_events);result.contexts.extend(frame.contexts);result.points.extend(frame.points);result.events.extend(frame.events);result.candidate=frame.candidate;
             result.direction=frame.direction;result.structure_direction=frame.structure_direction;result.state=frame.state;
             result.key=frame.key;result.anchor=frame.anchor;result.preceding_start=frame.preceding_start;
         }

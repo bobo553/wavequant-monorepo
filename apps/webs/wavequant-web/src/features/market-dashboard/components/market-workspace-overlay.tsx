@@ -24,7 +24,7 @@ export function MarketWorkspaceOverlay(): JSX.Element | null {
     if (!dialog) return null;
     const View = marketDialogViews[dialog.kind];
     const title = dialog.kind === "info" ? dialog.title : dialog.kind === "stock" ? `个股核验 · ${dialog.code}` :
-        { search: "找股票 / 题材", settings: "界面与工作区设置", notifications: "提醒中心" }[dialog.kind];
+        { search: "找股票 / 指数", settings: "界面与工作区设置", notifications: "提醒中心" }[dialog.kind];
     return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/75 p-3 backdrop-blur-sm" role="presentation"
         onClick={(event) => { if (event.target === event.currentTarget) closeDialog(); }}>
         <section ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId}
