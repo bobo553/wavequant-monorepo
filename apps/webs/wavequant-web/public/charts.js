@@ -400,7 +400,7 @@ export class PriceChart {
             }
             appendTrendNTooltip(this.tooltip, this.trendNHovered);
             const previousClose = barIndex > 0 ? marketBars[barIndex - 1].close : undefined;
-            for (const [label, value] of candleDetails(bar, previousClose, marketBars[barIndex - 1]?.volume, this.data.timeframe || "1d").slice(1)) {
+            for (const [label, value] of candleDetails(bar, previousClose, marketBars[barIndex - 1]?.volume, this.data.timeframe || "1d", this.data.symbol).slice(1)) {
                 const line = document.createElement("div");
                 line.className = "chart-tooltip-price";
                 const name = document.createElement("span");

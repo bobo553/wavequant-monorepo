@@ -35,6 +35,38 @@ pub fn retracement(origin: f64, extreme: f64, counter: f64, direction: Direction
 }
 use super::{KernelBar,arena::{PointArena,PointId,RefFrame,RefEvent,EventProof,Fact}};
 #[derive(Clone,Copy)]
+pub(super) struct StrictContext { origin:PointId,key:PointId,direction:Direction }
+/// 只接纳共同趋势函数已签发、且起点与关键位均属于本级已知前缀的严格翻转。
+pub(super) fn strict_context(pool:&PointArena,bars:&[KernelBar],id:PointId,own:&[PointId],level:u8)->Option<StrictContext>{
+    let point=pool.view(id,bars);
+    for proof_id in pool.strict_proofs(id).into_iter().rev(){
+        let proof=pool.proofs.get(proof_id)?;
+        let field=|name:&str|proof.iter().find(|(key,_)|*key==name).map(|(_,fact)|fact);
+        if !matches!(field("role"),Some(Fact::Static("endpoint"))){continue;}
+        let (Some(Fact::Direction(direction)),Some(Fact::Point(origin)),Some(Fact::Point(key)),
+            Some(Fact::Point(confirmed)),Some(Fact::Number(known)))=
+            (field("direction"),field("origin"),field("broken_key"),field("confirmed_by"),field("available_index"))else{continue;};
+        let endpoint=pool.view(*confirmed,bars);
+        if *known>point.known_index||!pool.same(*confirmed,id,bars)||endpoint.known_index>*known||endpoint.path!=point.path{continue;}
+        let resolve=|source:PointId|{
+            let reference=pool.view(source,bars);
+            if reference.path!=point.path||!reference.is_closed()||reference.known_index>*known{return None;}
+            own.iter().copied().find(|candidate|{
+                let p=pool.view(*candidate,bars);
+                p.level==level&&p.path==point.path&&p.is_closed()&&p.known_index<=*known&&pool.same(*candidate,source,bars)
+            })
+        };
+        let (Some(origin),Some(key))=(resolve(*origin),resolve(*key))else{continue;};
+        let (base,boundary)=(pool.view(origin,bars),pool.view(key,bars));let sign=direction.sign();
+        if point.level==level&&point.is_closed()&&point.kind==direction.target()&&boundary.kind==point.kind
+            &&base.kind!=point.kind&&boundary.order()<base.order()&&base.order()<point.order()
+            &&boundary.known_index<point.index&&sign*(point.value-boundary.value)>0.0&&sign*(boundary.value-base.value)>0.0{
+            return Some(StrictContext{origin,key,direction:*direction});
+        }
+    }
+    None
+}
+#[derive(Clone,Copy)]
 struct Attack { origin:PointId,extreme:PointId,anchor:PointId,key:PointId,checked:bool }
 fn record(pool:&mut PointArena,result:&mut RefFrame,title:&'static str,point:PointId,key:PointId,origin:Option<PointId>,facts:super::arena::Proof,bars:&[KernelBar]){
     result.events.push(RefEvent{title,known_index:pool.view(point,bars).known_index,point,key:Some(key),origin,proof:EventProof::Inline(facts)});
@@ -55,7 +87,7 @@ pub(super) struct SixStateMachine {
     previous:Option<PointId>,trend_origin:Option<PointId>,state:Option<TrendState>,preceding_start:Option<PointId>,
 }
 impl SixStateMachine {
-    pub(super) fn advance(&mut self,pool:&mut PointArena,bars:&[KernelBar],id:PointId,level:u8)->Result<RefFrame,String>{
+    pub(super) fn advance(&mut self,pool:&mut PointArena,bars:&[KernelBar],id:PointId,level:u8,strict:Option<StrictContext>)->Result<RefFrame,String>{
         if level>3{return Err("trend level must be 0 through 3".into());}
         let Self{mut highs,mut lows,mut extremes,mut anchored_extremes,mut direction,mut anchor,mut key,mut attack,
             mut suspicion,mut previous,mut trend_origin,state,preceding_start}=std::mem::take(self);
@@ -73,6 +105,14 @@ impl SixStateMachine {
         if extremes[slot].is_none_or(|(old,_)|point.kind.sign()*(point.value-pool.view(old,bars).value)>0.0){extremes[slot]=Some((id,previous));}
         if previous.is_some()&&anchored_extremes[slot].is_none_or(|(old,_)|point.kind.sign()*(point.value-pool.view(old,bars).value)>0.0){
             anchored_extremes[slot]=Some((id,previous));
+        }
+        if let Some(strict)=strict{
+            let continuing=direction.is_some_and(|current|if attack.is_some(){current.opposite()==strict.direction}else{current==strict.direction});
+            if !continuing{
+                // 本级真实严格翻向优先于旧的未完成交替；同向延伸仍保留首次整波起点。
+                direction=Some(strict.direction.opposite());anchor=Some(strict.origin);key=Some(strict.key);
+                attack=None;suspicion=false;
+            }
         }
         if direction.is_none(){
             direction=classify_prices(&highs,&lows)?;
@@ -170,7 +210,8 @@ impl SixStateCursor {
         self.points.truncate(start);self.snapshots.truncate(start);self.contexts.truncate(start);self.events.truncate(start);
         self.state=self.snapshots.last().cloned().unwrap_or_default();
         for id in points {
-            let next=self.state.advance(pool,bars,id,level)?;
+            let strict=strict_context(pool,bars,id,&self.points,level);
+            let next=self.state.advance(pool,bars,id,level,strict)?;
             let context=next.contexts.first().copied().ok_or("six-state input must be a closed point")?;
             self.points.push(id);self.snapshots.push(self.state.clone());self.contexts.push(context);self.events.push(next.events);
         }

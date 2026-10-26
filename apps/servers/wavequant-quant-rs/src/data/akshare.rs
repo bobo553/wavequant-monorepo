@@ -116,7 +116,7 @@ impl AkShareProvider{
         let started=Instant::now();
         let mut request=arguments;request["protocol"]=json!(1);request["operation"]=json!(operation);
         let identity=digest(crate::indexed_json::to_vec(&request).map_err(|_|invalid("SDK request encoding failed"))?);request["request_id"]=json!(identity);
-        let cache_key=matches!(operation,"daily"|"factors").then(||digest(format!("{}:{}:{}",self.python.display(),(Utc::now()+chrono::Duration::hours(8)).date_naive(),identity)));
+        let cache_key=matches!(operation,"daily"|"factors"|"index_daily").then(||digest(format!("{}:{}:{}",self.python.display(),(Utc::now()+chrono::Duration::hours(8)).date_naive(),identity)));
         if let Some(entry)=cache_key.as_deref().and_then(cached_reply){return self.reuse_reply(operation,entry,started,0.0);}
         let _permit=Permit::acquire()?;
         let request=crate::indexed_json::to_vec(&request).map_err(|_|invalid("SDK request encoding failed"))?;
@@ -187,6 +187,16 @@ impl AkShareProvider{
         let prefix=serde_json::to_vec(&market.bars).map_err(|_|invalid("SDK daily prefix encoding failed"))?;
         market.version=digest(format!("akshare-daily-prefix-v1:{}:{}:{}:{}:{}:{}",digest(WORKER),digest(SDK_LOOP),self.version()?,symbol,asof,digest(prefix)));
         Ok(market)
+    }
+    pub fn index_daily(&self,symbol:&str,asof:&str)->Result<MarketData,DataError>{
+        if !super::indices::is_index(symbol){return Err(invalid("invalid index symbol"));}
+        let cutoff=parse_date(asof)?;let today=(Utc::now()+chrono::Duration::hours(8)).date_naive();
+        if cutoff>today{return Err(invalid("index as-of date cannot be in the future"));}
+        let(data,_)=self.call("index_daily",json!({"symbol":symbol,"asof":today.to_string()}))?;
+        let mut market=Self::market_data(symbol,&today.to_string(),data,String::new())?;
+        market.bars.retain(|bar|bar.date.as_str()<=asof);if market.bars.is_empty(){return Err(unavailable("该日期之前没有指数日线"));}
+        market.asof=asof.into();let prefix=serde_json::to_vec(&market.bars).map_err(|_|invalid("index history encoding failed"))?;
+        market.version=digest(format!("akshare-index-em-v1:{}:{}:{}:{}:{}:{}",digest(WORKER),digest(SDK_LOOP),self.version()?,symbol,asof,digest(prefix)));Ok(market)
     }
     pub fn eastmoney_daily(&self,symbol:&str,asof:&str)->Result<MarketData,DataError>{
         if !is_stock(symbol){return Err(invalid("invalid AKShare symbol"));}parse_date(asof)?;

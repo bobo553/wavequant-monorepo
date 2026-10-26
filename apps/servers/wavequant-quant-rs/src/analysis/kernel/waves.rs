@@ -118,7 +118,7 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
     macro_rules! save_checkpoint {()=>{PathState{frame:frame.clone(),observer:observer.clone(),extremes:extremes.clone(),closed:closed.clone(),keys:keys.clone(),recent:recent.clone(),latest,preceding:preceding.clone(),owned,origin,extreme,pending_origin,pending_extreme,marker,known,body_rejection,latest_upgrade}}}
     let mut cursor_position=processed;
     while cursor_position<source.len(){
-        super::observations::observe_path(pool,bars,source,&closed,origin,extreme,owned,known,level,&mut observer,&mut frame)?;
+        super::observations::observe_path(pool,bars,source,&closed,origin,extreme,owned,latest_upgrade,known,level,&mut observer,&mut frame)?;
         let cursor=cursor_position;if checkpoint_at==Some(cursor){checkpoint=Some(Checkpoint{position:cursor,state:save_checkpoint!()});}cursor_position+=1;let attack=at!(cursor);
         known=known.max(attack.known_index);
         let kind=slot(attack.kind); let opposite_kind=1-kind;
@@ -263,7 +263,7 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
             ("origin",Fact::Point(source[start])),("broken_key",Fact::Point(key)),("confirmed_by",Fact::Point(source[cursor]))]));
         owned=Some(attack_direction);
     }
-    super::observations::observe_path(pool,bars,source,&closed,origin,extreme,owned,known,level,&mut observer,&mut frame)?;
+    super::observations::observe_path(pool,bars,source,&closed,origin,extreme,owned,latest_upgrade,known,level,&mut observer,&mut frame)?;
     let annotated=observer.frame(level);
     let state=PathState{frame:frame.clone(),observer,extremes,closed,keys,recent,latest,preceding,owned,origin,extreme,
         pending_origin,pending_extreme,marker,known,body_rejection,latest_upgrade:latest_upgrade.clone()};

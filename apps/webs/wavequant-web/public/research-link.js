@@ -1,3 +1,4 @@
+import { isIndexSymbol } from "./market-indices.js";
 /** Validate navigation before any chart request is issued. */
 export function parseResearchLink(search) {
     const params = new URLSearchParams(search);
@@ -6,7 +7,7 @@ export function parseResearchLink(search) {
         if (params.getAll(name).length > 1) throw new Error("行情链接包含重复参数");
     }
     const symbol = params.get("symbol");
-    if (!/^(sh\.(60|68)\d{4}|sz\.(00|30)\d{4}|bj\.(43|82|83|87|88|92)\d{4})$/.test(symbol || "")) {
+    if (!/^(sh\.(60|68)\d{4}|sz\.(00|30)\d{4}|bj\.(43|82|83|87|88|92)\d{4})$/.test(symbol || "") && !isIndexSymbol(symbol)) {
         throw new Error("行情链接股票代码无效");
     }
     const asof = params.get("asof");
@@ -20,6 +21,7 @@ export function parseResearchLink(search) {
     }
     const source = params.get("source") || "akshare";
     if (!["akshare", "tdx"].includes(source)) throw new Error("行情链接数据源无效");
+    if (isIndexSymbol(symbol) && source !== "akshare") throw new Error("指数行情请选择 AkShare 数据源");
     return { symbol, asof, source };
 }
 

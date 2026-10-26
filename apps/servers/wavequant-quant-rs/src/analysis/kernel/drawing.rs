@@ -223,7 +223,7 @@ impl PolylineCursor {
             if observable{
                 let mut node=pool.nodes[id.0];node.state=PointState::Reversal;node.known_index=bars.last().map_or(node.known_index,|bar|bar.index);
                 let known=node.known_index;let id=pool.push(node);let mut tail=six_state.before(current.len());
-                let observed=tail.advance(pool,bars,id,0)?;frame.candidate_trend_state=observed.state;frame.candidate_state_known=Some(known);
+                let observed=tail.advance(pool,bars,id,0,None)?;frame.candidate_trend_state=observed.state;frame.candidate_state_known=Some(known);
             }
         }
         frame.contexts.sort_by_key(|c|c.known_index);frame.events.sort_by_key(|e|e.known_index);

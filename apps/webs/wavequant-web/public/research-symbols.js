@@ -1,4 +1,5 @@
-/** 研究页只保留自选与显式股票，不读取全市场目录；实际行情可用性由单股接口确认。 */
+import { indexName } from "./market-indices.js";
+/** 研究页只保留自选与显式证券，不读取全市场目录；实际行情可用性由单证券接口确认。 */
 export function researchSymbols(memberships, explicitSymbol = null, previous = []) {
     const stocks = new Map();
     for (const member of memberships) {
@@ -10,7 +11,7 @@ export function researchSymbols(memberships, explicitSymbol = null, previous = [
     }
     if (explicitSymbol && !stocks.has(explicitSymbol)) {
         const known = previous.find((stock) => stock.symbol === explicitSymbol);
-        stocks.set(explicitSymbol, known || { symbol: explicitSymbol, name: explicitSymbol,
+        stocks.set(explicitSymbol, known || { symbol: explicitSymbol, name: indexName(explicitSymbol) || explicitSymbol,
             has_data: true, status: "available_on_demand" });
     }
     return [...stocks.values()];

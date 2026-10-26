@@ -13,6 +13,7 @@ describe("真实证券搜索", () => {
         expect(searchSecurities(rows,"沪指")[0]?.symbol).toBe("sh.000001");
         expect(searchSecurities(rows,"000001").map(row=>row.symbol)).toEqual(["sh.000001","sz.000001"]);
         expect(searchSecurities(rows,"sh.000001")[0]?.kind).toBe("index");
+        expect(searchSecurities(rows,"sh.000001")[0]?.href).toBe("/research?page=workspace&symbol=sh.000001&source=akshare");
         expect(searchSecurities(rows,"sz.000001")[0]?.href).toContain("symbol=sz.000001");
     });
 });

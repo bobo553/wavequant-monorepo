@@ -47,7 +47,7 @@ impl BacktestService {
     }
     fn load_market_uncached(&self,request:&MarketRequest,need_minutes:bool,fallback:bool,cancellation:Option<&Arc<AtomicBool>>)->Result<LoadedMarket> {
         super::market::parse_day(&request.start)?;super::market::parse_day(&request.asof)?;
-        if !matches!(request.source.as_str(),"tdx"|"akshare")||!wavequant_quant_rs::data::tdx::is_stock(&request.symbol)||request.start>request.asof{return Err(ApiError::invalid("invalid source market selection"));}
+        if !matches!(request.source.as_str(),"tdx"|"akshare")||!wavequant_quant_rs::data::indices::supported(&request.source,&request.symbol)||request.start>request.asof{return Err(ApiError::invalid("invalid source market selection"));}
         if request.source=="akshare"&&request.asof>(chrono::Utc::now()+chrono::Duration::hours(8)).date_naive().to_string(){return Err(ApiError::invalid("as-of cannot be in the future"));}
         check_cancel(cancellation)?;
         let (bars,base_version,mut provenance,mut files,minutes,missing,minute_version)=if request.source=="tdx" {
@@ -63,6 +63,17 @@ impl BacktestService {
             }else{(BTreeMap::new(),vec![],None)};
             let provenance=json!({"provider":"tdx","upstream":"tdx_local","daily_sha256":adjusted.daily_version,"gbbq_sha256":adjusted.actions_version,"price_basis":"causal_adjusted_equivalent","volume_unit":"shares","source_version":adjusted.version,"effective_start":start});
             (adjusted.bars,adjusted.version,provenance,files,minutes,missing,minute_version)
+        }else if wavequant_quant_rs::data::indices::is_index(&request.symbol){
+            if !self.online_enabled{return Err(ApiError::unavailable("在线行情源已禁用"));}
+            if need_minutes{return Err(ApiError::invalid("指数仅支持日线及聚合周期行情和趋势，不支持个股分钟成交"));}
+            let provider=AkShareProvider::new(self.timeout).map_err(data_error)?;
+            let raw=provider.index_daily(&request.symbol,&request.asof).map_err(data_error)?;
+            let start=effective_start(&raw.bars,&request.start,&request.asof)?;
+            let bars=wavequant_quant_rs::data::indices::execution_bars(&raw,&start);
+            let version=digest(&wavequant_quant_rs::indexed_json::to_vec(&json!(["akshare-index-em-unadjusted-v1",raw.version,start,request.asof]))?);
+            let sdk=provider.version().map_err(data_error)?;
+            let provenance=json!({"provider":"akshare","asset_type":"index","upstream":"eastmoney","transport":"python_sdk_process","daily_endpoint":"stock_zh_index_daily_em","factor_endpoint":null,"provider_version":format!("akshare-python/{sdk}"),"sdk_version":sdk,"daily_sha256":raw.version,"factor_sha256":null,"price_basis":"unadjusted_index","price_unit":"points","volume_unit":"shares","effective_start":start});
+            (bars,version,provenance,vec![],BTreeMap::new(),vec![],None)
         }else{
             if !self.online_enabled{return Err(ApiError::unavailable("在线行情源已禁用"));}
             if request.symbol.starts_with("bj."){return Err(ApiError::unavailable("固定新浪历史通道不支持北交所回测"));}
@@ -109,11 +120,13 @@ impl BacktestService {
         let scenario=profile.scenarios.get_mut(&request.scenario).and_then(|v|v.get_mut("execution")).ok_or_else(||ApiError::invalid("unknown execution scenario"))?;
         scenario["initial_capital"]=json!(request.initial_capital);scenario["max_position_weight"]=json!(request.max_position_weight);scenario["net_reward_risk_filter"]=json!(request.net_reward_risk_filter);
         let original=execution_parameters(&profile,&request.scenario).map_err(ApiError::invalid)?;
-        let security=security_spec(&request.symbol,&request.asof).map_err(data_error)?;
-        let step=security.buy_share_step as usize;
+        let index=wavequant_quant_rs::data::indices::is_index(&request.symbol);
+        if index&&!wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{return Err(ApiError::invalid("指数不支持直接买卖，仅可查看行情与趋势"));}
+        let security=if index{None}else{Some(security_spec(&request.symbol,&request.asof).map_err(data_error)?)};
+        let step=security.as_ref().map_or(1,|security|security.buy_share_step as usize);
         let lot=original.lot_size.checked_div(gcd(original.lot_size,step)).and_then(|v|v.checked_mul(step)).ok_or_else(||ApiError::invalid("lot size exceeds supported range"))?;
         let scenario=&mut profile.scenarios.get_mut(&request.scenario).ok_or_else(ApiError::internal)?["execution"];
-        scenario["lot_size"]=json!(lot);scenario["minimum_entry_shares"]=json!(original.minimum_entry_shares.max(security.minimum_buy_shares as usize));
+        scenario["lot_size"]=json!(lot);scenario["minimum_entry_shares"]=json!(original.minimum_entry_shares.max(security.as_ref().map_or(0,|security|security.minimum_buy_shares as usize)));
         let parameters=execution_parameters(&profile,&request.scenario).map_err(ApiError::invalid)?;
         let(execution,holding)=execution_configuration(&profile,&request.scenario).map_err(ApiError::invalid)?;
         let profile_ms=started.elapsed().as_secs_f64()*1000.0;

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use super::{kernel::{self, KernelBar, KernelFrame, KernelOptions, TrendState}, trading::{self, RuleCandle, qualification::TradingEligibility, FrameTradeEvaluation}};
 
-pub const VERSION: u32 = 30;
+pub const VERSION: u32 = 31;
 // 结构模式计算全部四级；账户交易保持独立停用。
 pub const STRUCTURE_ONLY:bool=true;
 const MAX_BARS: usize = 250_000;

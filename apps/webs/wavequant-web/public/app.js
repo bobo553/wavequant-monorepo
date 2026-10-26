@@ -41,6 +41,7 @@ import { combinedAEntryEvidence } from "./combined-a-entry-evidence.js";
 import { reuseCompletedBacktest } from "./completed-backtest-result.js";
 import { formatFilledTradeCopy } from "./filled-trade-copy.js";
 import { label, names, num, pct, symbolName } from "./labels.js";
+import { priceUnit } from "./market-indices.js";
 import { trendConfirmationPresentation, usesCausalTrendConfirmation } from "./lecture-overlay.js";
 import { loadMarketBarsHistory, marketPreviewMatches, validateMarketBarsPage } from "./market-bars-loader.js";
 import {
@@ -742,7 +743,7 @@ function describeBar(b) {
     }
     currentCandle = b;
     $("ohlc-text").textContent =
-        `${b.time}　开 ${num(b.open)}　高 ${num(b.high)}　低 ${num(b.low)}　收 ${num(b.close)}　量 ${num(b.volume, 0)} 股　原始收盘 ${num(b.raw_close)} 元`;
+        `${b.time}　开 ${num(b.open)}　高 ${num(b.high)}　低 ${num(b.low)}　收 ${num(b.close)}　量 ${num(b.volume, 0)} 股　原始收盘 ${num(b.raw_close)} ${priceUnit(state.view?.symbol)}`;
     $("copy-candle").disabled = false;
     $("copy-candle").setAttribute("aria-label", `复制 ${b.time} K 线数据`);
 }
@@ -1268,6 +1269,7 @@ function currentCandleCopyText(bar) {
         previousCandleClose(chartMarketBars(state.view), bar),
         chartMarketBars(state.view)[chartMarketBars(state.view).findIndex((candidate) => candidate.time === bar.time) - 1]?.volume,
         state.view?.timeframe || "1d",
+        symbol,
     );
 }
 function copyableRenderedCandle(bar) {
@@ -2830,7 +2832,7 @@ async function loadView({
                   : " 浏览器周期缓存已同步。"
             : "";
         setSelectedStockSummary(
-            `${backtestMode ? (["first_level_only","second_level_only","third_level_only"].includes(data.calculation_mode) ? "当前股票趋势计算已完成 · " : "当前股票回测已完成 · ") : ""}${symbolName(data.symbol)} · ${data.asof} ${data.timeframe_label || "日线"}截面｜原始收盘 ${num(last.raw_close)} 元 · 周期成交量 ${num(last.volume, 0)} 股。${sourceSummary}${cacheSummary}${data.is_partial_last_bar ? " 当前最后一根周期 K 线尚未收完。" : ""}`,
+            `${backtestMode ? (["first_level_only","second_level_only","third_level_only"].includes(data.calculation_mode) ? "当前股票趋势计算已完成 · " : "当前股票回测已完成 · ") : ""}${symbolName(data.symbol)} · ${data.asof} ${data.timeframe_label || "日线"}截面｜原始收盘 ${num(last.raw_close)} ${priceUnit(data.symbol)} · 周期成交量 ${num(last.volume, 0)} 股。${sourceSummary}${cacheSummary}${data.is_partial_last_bar ? " 当前最后一根周期 K 线尚未收完。" : ""}`,
             backtestMode ? "completed" : null);
         $("price-chart").dataset.symbol = data.symbol;
         tradingViewWidget.setLocalSymbol(data.symbol);

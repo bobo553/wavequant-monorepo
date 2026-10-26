@@ -5,6 +5,7 @@ pub mod gbbq;
 pub mod baostock;
 pub mod sina;
 pub mod akshare;
+pub mod indices;
 pub mod sina_codec;
 pub mod catalog;
 pub mod cache;

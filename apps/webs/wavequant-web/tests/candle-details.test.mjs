@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { candleCopyText, candleDetails, previousCandleClose } from "../public/candle-details.js";
+test("指数K线使用点位单位，并保留股票价格单位", () => {
+    const bar={time:"2026-01-02",open:3000,high:3100,low:2990,close:3050,volume:10000};
+    assert.equal(candleDetails(bar,3000,9000,"1d","sh.000001").find(row=>row[0]==="收盘")[1],"3,050.00 点");
+    assert.equal(candleDetails(bar,3000,9000,"1d","sz.000001").find(row=>row[0]==="收盘")[1],"3,050.00 元");
+    assert.match(candleCopyText(bar,"上证指数",3000,9000,"1d","sh.000001"),/^指数：上证指数/);
+});
 
 test("copied K-line details include the stock name and both code forms", () => {
     const text = candleCopyText(
