@@ -109,15 +109,18 @@ export class TargetGuideOverlay {
                             )),
                 )
                 .sort((left, right) => left.displayY - right.displayY);
-            const labelYs = visible.map((guide) => guide.displayY - 3);
-            const spacing = Math.min(18, (mediaSize.height - 20) / Math.max(1, visible.length - 1));
+            // 无文字的防守虚线不占用目标标签的避让空间。
+            const labeled = visible.filter((guide) => guide.showLabel !== false);
+            const labelYs = labeled.map((guide) => guide.displayY - 3);
+            const spacing = Math.min(18, (mediaSize.height - 20) / Math.max(1, labeled.length - 1));
             // 先向下避让，再整体收回图窗底部，避免顶部多个标签被同时夹到同一位置。
             for (let index = 0; index < labelYs.length; index++)
                 labelYs[index] = Math.max(labelYs[index], index ? labelYs[index - 1] + spacing : 16);
             if (labelYs.length) labelYs[labelYs.length - 1] = Math.min(labelYs.at(-1), mediaSize.height - 4);
             for (let index = labelYs.length - 2; index >= 0; index--)
                 labelYs[index] = Math.min(labelYs[index], labelYs[index + 1] - spacing);
-            for (const [index, guide] of visible.entries()) {
+            let labelIndex = 0;
+            for (const guide of visible) {
                 context.strokeStyle = guide.color;
                 context.fillStyle = guide.color;
                 context.lineWidth = guide.stage === "c_equal" ? 2 : 1;
@@ -131,6 +134,7 @@ export class TargetGuideOverlay {
                     context.stroke();
                 }
                 context.setLineDash([]);
+                if (guide.showLabel === false) continue;
                 let shortName = guide.name.startsWith("C 浪目标")
                     ? guide.name.replace("C 浪目标", "C")
                     : guide.name.split("（")[0] + (guide.name.includes("预估") ? "（预估）" : "");
@@ -158,7 +162,7 @@ export class TargetGuideOverlay {
                         mediaSize.width - width - 4,
                     ),
                 );
-                const labelY = labelYs[index];
+                const labelY = labelYs[labelIndex++];
                 if (
                     !guide.offscreen &&
                     !guide.offscreenX &&

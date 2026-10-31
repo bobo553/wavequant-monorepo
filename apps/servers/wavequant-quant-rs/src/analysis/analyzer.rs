@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use super::{kernel::{self, KernelBar, KernelFrame, KernelOptions, TrendState}, trading::{self, RuleCandle, qualification::TradingEligibility, FrameTradeEvaluation}};
 
-pub const VERSION: u32 = 31;
+pub const VERSION: u32 = 43;
 // 结构模式计算全部四级；账户交易保持独立停用。
 pub const STRUCTURE_ONLY:bool=true;
 const MAX_BARS: usize = 250_000;
@@ -160,7 +160,7 @@ struct LevelCache { source_digest: String, frame: KernelFrame }
 pub struct TrendAnalyzer {
     bars: Vec<AnalysisBar>,
     kernel_bars: Vec<KernelBar>,
-    candles: Vec<RuleCandle>,
+    candles: trading::validated_bars::ValidatedCandles,
     state: TrendAnalyzerState,
     prefix_hasher: Sha256,
     polyline_cursor: kernel::PolylineCursor,
@@ -204,7 +204,7 @@ impl TrendAnalyzer {
         let kernel_bars: Vec<_> = request.bars.iter().map(AnalysisBar::kernel).collect();
         kernel::validate_bars(&kernel_bars)?;
         let candles: Vec<_> = request.bars.iter().map(|bar|bar.candle(&request.identity.symbol)).collect::<Result<_,_>>()?;
-        trading::validate_bars(&candles)?;
+        let candles=trading::validated_bars::ValidatedCandles::new(candles)?;
         let initial_hash = Sha256::new();
         let mut cache_status = "cold".to_string();
         if let Some(saved) = &request.state {
@@ -247,17 +247,16 @@ impl TrendAnalyzer {
         if self.bars.len().saturating_add(additional.len()) > MAX_BARS { return Err("analysis exceeds 250000 bars".into()); }
         let start=self.bars.len();
         let mut next_kernel = self.kernel_bars.last().cloned().into_iter().collect::<Vec<_>>();
-        let mut next_candles = self.candles.last().cloned().into_iter().collect::<Vec<_>>();
+        let mut next_candles = Vec::with_capacity(additional.len());
         for (offset,bar) in additional.iter().enumerate() {
             if bar.index != start+offset { return Err("appended bars must extend contiguous input".into()); }
             next_kernel.push(bar.kernel());
             next_candles.push(bar.candle(&self.state.identity.symbol)?);
         }
         kernel::validate_bars(&next_kernel)?;
-        trading::validate_bars(&next_candles)?;
+        self.candles.append(next_candles)?;
         let boundary=usize::from(start>0);
         self.kernel_bars.extend(next_kernel.into_iter().skip(boundary));
-        self.candles.extend(next_candles.into_iter().skip(boundary));
         self.bars.extend(additional);
         Ok(())
     }
@@ -306,17 +305,42 @@ impl TrendAnalyzer {
     }
     /// 各层只接收直接下层的点号，偏移为该下层数组内的前趋势起点。
     pub fn finish_level_array(&mut self,level:usize)->Result<(),String>{
+        self.finish_level_array_once(level)?;
+        if level==3{self.finish_hierarchy_arrays()?;}
+        Ok(())
+    }
+    fn finish_level_array_once(&mut self,level:usize)->Result<(),String>{
         if !(1..=3).contains(&level){return Err("trend level must be 1, 2 or 3".into());}
         let Some(asof)=self.state.current_index.checked_sub(1)else{return Ok(());};
         let Some(frames)=self.array_frames.as_mut()else{self.execute_level_function(level,asof)?;return Ok(());};
         let offset=frames[level-1].offset(&self.polyline_cursor.arena,&self.kernel_bars)?;
         let phase=Instant::now();
-        let frame=self.trend_cursors[level].advance_indices(&mut self.polyline_cursor.arena,&self.kernel_bars,
-            &frames[level-1].points,offset,level as u8,asof,&self.state.config.kernel)?;
+        let source=kernel::promotions::source(&mut self.polyline_cursor.arena,&self.kernel_bars,&frames[level-1].points,level as u8);
+        let formal=kernel::promotions::formal_source(&mut self.polyline_cursor.arena,&self.kernel_bars,&frames[level-1]);
+        let formal=kernel::promotions::source(&mut self.polyline_cursor.arena,&self.kernel_bars,&formal,level as u8);
+        let frame=self.trend_cursors[level].advance_formal_indices(&mut self.polyline_cursor.arena,&self.kernel_bars,
+            &source,&formal,offset,level as u8,asof,&self.state.config.kernel)?;
         *self.phase_timings.entry(format!("level{level}.trend_kernel")).or_default()+=phase.elapsed().as_secs_f64();
         let phase=Instant::now();self.state.dynamic_data_index[level]=frame.offset(&self.polyline_cursor.arena,&self.kernel_bars)?;
-        self.source_changed[level]=frames[level].points!=frame.points;frames[level]=frame;self.array_compat.take();
+        self.source_changed[level]=frames[level].points!=frame.points||frames[level].candidate!=frame.candidate;
+        frames[level]=frame;self.array_compat.take();
         *self.phase_timings.entry(format!("level{level}.install")).or_default()+=phase.elapsed().as_secs_f64();Ok(())
+    }
+    /// 结构回执导致来源版本变化时收敛；资格和图表只消费同一份结果。
+    pub fn finish_hierarchy_arrays(&mut self)->Result<(),String>{
+        for _ in 0..64 {
+            let Some(frames)=&self.array_frames else{return Ok(());};
+            let mut dirty=[false;4];
+            for upper in 2..=3 {for lower in 1..upper {
+                dirty[lower]|=kernel::promotions::collect(&mut self.polyline_cursor.arena,&self.kernel_bars,&frames[upper],lower as u8)?;
+            }}
+            if !dirty.iter().any(|changed|*changed){return Ok(());}
+            for level in 1..=3 {if dirty[level] {
+                self.finish_level_array_once(level)?;
+                if level<3&&self.source_changed[level]{dirty[level+1]=true;}
+            }}
+        }
+        Err("trend promotion convergence exceeds bounded version budget".into())
     }
     /// 只消费已经完成的四级结构；资格开启与交易执行完全独立。
     pub fn finish_qualification_arrays(&mut self,cancel:Option<&AtomicBool>)->Result<(),String>{
@@ -326,7 +350,7 @@ impl TrendAnalyzer {
         let Some(frames)=&self.array_frames else{return Ok(());};
         let phase=Instant::now();
         let scalar:[KernelFrame;4]=array::from_fn(|level|kernel::eligibility::scalar_frame(&self.polyline_cursor.arena,&self.kernel_bars,&frames[level]));
-        let pairs=kernel::eligibility::pair_contexts(&self.polyline_cursor.arena,&self.kernel_bars,&frames[0]);
+        let pairs=kernel::eligibility::pair_contexts(&self.polyline_cursor.arena,&self.kernel_bars,&frames[0])?;
         let paths:[BTreeMap<_,_>;4]=array::from_fn(|level|{
             let mut paths=BTreeMap::new();
             for id in &frames[level].points{
@@ -348,11 +372,15 @@ impl TrendAnalyzer {
         self.phase_timings.insert("n_memory_total".into(),memory_started.elapsed().as_secs_f64());
         self.phase_timings.insert("n_memory_shared".into(),memory.shared_seconds);
         self.n_memory=memory.memory;self.n_records=memory.records;
+        let validated=self.candles.prefix(self.state.current_index)?;
         for level in 0_usize..4{
             self.phase_timings.insert(format!("level{level}.n_memory"),memory.seconds[level]);
             let started=Instant::now();let states=kernel::eligibility::state_contexts(&frames[level]);
+            let revisions=kernel::observations::source_revisions(&self.polyline_cursor.arena,&self.kernel_bars,&frames[level],&frames[level.saturating_sub(1)]).iter().map(|revision|{
+                let point=self.polyline_cursor.arena.view(revision.point,&self.kernel_bars);(revision.known,revision.path,point.index,point.ordinal)
+            }).collect::<Vec<_>>();
             self.qualification_intervals[level]=kernel::eligibility::calculate(&scalar[level],&scalar[level.saturating_sub(1)],&scalar[0],&paths[level],
-                &self.candles[..self.state.current_index],&self.kernel_bars[..self.state.current_index],&self.state.config.trading,&pairs,&states,self.state.config.enable_secondary_reversal[level],cancel,&memory.facts[level],&self.n_records)?;
+                validated,&self.kernel_bars[..self.state.current_index],&self.state.config.trading,&pairs,&states,&revisions,self.state.config.enable_secondary_reversal[level],cancel,&memory.facts[level],&self.n_records)?;
             self.phase_timings.insert(format!("level{level}.qualification"),started.elapsed().as_secs_f64());
         }
         kernel::n_memory::compact(&mut self.n_memory,&mut self.n_records)?;
@@ -360,6 +388,18 @@ impl TrendAnalyzer {
     }
     pub fn trading_state(&self)->&trading::day::TradingDayState{&self.trading_state}
     pub fn n_memory(&self)->&[kernel::n_memory::LevelNMemory;4]{&self.n_memory}
+    /// 仅离线诊断构建导出资格实际消费的标量事实；不展开递归来源证明。
+    #[cfg(feature="qualification-timing")]
+    pub fn qualification_inputs(&self)->crate::indexed_json::Value{
+        use crate::indexed_json::json;
+        let Some(frames)=&self.array_frames else{return crate::indexed_json::Value::Null;};
+        let pool=&self.polyline_cursor.arena;let bars=&self.kernel_bars;
+        let point=|id:kernel::arena::PointId|{let p=pool.view(id,bars);json!({"index":p.index,"ordinal":p.ordinal,"kind":p.kind,
+            "value":p.value,"knownIndex":p.known_index,"path":p.path})};
+        json!({"frames":frames.iter().map(|frame|kernel::eligibility::scalar_frame(pool,bars,frame)).collect::<Vec<_>>(),
+            "observations":frames.iter().map(|frame|frame.observations.iter().map(|o|json!({"knownIndex":o.known_index,"path":o.path,
+                "origin":point(o.origin),"extreme":point(o.extreme),"key":o.key.map(&point),"anchor":o.anchor.map(&point),"state":o.state})).collect::<Vec<_>>()).collect::<Vec<_>>()})
+    }
     pub fn eligibilities(&self)->&[TradingEligibility;4]{&self.eligibility}
     /// 合并已观察分钟的机会消费记录；结构仍只在日收对完整K线推进一次。
     pub fn accept_intraday(&mut self,asof:usize,arbiter:&trading::arbiter::EntryArbiterState,events:&[crate::indexed_json::Value])->Result<(),String>{

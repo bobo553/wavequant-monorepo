@@ -94,6 +94,7 @@ pub struct RefEvent {
 pub struct RefContext { pub known_index:usize,pub path:usize,pub state:Option<TrendState>,pub direction:Option<Direction>,pub key:Option<PointId>,pub anchor:Option<PointId> }
 #[derive(Debug, Clone)]
 pub struct RefFrame {
+    pub promotions:Vec<usize>,
     pub level:u8, pub points:Vec<PointId>, pub candidate:Option<PointId>,
     pub segment_states:Vec<Option<TrendState>>,pub candidate_trend_state:Option<TrendState>,pub candidate_state_known:Option<usize>,
     pub direction:Option<Direction>, pub structure_direction:Option<Direction>, pub state:Option<TrendState>,
@@ -101,7 +102,7 @@ pub struct RefFrame {
     pub observations:Vec<super::observations::TrendObservation>,pub observed_events:Vec<RefEvent>,pub contexts:Vec<RefContext>, pub events:Vec<RefEvent>, pub blocked_at:Option<usize>, pub issues:Vec<String>,
 }
 impl RefFrame {
-    pub fn empty(level:u8)->Self{Self{level,points:Vec::new(),candidate:None,segment_states:Vec::new(),candidate_trend_state:None,candidate_state_known:None,direction:None,structure_direction:None,
+    pub fn empty(level:u8)->Self{Self{promotions:Vec::new(),level,points:Vec::new(),candidate:None,segment_states:Vec::new(),candidate_trend_state:None,candidate_state_known:None,direction:None,structure_direction:None,
         state:None,key:None,anchor:None,preceding_start:None,observations:Vec::new(),observed_events:Vec::new(),contexts:Vec::new(),events:Vec::new(),blocked_at:None,issues:Vec::new()}}
     pub fn offset(&self,pool:&PointArena,bars:&[KernelBar])->Result<usize,String>{
         let Some(origin)=self.preceding_start else{return Ok(0);};let origin=pool.view(origin,bars);
@@ -112,6 +113,7 @@ impl RefFrame {
 struct StrictBreak {proof:usize,previous:Option<usize>}
 #[derive(Default)]
 pub struct PointArena {
+    pub(super) promotions:super::promotions::ReceiptStore,
     pub nodes:Vec<PointNode>, pub proofs:Vec<Proof>, imported:Vec<KernelPoint>, strict_breaks:Vec<StrictBreak>, exports:std::sync::Mutex<BTreeMap<PointId,KernelPoint>>,
 }
 impl PointArena {

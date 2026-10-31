@@ -9,6 +9,37 @@ pub(crate) struct TrendObservation {
     pub trend_direction:Direction,pub structure_direction:Option<Direction>,pub state:Option<TrendState>,
     pub key:Option<PointId>,pub anchor:Option<PointId>,
 }
+#[derive(Debug,Clone,Copy)]
+pub(crate) struct SourceRevision{pub known:usize,pub path:usize,pub point:PointId}
+/// 严格通道把发展波重新接回更早的整波起点时，内部回撤点不再是该时点的波段边界。
+/// 保留失效时钟，避免最终数组后来恢复该点后，把资格错误延长穿过历史修订。
+pub(crate) fn source_revisions(pool:&PointArena,bars:&[KernelBar],frame:&RefFrame,lower:&RefFrame)->Vec<SourceRevision>{
+    let mut previous:BTreeMap<usize,&TrendObservation>=BTreeMap::new();let mut result=Vec::new();
+    for next in &frame.observations{
+        if let Some(old)=previous.insert(next.path,next){
+            let (old_origin,new_origin,extreme)=(pool.view(old.origin,bars),pool.view(next.origin,bars),pool.view(next.extreme,bars));
+            if next.known_index<=old.known_index||next.trend_direction!=old.trend_direction||new_origin.order()>=old_origin.order()
+                ||extreme.order()<=old_origin.order(){continue;}
+            let Some(point)=frame.points.iter().copied().find(|id|pool.same(*id,old.origin,bars)&&pool.view(*id,bars).known_index<next.known_index)else{continue;};
+            let boundary=frame.points.iter().rev().find(|id|{let p=pool.view(**id,bars);p.path==next.path&&p.order()<old_origin.order()&&p.kind==extreme.kind});
+            if let Some(boundary)=boundary.filter(|id|next.trend_direction.sign()*(extreme.value-pool.view(**id,bars).value)>0.0){
+                let boundary=pool.view(*boundary,bars);let floor=pool.view(point,bars).known_index;
+                // 最终同向极值可能已替换第一次严格突破端点；结束时钟必须读取
+                // 直接下级保存的首次正式 endpoint 证明，不能延迟到最后一个新高。
+                let known=lower.promotions.iter().filter_map(|proof|{
+                    let facts=&pool.proofs[*proof];
+                    let attack=facts.iter().find_map(|(key,f)|if *key=="confirmed_by"{if let Fact::Point(id)=f{Some(pool.view(*id,bars))}else{None}}else{None})?;
+                    let clock=facts.iter().find_map(|(key,f)|if *key=="available_index"{if let Fact::Number(n)=f{Some(*n)}else{None}}else{None})?;
+                    (clock>floor&&clock<=next.known_index&&attack.path==old_origin.path&&attack.kind==extreme.kind
+                        &&old_origin.order()<attack.order()&&attack.order()<=extreme.order()&&boundary.known_index<attack.index
+                        &&next.trend_direction.sign()*(attack.value-boundary.value)>0.0).then_some(clock)
+                }).min().unwrap_or(next.known_index);
+                result.push(SourceRevision{known,path:next.path,point});
+            }
+        }
+    }
+    result.sort_by_key(|revision|revision.known);result
+}
 fn same_optional(pool:&PointArena,bars:&[KernelBar],a:Option<PointId>,b:Option<PointId>)->bool {
     match(a,b){(Some(a),Some(b))=>pool.same(a,b,bars),(None,None)=>true,_=>false}
 }
@@ -105,24 +136,46 @@ mod strict_flip_tests{
         (pool,source,closed,proof)
     }
     #[test]
-    fn own_strict_flip_replaces_stale_background_and_survives_endpoint_closure(){
+    fn a_local_strict_break_cannot_replace_the_frozen_outer_background(){
         for level in 1..=3{for mirror in [false,true]{
             let(mut pool,source,mut closed,proof)=fixture(level,mirror);let mut cursor=ObservationCursor::default();let mut frame=RefFrame::empty(level);
             cursor.changed((0,0));
             let direction=if mirror{Direction::Down}else{Direction::Up};let title=if mirror{"翻多为空"}else{"翻空为多"};
+            let(mut expected_pool,expected_source,expected_closed,_)=fixture(level,mirror);
+            let mut expected_cursor=ObservationCursor::default();let mut expected=RefFrame::empty(level);expected_cursor.changed((0,0));
+            observe_path(&mut expected_pool,&[],&expected_source,&expected_closed,Some(9),Some(10),Some(direction),None,10,level,&mut expected_cursor,&mut expected).unwrap();
             observe_path(&mut pool,&[],&source,&closed,Some(9),Some(10),Some(direction),Some(proof),10,level,&mut cursor,&mut frame).unwrap();
-            let event=frame.observed_events.iter().find(|event|event.title==title&&pool.view(event.point,&[]).index==10).unwrap();
-            assert_eq!(event.known_index,10);assert_eq!(pool.view(event.key.unwrap(),&[]).index,8);
-            let context=frame.observations.last().unwrap();assert_eq!(pool.view(context.anchor.unwrap(),&[]).index,9);
-            assert_eq!(context.state,Some(if mirror{TrendState::BullToBear}else{TrendState::BearToBull}));
+            assert!(!frame.observed_events.iter().any(|event|event.title==title&&pool.view(event.point,&[]).index==10));
+            let context=frame.observations.last().unwrap();let before=expected.observations.last().unwrap();
+            assert_eq!(context.state,before.state);
+            assert_eq!(context.key.map(|id|pool.view(id,&[]).index),before.key.map(|id|expected_pool.view(id,&[]).index));
             let mut node=pool.nodes[source[10].0];node.level=level;node.source=Some(source[10]);let endpoint=pool.push(node);
             closed.insert((10,0),endpoint);cursor.changed((10,0));
             observe_path(&mut pool,&[],&source,&closed,Some(10),Some(11),Some(direction.opposite()),Some(proof),11,level,&mut cursor,&mut frame).unwrap();
-            assert_eq!(frame.observed_events.iter().filter(|event|event.title==title&&pool.view(event.point,&[]).index==10).count(),1);
-            assert_eq!(cursor.frame(level).state,Some(if mirror{TrendState::BullToBear}else{TrendState::BearToBull}));
-            assert_eq!(pool.view(frame.observations.last().unwrap().anchor.unwrap(),&[]).index,9);
+            assert!(!frame.observed_events.iter().any(|event|event.title==title&&pool.view(event.point,&[]).index==10));
+            assert_eq!(cursor.frame(level).state,before.state);
             assert_eq!(closed.len(),11);assert_eq!(pool.view(*closed.get(&(10,0)).unwrap(),&[]).value,pool.view(source[10],&[]).value);
         }}
+    }
+    #[test]
+    fn revision_uses_the_first_formal_crossing_not_the_final_extension(){
+        for level in 1..=3{
+            let mut pool=PointArena::default();
+            let mut make=|index,known,kind,value|pool.import(&KernelPoint::new(KernelPointData{index,ordinal:0,known_index:known,kind,value,
+                level,path:0,time:format!("2020-01-{:02}",index+1),state:PointState::Reversal,evidence:Value::Null}));
+            let start=make(1,1,PointKind::L,5.0);let high=make(2,3,PointKind::H,20.0);let low=make(4,5,PointKind::L,8.0);
+            let first=make(6,7,PointKind::H,22.0);let last=make(8,9,PointKind::H,25.0);
+            let mut frame=RefFrame::empty(level);frame.points=vec![start,high,low];
+            let observation=|known,origin,extreme|TrendObservation{known_index:known,path:0,origin,extreme,trend_direction:Direction::Up,
+                structure_direction:Some(Direction::Up),state:Some(TrendState::Bull),key:None,anchor:None};
+            frame.observations=vec![observation(7,low,first),observation(9,start,last)];
+            let mut lower=RefFrame::empty(level-1);
+            lower.promotions.push(pool.proof(vec![("confirmed_by",Fact::Point(first)),("available_index",Fact::Number(7))]));
+            let revisions=source_revisions(&pool,&[],&frame,&lower);
+            assert_eq!(revisions.len(),1);assert_eq!(revisions[0].point,low);assert_eq!(revisions[0].known,7);
+            frame.observations[1].origin=low;
+            assert!(source_revisions(&pool,&[],&frame,&lower).is_empty());
+        }
     }
     #[test]
     fn future_or_foreign_own_key_cannot_supply_a_strict_flip(){

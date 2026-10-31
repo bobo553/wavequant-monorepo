@@ -14,7 +14,7 @@ mod local_publication;
 mod publication;
 mod geometry;
 mod structure;
-mod observations;
+pub(crate) mod observations;
 pub mod n_memory;
 mod waves;
 mod landmarks;
@@ -126,9 +126,15 @@ impl KernelFrame {
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct KernelOptions { pub ordinary_trend_completion_enabled: bool, pub secondary_reversal_enabled: bool, pub trend_offset_enabled: bool }
+pub struct KernelOptions {
+    pub ordinary_trend_completion_enabled: bool,
+    pub secondary_reversal_enabled: bool,
+    pub trend_offset_enabled: bool,
+    /// 一级、二级、三级分别允许省略初始整波和普通翻转的内部来源点；不豁免其他确认条件。
+    pub wave_span_relaxation: [bool; 3],
+}
 impl Default for KernelOptions {
-    fn default() -> Self { Self { ordinary_trend_completion_enabled: false, secondary_reversal_enabled: true, trend_offset_enabled: true } }
+    fn default() -> Self { Self { ordinary_trend_completion_enabled: false, secondary_reversal_enabled: true, trend_offset_enabled: true, wave_span_relaxation: [true, false, false] } }
 }
 pub fn validate_bars(bars: &[KernelBar]) -> Result<(), String> {
     if bars.len() > 250_000 { return Err("market prefix exceeds 250000 bars".into()); }
@@ -197,3 +203,5 @@ pub fn attach_promotion_receipts(source:&mut [KernelPoint],receipts:&[PromotionR
 
 #[cfg(feature="qualification-timing")]
 pub mod qualification_profile;
+pub(crate) mod promotions;
+pub(crate) mod qualification_n;

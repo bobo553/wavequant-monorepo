@@ -3,6 +3,8 @@ use crate::analysis::trading::{Direction,RuleCandle,NSetup,NOptions,NObservation
 use super::{price_action::{ShadowPolicy,ResistanceEvidence,observe_resistance},strong_bullish_candle};
 use rust_decimal::Decimal;
 use serde::{Deserialize,Serialize};
+mod incremental;
+pub(crate) use incremental::IncrementalRegime;
 #[derive(Debug,Clone,Copy,PartialEq,Eq,Serialize,Deserialize)]
 pub enum MarketRegime {#[serde(rename="强轧空")] StrongBull,#[serde(rename="轧空")] Bull,
     #[serde(rename="盘坚")] GrindUp,#[serde(rename="盘跌")] GrindDown,
@@ -44,71 +46,10 @@ pub fn observe_prepared_regime(bars:&[RuleCandle],setup:&NSetup,policy:&RegimePo
     if attack==0 || attack>n.asof_index {return Err("completed N attack is not available".into());}
     let defense=completion.defense;
     let boundary=if policy.wave_boundary==WaveBoundary::NOrigin {anchors.origin}else{anchors.pullback};
-    let dir=setup.direction;let up=dir==Direction::Up;let sign=dir.sign();
-    let attack_bar=&bars[attack];let mut record=dir.extreme(attack_bar);
-    let window=policy.local_resistance_failure&&up;
-    let resistance=if window&&measurement_start.is_none_or(|i|attack>=i) {
-        Some(observe_resistance(&bars[attack-1],attack_bar,dir,policy.shadow_policy)?)
-    }else{None};
-    let mut first_resistance=resistance.as_ref().and_then(|r|(r.detected==Some(true)).then_some(attack));
-    let mut unknown=resistance.as_ref().is_some_and(|r|r.detected.is_none());
-    let (mut first_defense,mut first_wave)=(None,None);
-    let (mut uninterrupted,mut rolling_all)=(true,true);
-    let (mut last_regime,mut last_index)=(None,None);
-    let mut frames=vec![RegimeFrame{bar_index:attack,observed_at:attack_bar.timestamp.clone(),phase:"await_response".into(),
-        regime:None,resistance,resistance_outcome:if first_resistance.is_some(){"resistance_outcome_pending"}else{"not_yet_observed"}.into(),
-        first_resistance_index:first_resistance,unknown_resistance_seen:unknown,first_defense_breach_index:None,first_wave_breach_index:None,
-        continuation_level:record,close_continuation:false,rolling_virtual_defense:defense,rolling_defense_held:None,
-        uninterrupted_progress:true,last_confirmed_regime:None,last_confirmed_index:None}];
-    let mut previous_index=None;let mut prior_index=None;
+    let mut cursor=IncrementalRegime::new(bars,attack,defense,boundary,setup.direction,policy.clone(),measurement_start)?;
+    let mut frames=vec![cursor.frame().clone()];
     for i in (attack+1).max(measurement_start.unwrap_or(0))..=n.asof_index {
-        let prev_index=previous_index.unwrap_or(i-1);let before_index=prior_index.unwrap_or(i-2);
-        prior_index=Some(prev_index);previous_index=Some(i);
-        let (bar,prev,before)=(&bars[i],&bars[prev_index],&bars[before_index]);
-        let first_available=measurement_start==Some(i);
-        let adverse=if first_available {bar.close}else{dir.adverse(bar)};
-        let resistance=observe_resistance(prev,bar,dir,policy.shadow_policy)?;
-        let eligible=!window||i==attack+1;
-        if eligible&&resistance.detected==Some(true)&&first_resistance.is_none(){first_resistance=Some(i);}
-        if eligible {unknown|=resistance.detected.is_none();}
-        if first_defense.is_none()&&sign*(adverse-defense)<Decimal::ZERO {first_defense=Some(i);}
-        if first_wave.is_none()&&sign*(adverse-boundary)<Decimal::ZERO {first_wave=Some(i);}
-        let rolling=if up {prev.low.min(before.close)}else{prev.high.max(before.close)};
-        let held=sign*(adverse-rolling)>=Decimal::ZERO;rolling_all&=held;
-        uninterrupted&=sign*(bar.close-prev.close)>Decimal::ZERO;
-        let mut continuation=sign*(bar.close-record)>Decimal::ZERO;
-        if policy.local_resistance_failure&&i>=attack+2&&first_resistance.is_some()&&first_defense.is_none() {
-            let prior=frames.last();
-            let attack_break=window&&bar.high>attack_bar.high&&bar.close>attack_bar.close&&strong_bullish_candle(bar);
-            let rebound=(continuation||attack_break)&&first_defense.is_none();
-            let response=rolling_all&&held&&prior.is_some_and(|f|(!window||f.bar_index<=attack+1)
-                &&f.resistance.as_ref().is_some_and(|r|r.detected==Some(true)));
-            continuation=(rebound||response)&&sign*(bar.close-prev.close)>Decimal::ZERO
-                &&sign*(bar.close-attack_bar.close)>Decimal::ZERO&&sign*(bar.close-bar.open)>Decimal::ZERO
-                &&(!eligible||resistance.detected==Some(false));
-        }
-        let mut phase=if i==attack+1 {"await_confirmation"}else{"pending"};let mut regime=None;
-        let mut outcome=if first_resistance.is_some(){"resistance_outcome_pending"}else if unknown{"unknown_shadow_rule"}else{"no_listed_resistance_detected"};
-        if first_wave.is_some(){phase="wave_boundary_breached";outcome="wave_boundary_breached";}
-        else {
-            if first_resistance.is_some()&&first_defense.is_some(){outcome="n_defense_breached_wave_boundary_held";}
-            if i>=attack+2&&continuation {
-                if first_resistance.is_none()&&!unknown&&first_defense.is_none()&&uninterrupted&&rolling_all {
-                    regime=Some(if up{MarketRegime::StrongBull}else{MarketRegime::StrongBear});
-                }else if first_resistance.is_some_and(|r|r<i) {
-                    if first_defense.is_none(){regime=Some(if up{MarketRegime::Bull}else{MarketRegime::Bear});outcome="failed_to_break_n_defense_and_continuation_confirmed";}
-                    else if first_defense.is_some_and(|d|d<i){regime=Some(if up{MarketRegime::GrindUp}else{MarketRegime::GrindDown});}
-                }
-                if regime.is_some(){phase="confirmed_on_this_bar";last_regime=regime;last_index=Some(i);}
-            }
-        }
-        frames.push(RegimeFrame{bar_index:i,observed_at:bar.timestamp.clone(),phase:phase.into(),regime,resistance:Some(resistance),
-            resistance_outcome:outcome.into(),first_resistance_index:first_resistance,unknown_resistance_seen:unknown,
-            first_defense_breach_index:first_defense,first_wave_breach_index:first_wave,continuation_level:record,
-            close_continuation:continuation,rolling_virtual_defense:rolling,rolling_defense_held:Some(held),uninterrupted_progress:uninterrupted,
-            last_confirmed_regime:last_regime,last_confirmed_index:last_index});
-        let forward=if first_available{bar.close}else{dir.extreme(bar)};
-        if sign*(forward-record)>Decimal::ZERO {record=forward;}
+        frames.push(cursor.step(bars,i)?.clone());
     }
     result.attack_index=Some(attack);result.n_defense=Some(defense);result.wave_boundary=Some(boundary);
     result.frames=frames.into_iter().filter(|f|measurement_start.is_none_or(|i|f.bar_index>=i)).collect();Ok(result)

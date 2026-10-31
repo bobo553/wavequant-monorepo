@@ -97,11 +97,9 @@ impl NStore{
         let start=self.entries[id.0].processed.map_or(now,|day|day+1);
         for day in start..=now{
             let before=NConfirmationSnapshot::of(self.data(id));let entry=&mut self.entries[id.0];
-            let formed=if entry.state.last_day()==Some(day){entry.state.candidate.as_ref().is_some_and(|n|n.attack_index==Some(day))}
-                else{let step=single_n::advance_n_indexed(&mut entry.state,&source.points,&source.prices,bars,day)?;
-                    if step.invalidated{self.invalidate(id,day,"candidate_defense_or_source_invalidated");return Ok(());}step.formed};
-            if formed&&config.strict_n_attack_quality&&self.data(id).direction==Direction::Up&&day>0
-                &&crate::analysis::trading::entries::v3_positive_n_attack_rejection(&bars[day],Some(bars[day].volume>bars[day-1].volume)).is_some(){self.invalidate(id,day,"attack_quality_rejected");return Ok(());}
+            if entry.state.last_day()!=Some(day){let step=single_n::advance_n_indexed(&mut entry.state,&source.points,&source.prices,bars,day)?;
+                if step.invalidated{self.invalidate(id,day,"candidate_defense_or_source_invalidated");return Ok(());}}
+            // 交易攻击质量由资格/买点消费者判断；实体或量能不足不撤销已成立的 N 结构。
             let entry=&mut self.entries[id.0];let n=entry.state.candidate.as_mut().ok_or("active N lost its data")?;
             if day>0{single_n::advance_squeeze_indexed(&mut entry.squeeze,n,bars,day,config.shadow_fraction)?;}
             entry.processed=Some(day);let after=NConfirmationSnapshot::of(n);
@@ -145,9 +143,10 @@ impl PathState{
             if !store.valid(id){
                 store.unlink(id,owner,now);tracker.current=None;self.memory.current_n[slot]=None;
                 // 本趋势只保留第一条仍有效的N；破位后归档，后续新结构再提供替代。
-                tracker.retained=None;tracker.search=Some(SingleNState::from_origin(now,0,direction));return Ok(());
+                tracker.retained=None;tracker.search=Some(SingleNState::after_invalidation(store.data(id),&source.points,&source.prices,&bars[now],now));
             }
-        }else{
+        }
+        if tracker.current.is_none(){
             let Some(search)=tracker.search.as_mut()else{return Ok(());};
             single_n::advance_n_indexed(search,&source.points,&source.prices,bars,now)?;
             let Some(n)=search.candidate.as_ref()else{return Ok(());};
@@ -159,7 +158,7 @@ impl PathState{
         let id=tracker.current.ok_or("N candidate index missing")?;store.advance(id,source,bars,now,config)?;
         if !store.valid(id){
             store.unlink(id,owner,now);tracker.current=None;self.memory.current_n[slot]=None;
-            tracker.retained=None;tracker.search=Some(SingleNState::from_origin(now,0,direction));return Ok(());
+            tracker.retained=None;tracker.search=Some(SingleNState::after_invalidation(store.data(id),&source.points,&source.prices,&bars[now],now));return Ok(());
         }
         if store.data(id).squeeze_index.is_some()&&tracker.retained.is_none(){
             self.memory.first_ns.push(FirstNRecord{trend_origin:tracker.origin.clone(),direction,confirmed_index:now,n_index:id});
@@ -233,6 +232,17 @@ mod tests{
     fn state()->SingleNState{let mut state=SingleNState::from_origin(0,0,Direction::Up);let point=|source_index,bar_index|single_n::NPointRef{path:0,source_index,bar_index,ordinal:0,known_index:bar_index};
         state.candidate=Some(SingleNData{direction:Direction::Up,a:point(0,1),b:point(1,2),c:point(2,3),origin:10.into(),neckline:15.into(),neckline_close:14.into(),pullback:12.into(),known_index:3,attack_index:Some(4),defense:Some(13.into()),box_anchor:Some(16.into()),squeeze_index:Some(6),regime:None,targets:None});state}
     #[test]
+    fn trade_quality_rejection_does_not_erase_shared_n_structure(){
+        let points=[(1,PointKind::L,10.0),(2,PointKind::H,15.0),(3,PointKind::L,12.0)].into_iter().map(|(index,kind,value)|KernelPoint::new(super::super::KernelPointData{
+            index,kind,value,ordinal:0,known_index:index,level:0,path:0,state:super::super::PointState::Confirmed,time:format!("2026-01-{index:02}"),evidence:crate::indexed_json::Value::Null})).collect::<Vec<_>>();
+        let bars=(0..=4).map(|day|RuleCandle{symbol:"fixture".into(),timestamp:format!("2026-01-{:02}",day+1),open:15.into(),high:16.into(),low:14.into(),close:Decimal::new(151,1),volume:100.into(),adjustment_factor:Decimal::ONE,raw_is_st:None,raw_trading_active:None}).collect::<Vec<_>>();
+        assert!(crate::analysis::trading::entries::v3_positive_n_attack_rejection(&bars[4],Some(false)).is_some());
+        let mut n=state().candidate.unwrap();n.squeeze_index=None;
+        let mut store=NStore::default();let id=store.intern(SingleNState::from_candidate(n,&points,4)).unwrap();
+        store.advance(id,&Source{points,prices:vec![10.into(),15.into(),12.into()]},&bars,4,&TradingDayConfig::lecture()).unwrap();
+        assert!(store.valid(id));assert_eq!(store.data(id).attack_index,Some(4));
+    }
+    #[test]
     fn identical_n_is_shared_but_one_level_reset_does_not_remove_another_owner(){
         let mut pool=NStore::default();let one=pool.intern(state()).unwrap();let two=pool.intern(state()).unwrap();assert_eq!(one,two);assert_eq!(pool.entries.len(),1);
         pool.link(one,(1,0),6);pool.note_usage(one,(1,0),0,6);pool.link(two,(2,0),6);pool.note_usage(two,(2,0),0,6);pool.unlink(one,(1,0),7);
@@ -281,7 +291,8 @@ mod flip_scope_tests{
         let mut candidate=SingleNState::from_origin(4,0,Direction::Up);candidate.candidate=Some(SingleNData{direction:Direction::Up,a:reference(0,6),b:reference(1,7),c:reference(2,8),origin:12.into(),neckline:18.into(),neckline_close:17.into(),pullback:14.into(),known_index:8,attack_index:Some(9),defense:Some(15.into()),box_anchor:Some(19.into()),squeeze_index:Some(11),regime:None,targets:None});
         let id=store.intern(candidate).unwrap();store.link(id,(1,0),11);path.tracker.as_mut().unwrap().current=Some(id);path.tracker.as_mut().unwrap().retained=Some(id);path.memory.current_n[0]=Some(id);
         path.memory.first_ns.push(FirstNRecord{trend_origin:point(2,PointKind::L,10.0),direction:Direction::Up,confirmed_index:11,n_index:id});
-        store.invalidate(id,12,"squeeze_defense_broken");path.advance(&Source{points:Vec::new(),prices:Vec::new()},&[],12,1,&mut store,&TradingDayConfig::lecture()).unwrap();
+        let bars=(0..=12).map(|day|RuleCandle{symbol:"fixture".into(),timestamp:format!("2026-01-{:02}",day+1),open:16.into(),high:17.into(),low:14.into(),close:15.into(),volume:100.into(),adjustment_factor:Decimal::ONE,raw_is_st:None,raw_trading_active:None}).collect::<Vec<_>>();
+        store.invalidate(id,12,"squeeze_defense_broken");path.advance(&Source{points:Vec::new(),prices:Vec::new()},&bars,12,1,&mut store,&TradingDayConfig::lecture()).unwrap();
         assert!(path.tracker.as_ref().unwrap().search.is_some());assert_eq!(path.memory.current_n[0],None);assert_eq!(path.memory.first_ns[0].n_index,id);assert!(store.watched.is_empty());
     }
 }

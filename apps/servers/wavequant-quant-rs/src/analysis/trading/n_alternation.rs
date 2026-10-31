@@ -83,17 +83,67 @@ pub fn confirm_n_squeeze_alternation(bars:&[RuleCandle],now:usize,origin:&Kernel
     }Ok(None)
 }
 
-/// 只验证已锁定 N 的外层交替条件；不再枚举候选或重跑 N/轧空历史。
+#[cfg(test)]
+mod fast_confirmation_tests {
+    use super::*;
+    use crate::analysis::{kernel::{KernelPointData,PointState,n_memory::NConfirmationSnapshot},trading::single_n::{SingleNData,NPointRef}};
+    #[test]
+    fn gap_can_confirm_before_the_ordinary_squeeze_snapshot() {
+        let rows=[(11,12,10,11),(18,20,17,19),(16,17,15,16),(17,18,16,17),(17,18,16,17),
+            (17,19,16,18),(18,19,17,18),(18,19,17,18),(20,21,20,21)];
+        let bars:Vec<_>=rows.into_iter().enumerate().map(|(i,(o,h,l,c))|RuleCandle{
+            symbol:"fixture".into(),timestamp:format!("2020-01-{:02}",i+1),open:o.into(),high:h.into(),low:l.into(),close:c.into(),
+            volume:if i==8{200.into()}else{100.into()},adjustment_factor:Decimal::ONE,raw_trading_active:None,raw_is_st:None,
+        }).collect();
+        let point=|index:usize,kind,value|KernelPoint::new(KernelPointData{index,ordinal:0,known_index:index,kind,value,
+            time:bars[index].timestamp.clone(),level:0,path:0,state:PointState::Confirmed,evidence:Value::Null});
+        let origin=point(0,PointKind::L,10.0);let high=point(1,PointKind::H,20.0);let key=high.clone();
+        let points=vec![point(2,PointKind::L,15.0),point(3,PointKind::H,18.0),point(4,PointKind::L,16.0)];
+        let reference=|source_index:usize|NPointRef{path:0,source_index,bar_index:source_index+2,ordinal:0,known_index:source_index+2};
+        let n=SingleNData{direction:Direction::Up,a:reference(0),b:reference(1),c:reference(2),origin:15.into(),neckline:18.into(),
+            neckline_close:17.into(),pullback:16.into(),known_index:4,attack_index:Some(5),defense:Some(16.into()),
+            box_anchor:Some(19.into()),squeeze_index:None,regime:None,targets:None};
+        let proof=confirm_single_n_snapshot(&bars,8,&origin,&high,&key,&points,&n,NConfirmationSnapshot::of(&n),
+            1,"fixture",None,None,&TradingDayConfig::default(),true,&mut ConfirmationCache::default()).unwrap().unwrap();
+        assert_eq!(proof.rule,"positive_n_consolidation_gap_after_qualified_b");
+        let disabled=confirm_single_n_snapshot(&bars,8,&origin,&high,&key,&points,&n,NConfirmationSnapshot::of(&n),
+            1,"fixture",None,None,&TradingDayConfig::default(),false,&mut ConfirmationCache::default()).unwrap();
+        assert!(disabled.is_none_or(|proof|proof.rule!="positive_n_consolidation_gap_after_qualified_b"));
+    }
+}
+
+/// 资格观察缓存只保存递推帧，不复制K线；当日未使用的候选在日终释放。
+#[derive(Default)]
+pub(crate) struct ConfirmationCache {
+    regimes:std::collections::BTreeMap<(usize,[(usize,usize,usize);3],usize,Decimal,Decimal),(regime::IncrementalRegime,usize)>,
+}
+impl ConfirmationCache {
+    pub(crate) fn retain_used(&mut self,now:usize){self.regimes.retain(|_,(_,used)|*used==now);}
+    fn frame(&mut self,bars:&[RuleCandle],now:usize,n:&super::single_n::SingleNData,attack:usize,defense:Decimal,config:&TradingDayConfig)->Result<regime::RegimeFrame,String>{
+        let key=(n.a.path,[&n.a,&n.b,&n.c].map(|p|(p.bar_index,p.ordinal,p.known_index)),attack,defense,n.origin);
+        if !self.regimes.contains_key(&key){
+            let cursor=regime::IncrementalRegime::new(bars,attack,defense,n.origin,Direction::Up,
+                RegimePolicy{shadow_policy:Some(ShadowPolicy{minimum_range_fraction:config.shadow_fraction}),wave_boundary:WaveBoundary::NOrigin,local_resistance_failure:true},None)?;
+            self.regimes.insert(key,(cursor,now));
+        }
+        let(cursor,used)=self.regimes.get_mut(&key).ok_or("missing qualification regime cursor")?;
+        *used=now;Ok(cursor.advance_to(bars,now)?.clone())
+    }
+}
+/// 兼容独立调用；生产资格入口传入共享缓存和完整策略配置。
 pub fn confirm_single_n(bars:&[RuleCandle],now:usize,origin:&KernelPoint,high:&KernelPoint,key:&KernelPoint,
     polyline:&[KernelPoint],n:&super::single_n::SingleNData,level:u8,path:&str,after:Option<usize>)->Result<Option<AlternationProof>,String>{
-    confirm_single_n_snapshot(bars,now,origin,high,key,polyline,n,crate::analysis::kernel::n_memory::NConfirmationSnapshot::of(n),level,path,after)
+    confirm_single_n_snapshot(bars,now,origin,high,key,polyline,n,crate::analysis::kernel::n_memory::NConfirmationSnapshot::of(n),
+        level,path,after,None,&TradingDayConfig::default(),true,&mut ConfirmationCache::default())
 }
 pub(crate) fn confirm_single_n_snapshot(bars:&[RuleCandle],now:usize,origin:&KernelPoint,high:&KernelPoint,key:&KernelPoint,
-    polyline:&[KernelPoint],n:&super::single_n::SingleNData,snapshot:crate::analysis::kernel::n_memory::NConfirmationSnapshot,level:u8,path:&str,after:Option<usize>)->Result<Option<AlternationProof>,String>{
-    if n.direction!=super::Direction::Up||now>=bars.len()||n.known_index>now{return Ok(None);}
-    let (Some(attack),Some(defense),Some(squeeze))=(snapshot.attack,snapshot.defense,snapshot.squeeze)else{return Ok(None);};
-    if attack>now||squeeze>now{return Ok(None);}
-    if bar_low_broken(&bars[now],defense)||after.is_some_and(|i|squeeze<=i)||n.a.bar_index<=high.index{return Ok(None);}
+    polyline:&[KernelPoint],n:&super::single_n::SingleNData,snapshot:crate::analysis::kernel::n_memory::NConfirmationSnapshot,level:u8,path:&str,after:Option<usize>,
+    pair:Option<(&KernelPoint,&KernelPoint)>,config:&TradingDayConfig,allow_gap:bool,cache:&mut ConfirmationCache)->Result<Option<AlternationProof>,String>{
+    if n.direction!=Direction::Up||now>=bars.len()||n.known_index>now||level>3||path.is_empty(){return Ok(None);}
+    let (Some(attack),Some(defense))=(snapshot.attack,snapshot.defense)else{return Ok(None);};
+    if attack==0||attack>now||after.is_some_and(|i|i>=now||attack.max(n.known_index)<=i)||n.a.bar_index<=high.index
+        ||now.saturating_sub(n.a.bar_index)>config.structure_window||now>n.known_index.saturating_add(config.pattern_ttl)
+        ||bars[now].low<defense{return Ok(None);}
     let make=|r:&super::single_n::NPointRef,kind,value|KernelPoint::new(crate::analysis::kernel::KernelPointData{
         index:r.bar_index,ordinal:r.ordinal,known_index:r.known_index,kind,value,time:bars[r.bar_index].timestamp.clone(),
         level:0,path:origin.path,state:crate::analysis::kernel::PointState::Confirmed,evidence:Value::Null});
@@ -101,10 +151,42 @@ pub(crate) fn confirm_single_n_snapshot(bars:&[RuleCandle],now:usize,origin:&Ker
     let vertices=[make(&n.a,PointKind::L,n.origin.to_f64().ok_or("N origin unavailable")?),
         make(&n.b,PointKind::H,n.neckline.to_f64().ok_or("N neckline unavailable")?),
         make(&n.c,PointKind::L,n.pullback.to_f64().ok_or("N pullback unavailable")?)];
-    let Some(proof)=candidate_proof(bars,now,origin,high,key,&vertices,attack,level,path,None,snapshot.regime,false)? else{return Ok(None);};
-    if let Some(low)=polyline.iter().find(|p|p.kind==PointKind::L&&Some(p.index)==super::qualification::index(&proof,"b_low_index")
-        &&value(p).ok()==super::qualification::price(&proof,"b_low_price")){
-        return Ok(Some(AlternationProof{low:low.clone(),rule:"single_n_and_squeeze_after_qualified_b".into(),evidence:proof}));
-    }Ok(None)
+    let publish=|proof:Value,rule:&str|->Option<AlternationProof>{
+        polyline.iter().find(|p|p.kind==PointKind::L&&Some(p.index)==super::qualification::index(&proof,"b_low_index")
+            &&value(p).ok()==super::qualification::price(&proof,"b_low_price"))
+            .map(|low|AlternationProof{low:low.clone(),rule:rule.into(),evidence:proof.clone()})
+    };
+    // 缺口确认不依赖普通轧空已出现；替换缺口证据时必须禁用这条通道。
+    if allow_gap{
+        if let Some(gap)=squeeze::consolidation_gap(bars,attack,now,defense){
+            if let Some(proof)=candidate_proof(bars,now,origin,high,key,&vertices,attack,level,path,Some(&gap),None,false)?{
+                if let Some(proof)=publish(proof,"positive_n_consolidation_gap_after_qualified_b"){return Ok(Some(proof));}
+            }
+        }
+    }
+    let frame=cache.frame(bars,now,n,attack,defense,config)?;
+    // 首次轧空日期只用于历史记录；本日许可读取本日量价状态，不能沿用粘滞标签。
+    let confirmed=frame.regime;
+    if matches!(confirmed,Some(MarketRegime::Bull|MarketRegime::StrongBull)){
+        if let Some(mut local)=confirmation::confirm_volume_breakout_alternation(bars,now,origin,high,pair,true)?{
+            if attack<now&&bars[now].close>bars[attack].close
+                &&entries::squeeze_buy_rejection(&bars[now],Some(&bars[now-1]),Some(&bars[attack-1])).is_none(){
+                local.rule="positive_n_and_squeeze_after_qualified_b".into();
+                local.evidence["confirmation_source"]=json!("positive_n_squeeze_polyline_key_breakout");
+                local.evidence["attack"]=json!(attack);local.evidence["n_origin"]=json!(n.a.bar_index);
+                local.evidence["n_neckline"]=json!(n.b.bar_index);local.evidence["n_pullback"]=json!(n.c.bar_index);
+                local.evidence["source_path"]=json!(path);local.evidence["trend_level"]=json!(level);
+                return Ok(Some(local));
+            }
+        }
+        if let Some(mut whole)=confirmation::confirm_double_n_pullback(bars,now,attack,origin,high,polyline)?{
+            whole.evidence["n_origin"]=json!(n.a.bar_index);whole.evidence["n_neckline"]=json!(n.b.bar_index);
+            whole.evidence["n_pullback"]=json!(n.c.bar_index);whole.evidence["source_path"]=json!(path);whole.evidence["trend_level"]=json!(level);
+            return Ok(Some(whole));
+        }
+    }
+    let resumed=!matches!(confirmed,Some(MarketRegime::Bull|MarketRegime::StrongBull))&&config.squeeze_pullback_entries
+        &&regime::observe_squeeze_resumption(bars,now,&frame,0,attack,defense)?.is_some();
+    let Some(proof)=candidate_proof(bars,now,origin,high,key,&vertices,attack,level,path,None,confirmed,resumed)?else{return Ok(None);};
+    Ok(publish(proof,"positive_n_and_squeeze_after_qualified_b"))
 }
-fn bar_low_broken(bar:&RuleCandle,defense:Decimal)->bool{bar.low<defense}

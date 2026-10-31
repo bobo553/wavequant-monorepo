@@ -202,7 +202,7 @@ export function trendNTargetGuides(model) {
         stage: stages[index], price: target.price, name: target.name,
         targetState: target.reached ? `${target.reached} 已达` : index < 2 ? "未达" : "已确认目标",
     }]);
-    if (model.defense !== null) levels.push({ stage: "n_defense", price: model.defense, name: model.up ? "轧空低" : "杀多高", targetState: "有效防守" });
+    if (model.defense !== null) levels.push({ stage: "n_defense", price: model.defense, name: model.up ? "轧空低" : "杀多高", showLabel: false });
     const anchor = model.attack ?? model.shape[2].time;
     return levels.map(level => ({ ...level, start: anchor, end: null, display_at: anchor,
         color: model.color ?? trendNColor(model.up), fixedAnchor: true, labelPosition: "center", statusKnown: true }));

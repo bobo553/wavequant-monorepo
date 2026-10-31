@@ -31,3 +31,31 @@ fn disabling_offset_rebuilds_and_toggle_drops_previous_checkpoints(){
     assert_eq!(cursor.advance_from(&input,input.len(),1,asof,&options).unwrap(),first);
     assert_eq!(cursor.advance_from(&input,0,1,asof,&options).unwrap(),first);
 }
+
+#[test]
+fn wave_span_options_default_level_one_relaxed_and_reject_invalid_shapes(){
+    let legacy:KernelOptions=serde_json::from_str("{}").unwrap();
+    assert_eq!(legacy.wave_span_relaxation,[true,false,false]);
+    let strict:KernelOptions=serde_json::from_str(r#"{"wave_span_relaxation":[false,false,false]}"#).unwrap();
+    assert_eq!(strict.wave_span_relaxation,[false;3]);
+    for invalid in [r#"{"wave_span_relaxation":[true,false]}"#,r#"{"wave_span_relaxation":[true,false,false,false]}"#,r#"{"wave_span_relaxation":[1,false,false]}"#]{
+        assert!(serde_json::from_str::<KernelOptions>(invalid).is_err());
+    }
+}
+
+#[test]
+fn per_level_relaxation_changes_invalidate_incremental_state(){
+    for level in 1..=3 {
+        let input=points(level);let asof=input.last().unwrap().known_index;
+        let mut cursor=TrendCursor::default();let mut options=KernelOptions::default();
+        options.wave_span_relaxation=[false;3];
+        let strict=cursor.advance_from(&input,4,level,asof,&options).unwrap();
+        options.wave_span_relaxation[usize::from(level-1)]=true;
+        let scanned=cursor.statistics().scanned_points;
+        let relaxed=cursor.advance_from(&input,4,level,asof,&options).unwrap();
+        assert_eq!(relaxed,kernel::trend(&input,level,asof,&options).unwrap());
+        assert_eq!(cursor.statistics().scanned_points-scanned,input.len());
+        options.wave_span_relaxation=[false;3];
+        assert_eq!(cursor.advance_from(&input,4,level,asof,&options).unwrap(),strict);
+    }
+}
