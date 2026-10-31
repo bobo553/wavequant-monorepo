@@ -14,13 +14,12 @@ export class TrendNHoverOverlay {
         if (this.key === key) return;
         this.key = key; this.model = model; this.updateAllViews(); this.requestUpdate?.();
     }
-    /** 标识、字母和N线段均命中同一来源，不能按其A/B/C日期切换到别的N。 */
+    /** 端点和N线段均命中同一来源，不保留已移除文字的隐形命中区。 */
     hitTest(x, y) {
         if (!this.model) return null;
         for (const point of this.projected) {
             if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
-            if (Math.hypot(x - point.x, y - point.y) <= 9 ||
-                x >= point.x + 3 && x <= point.x + 42 && y >= point.y - 20 && y <= point.y - 2)
+            if (Math.hypot(x - point.x, y - point.y) <= 9)
                 return { externalId: `trend-n:${this.model.level}:${this.model.nIndex}`, zOrder: "top", cursorStyle: "pointer" };
         }
         for (let index = 1; index < this.projected.length; index++) {
@@ -49,7 +48,7 @@ export class TrendNHoverOverlay {
         if (!this.model || !this.projected.length || !this.chart || !this.series) return;
         target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
             const model = this.model, color = model.color ?? trendNColor(model.up);
-            ctx.save(); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 3; ctx.font = "600 11px ui-sans-serif, system-ui, sans-serif";
+            ctx.save(); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 3;
             const points = this.projected;
             for (let index = 1; index < points.length; index++) {
                 const a = points[index - 1], b = points[index];
@@ -59,7 +58,6 @@ export class TrendNHoverOverlay {
             for (const point of points) {
                 if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || point.x < 0 || point.x > mediaSize.width || point.y < 0 || point.y > mediaSize.height) continue;
                 ctx.beginPath(); ctx.arc(point.x, point.y, 3, 0, Math.PI * 2); ctx.fill();
-                ctx.fillText(point.label, Math.max(4, point.x + 5), Math.max(12, point.y - 6));
             }
             ctx.restore();
         });

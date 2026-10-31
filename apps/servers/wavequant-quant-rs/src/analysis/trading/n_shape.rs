@@ -1,4 +1,4 @@
-use super::{Direction, RuleCandle, teaching_inside, teaching_outside, validate_bars};
+use super::{Direction, RuleCandle, teaching_inside, teaching_outside, validated_bars::ValidatedBarSlice};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
@@ -147,13 +147,30 @@ pub fn observe_n(bars: &[RuleCandle], setup: &NSetup, options: &NOptions) -> Res
     #[cfg(feature="qualification-timing")]
     let _profile_scope=crate::analysis::kernel::qualification_profile::enter("observe_n");
 
+    let end=observation_end(bars.len(),setup,options)?;
+    observe_n_core(ValidatedBarSlice::new(&bars[..=end])?,setup,options,end)
+}
+
+/// 只接受绑定同一不可变行情的校验凭据，N 结构与攻击判断仍使用原始全局下标。
+pub(crate) fn observe_n_validated(bars:ValidatedBarSlice<'_>,setup:&NSetup,options:&NOptions)->Result<NObservation,String>{
+    #[cfg(feature="qualification-timing")]
+    let _profile_scope=crate::analysis::kernel::qualification_profile::enter("observe_n");
+    let end=observation_end(bars.as_slice().len(),setup,options)?;
+    observe_n_core(bars.prefix(end+1)?,setup,options,end)
+}
+
+fn observation_end(len:usize,setup:&NSetup,options:&NOptions)->Result<usize,String>{
     setup.validate()?;
     if options.timeframe != setup.timeframe { return Err("NSetup with matching timeframe required".into()); }
-    let end = options.asof_index.or_else(|| bars.len().checked_sub(1)).ok_or("as-of bar is unavailable")?;
-    if end >= bars.len() || options.measurement_start.is_some_and(|start| start > end) {
+    let end = options.asof_index.or_else(|| len.checked_sub(1)).ok_or("as-of bar is unavailable")?;
+    if end >= len || options.measurement_start.is_some_and(|start| start > end) {
         return Err("as-of bar or measurement start unavailable".into());
     }
-    validate_bars(&bars[..=end])?;
+    Ok(end)
+}
+
+fn observe_n_core(visible:ValidatedBarSlice<'_>,setup:&NSetup,options:&NOptions,end:usize)->Result<NObservation,String>{
+    let bars=visible.as_slice();
     if bars[0].symbol != setup.symbol { return Err("setup and bar symbols differ".into()); }
     let known = setup.pullback.confirmed_index;
     let mut result = NObservation::new(NStatus::AwaitAnchors, end, &bars[end]);
@@ -282,4 +299,49 @@ pub fn observe_n(bars: &[RuleCandle], setup: &NSetup, options: &NOptions) -> Res
     result.next_target = names.get(result.milestones.len()).map(|name| (*name).into());
     result.targets = Some(targets);
     Ok(result)
+}
+
+#[cfg(test)]
+mod validated_input_tests {
+    use super::*;
+    use crate::analysis::trading::validated_bars::ValidatedCandles;
+    fn fixture(direction:Direction)->(Vec<RuleCandle>,NSetup){
+        let bars=[(11,12,10,11),(17,20,12,18),(16,18,14,16),(17,22,16,21),(21,24,20,23)]
+            .into_iter().enumerate().map(|(index,(o,h,l,c))|{
+                let(o,h,l,c)=if direction==Direction::Up{(o,h,l,c)}else{(40-o,40-l,40-h,40-c)};
+                RuleCandle{symbol:"TEST".into(),timestamp:format!("2020-01-{:02}",index+1),open:Decimal::from(o),
+                    high:Decimal::from(h),low:Decimal::from(l),close:Decimal::from(c),volume:Decimal::from(100),
+                    adjustment_factor:Decimal::ONE,raw_trading_active:None,raw_is_st:None}
+            }).collect();
+        let pivot=|index|PivotRef{index,confirmed_index:index,ordinal:None};
+        (bars,NSetup{symbol:"TEST".into(),timeframe:"1d".into(),direction,origin:pivot(0),neckline:pivot(1),pullback:pivot(2),
+            source:"lecture_causal".into(),box_anchor_mode:BoxAnchorMode::AttackVirtualExtreme,allow_confirmation_bar:true,
+            allow_outside_close:true,allow_mother_impulse:false,staged_defense:true,allow_mother_pullback:false,
+            allow_inside_pullback:false,polyline_structure:false})
+    }
+    #[test]
+    fn validated_and_external_observation_preserve_both_directions_and_clocks(){
+        for direction in [Direction::Up,Direction::Down]{
+            let(bars,setup)=fixture(direction);let validated=ValidatedCandles::new(bars).unwrap();
+            for end in 0..validated.len(){for measure_targets in [false,true]{
+                let options=NOptions{timeframe:"1d".into(),milestone_basis:MilestoneBasis::Extreme,
+                    asof_index:Some(end),measurement_start:None,measure_targets};
+                let expected=observe_n(&validated,&setup,&options).unwrap();
+                let actual=observe_n_validated(validated.prefix(validated.len()).unwrap(),&setup,&options).unwrap();
+                assert_eq!(serde_json::to_value(actual).unwrap(),serde_json::to_value(expected).unwrap());
+            }}
+        }
+    }
+    #[test]
+    fn external_observation_still_validates_only_the_visible_prefix(){
+        let(mut bars,setup)=fixture(Direction::Up);bars[4].low=Decimal::from(99);
+        let mut options=NOptions{timeframe:"1d".into(),milestone_basis:MilestoneBasis::Extreme,
+            asof_index:Some(3),measurement_start:None,measure_targets:false};
+        assert!(observe_n(&bars,&setup,&options).is_ok());
+        options.asof_index=Some(4);assert!(observe_n(&bars,&setup,&options).is_err());
+        let good=ValidatedBarSlice::new(&bars[..4]).unwrap();
+        assert!(observe_n_validated(good,&setup,&options).is_err());
+        options.asof_index=Some(3);let mut wrong=setup.clone();wrong.symbol="OTHER".into();
+        assert!(observe_n_validated(good,&wrong,&options).is_err());
+    }
 }

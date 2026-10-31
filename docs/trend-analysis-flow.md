@@ -3,13 +3,62 @@
 本文说明当前 Rust 实现，供趋势内核、买卖规则、账户执行、调度、接口与展示逻辑的维护者使用。它是本仓库这些 Mermaid 流程图的唯一维护位置。
 
 - 维护责任：修改相关逻辑的开发者在同一变更中同步维护。
-- 最近源码核对：2026-10-26；`analyzer::VERSION = 31`。
+- 最近源码核对：2026-10-31；`analyzer::VERSION = 43`。
+- v43：旧候选回撤延伸失效后，新候选在同一天继续消费已知折线点与当日 K 线；包含线同日延伸 C 并突破 B 不再等到下一天。只允许使用当日已确认点，正 N/倒 N 共用；共享 N 仍按身份每交易日推进一次。
+- v42：未攻击 N 的回撤 C 延伸时，旧候选归档；若 A 未破且 A/B 来源未修订，保留 A/B 索引等待新 C。已攻击 N 防守破位仍重新找 N，不复活旧记录。正 N、倒 N 与全部级别共用规则。
+- 共享 N 记录不再使用买点攻击质量删除结构；`eligibility::confirm_bull_alternation_end` 与交易候选消费者仍执行 `strict_n_attack_quality`。显示 N/目标不代表交易资格成立。
+- v41 补齐数组资格入口的 N 整理缺口、轧空回撤恢复、轧空配合折线关键位突破、双 N 回撤，以及同根母/内包 N 候选；详细当前流程见下节。保留新增结束规则，本轮未运行十股对照，不能宣称已与 Python 全面对齐。
+- v40 按用户明确选择，默认wave_span_relaxation改为[true,false,false]：一级放宽，二三级关闭。旧请求缺省采用新默认，显式三项配置优先；版本40隔离旧分析缓存，保留新增资格结束规则。此前十股报告为v39两组实验，本轮不重新运行回测。
+- v38 历史变更（默认值已由v40调整）：将一级隐式整波跨度放宽改为 `config.kernel.wave_span_relaxation: [false, false, false]`，顺序为一级、二级、三级；仅显式开启的级别可跳过内部来源点要求。配置参与游标身份及分析缓存，版本38隔离旧默认结果；回归及实际指数结果待验证。
+- v39 按用户最新要求以旧Python为资格开启基准，删除v36/v37新增的直接来源三日站稳开启门槛。N/量价/缺口/普通回撤确认与新证据重开继续使用原入口；保留确认日低点破位和倍量阴线长上影两项新增结束规则。v38趋势跨度开关不回退。具体股票起始日期一致性待本轮离线对照，不能引用v32结果作本轮验收。
+- v37 历史规则（已由v39撤销）：限制未解除时，后续多翻空即使带来不同高点，也不得替换首高或重置累计日数。仍按连续3天收盘严格站上、后两日最高价逐日严格创新高解除；解除之后新出现的不同翻空起点才建立下一轮限制。旧Python不改，版本37隔离旧分析缓存。海洋王2019-11-07首高/12-02翻空示例与源码回归待验证。
+- v36 引入直接来源翻空后的资格开启门槛；其“新起点立即重置”行为已由v37替换。一级读折线、二级读一级、三级读二级，折线无更低趋势级别而不使用此门槛。按正式事件可知日期推进，不回填低点日期；解除后仍须原资格确认通道通过。
+- v35 新增两条通用规则：严格外包且整个阴母实体低于子实体时，折线跳过母高、直接推进母低；已开启资格遇到倍量阴线、实体整体严格低于前日实体且长上影时，当日结束。折线变更自然传入共用的一至三级核心；资格规则共用于所有已启用级别，不按股票/日期设特例。版本35隔离旧分析缓存，复用行情缓存；旧 Python 不修改。本轮源码回归、海洋王2020-01-23实际区间及图表仍待验证，必要启动编译/重启记录见 workspace progress。
+- v34 按用户明确新增资格结束规则：每段资格以 startIndex 对应 K 线最低价作为固定防守价，后续最低价严格跌破则当日结束；相等不结束，不使用结构 lowIndex 或收盘价。折线至三级共用同一资格消费者，只有本级开关开启且资格已确认才检查。新规则改变区间，版本34隔离旧分析缓存；旧 Python 不修改，v33 的 Python 对齐样本保留为历史证据。本轮只完成代码与必要启动构建/重启，海洋王所述日期的实际区间和浏览器待验证。
+- v33 修复普通/正式来源合并时的发展端元数据：选择正式通道端点时，同步选择该端点的六态和观察时钟，禁止携带被替换端点的旧状态。前端继续校验段状态日期不早于端点可知日期；不回填、截断或放宽时间边界。版本变更隔离旧分析结果，行情缓存保留。
+- 2026-10-27 v33 性能优化：分析入口将行情放入不可变 ValidatedCandles，追加只校验增量和旧尾部边界，各级资格借用同一已校验前缀。折叠 N 不再逐候选从第一根 K 线重复校验；原始 observe_n 外部入口仍校验可见前缀。算法版本和规则保持，引擎源码身份更新，不复制行情或重编号索引。
+- v32 按旧 Python 核对资格：六态保留整波冻结关键位；数组路径启用上级严格突破索引回执及正式端点时钟；资格重开与 ABC 首 N 记忆分离，补折叠 N；量价门禁沿用折线末跌高/低配对，结束保留历史来源修订时钟。以下 v27～v31 的样本和计时为历史记录，不代表 v32 的结果。当前证据见[国芳集团资格对照](diagnostics/guofang-qualification-parity-v32-2026-10-27.md)。
 - v31 修复本级严格关键位翻转向六态观察的证据传递。共同趋势函数签发的 endpoint 证明按端点保留，发展端和后续闭合端读取同一份证明；本级已知起点/关键位核对通过后，真实反向翻转可结束旧的未完成交替背景，同向延伸继续保留首次整波起点。末升低破位只在首次因果可知日消费，不再逐日关闭新资格。该修改的股票资格结果及跨级回归待提交验证；此前 v29/v30 记录不代表 v31 已验收。海洋王既有记录与诊断见[轧空资格诊断](diagnostics/haiyangwang-qualification-2026-10-26.md)。
 - 本轮 v29 核对方式：代码阅读、必要启动编译/重启；随后按用户明确要求，对国芳集团2135根冻结日线运行资格成本三组离线对照，各预热3次、独立进程轮换采样9次。纯趋势27.4851ms、N维护资格关41.0281ms、二级资格开44.4290ms；完整四级结构及开关前后N数据一致。见[v29资格成本](diagnostics/qualification-cost-v29-2026-10-26.md)。测试套件、浏览器、Mermaid渲染和旧Python等价核对未执行；v27/v28旧计时不能作为v29证据。
 - v31本轮授权同输入耗时对照：海洋王2133根日线，分析中位41.2147→47.0659ms，+5.8512ms（+14.1969%）；坐标相关字段一致，六态/关键位、N及资格结果改变，不能称完整结构一致。该样本返回7/29开启二级资格，低点6/29，至10/23未结束。完整方法、波动和限制见[耗时报告](diagnostics/qualification-timing-v31-2026-10-26.md)。
 - 当前范围：`STRUCTURE_ONLY = true`，主流程启用折线及一、二、三级；本级买点开关开启后计算资格区间，买卖与账户执行仍停用。图示保留未启用实现，但不表示它们已通过运行验收。
 
 详细确认规则见下方《空多交替结束确认通道详解（v27）》：四条通道、六张细分 Mermaid、阈值及返回边界。
+
+## v41：N 资格确认实际入口
+
+以下流程补充并覆盖旧章节中快速 N 入口的描述。前置的本级买点开关、空翻多背景及来源时钟保持不变，确认成功后才开启资格。普通量价、实体缺口、普通回撤等外层通道继续保留。
+
+```mermaid
+flowchart TD
+  A[可知折线来源变化] --> B[相邻 LHL 与折叠 N 候选按索引去重]
+  B --> C[校验跨日或同根点序及母线/内包条件]
+  C --> D[候选按日推进攻击与防守]
+  D --> E{时效/关闭后新证据/防守有效?}
+  E -->|否| X[不使用此候选]
+  E -->|是| F{允许缺口且 N 整理缺口成立?}
+  F -->|是| G{ABC 回撤条件成立?}
+  G -->|是| Y[发布资格确认]
+  G -->|否| H[递推本日量价状态]
+  F -->|否| H
+  H --> I{本日轧空或强轧空?}
+  I -->|是| J{折线关键位量价突破及买入过滤通过?}
+  J -->|是| Y
+  J -->|否| K{双 N 回撤成立?}
+  K -->|是| Y
+  K -->|否| M[普通 N 的 ABC 回撤确认]
+  I -->|否| L{开启恢复通道且历史轧空后回撤恢复?}
+  L --> M
+  M -->|确认| Y
+  M -->|未确认| Z[其他候选及外层确认通道]
+```
+
+- 同根点序仍须严格递增；同根母线与内包候选不绕过原 N 形态确认。
+- `frame.regime` 仅代表当天确认；`last_confirmed_regime/index` 只供回撤恢复引用。历史曾轧空不直接赋予当天资格。
+- 每个资格计算的 N 游标保存一帧及索引，首次从攻击位置初始化，后续只推进未观察交易日；同日重复请求复用。日终释放未使用游标，重新使用时会从攻击位置恢复。此修改没有消除 ABC 等既有规则自身的区间扫描。
+- 缺口证据替换时关闭 N 缺口通道，避免循环使用同类证据。仍保留确认日低点破位、倍量阴线长上影两项新增退出；不恢复跌破 N 防守后的旧候选许可。
+- 源码：`kernel/qualification_n.rs`（候选）、`kernel/eligibility.rs`（调度）、`trading/n_alternation.rs`（通道）、`market_state/regime/incremental.rs`（共享递推）。旧 Python 不修改；新算法版本隔离分析缓存，行情缓存保留。
+- 验证边界：本轮回归源码待提交时验证，十股开启日期与性能尚未重新对照。
 
 ## 源码与图示对应关系
 
@@ -18,13 +67,16 @@
 | 维护内容 | 源码入口 | 需要同步的图与说明 |
 | --- | --- | --- |
 | 结构模式、数组快速路径、启用层级 | [analyzer.rs](../apps/servers/wavequant-quant-rs/src/analysis/analyzer.rs)、[system.rs](../apps/servers/wavequant-quant-rs/src/analysis/system.rs) | 图一及当前范围 |
-| 包含、顶底、折线生命周期 | [drawing.rs](../apps/servers/wavequant-quant-rs/src/analysis/kernel/drawing.rs) | 图一折线节点；改变职责边界时细化说明 |
+| 包含、顶底、折线生命周期 | [drawing.rs](../apps/servers/wavequant-quant-rs/src/analysis/kernel/drawing.rs) 的 `PolylineCursor::consume` / `bearish_mother_body_below_child` | 图一及阴母线补充图 |
 | 来源过滤、整波、翻转、特殊突破、发展尾部、路径连续性 | [waves.rs](../apps/servers/wavequant-quant-rs/src/analysis/kernel/waves.rs) | 图二、现存等级分支与输入输出 |
 | 偏移、检查点、前缀核对、缓存复用 | `analyzer.rs`、`waves.rs`、[arena.rs](../apps/servers/wavequant-quant-rs/src/analysis/kernel/arena.rs) | 图三及偏移坐标说明 |
 | 严格高低比较、回撤阈值、六态 | [structure.rs](../apps/servers/wavequant-quant-rs/src/analysis/kernel/structure.rs) | 图二方向判断、图四及边界说明 |
 | 方向发布、可选 N 确认 | [publication.rs](../apps/servers/wavequant-quant-rs/src/analysis/kernel/publication.rs)、[n_confirmation.rs](../apps/servers/wavequant-quant-rs/src/analysis/kernel/n_confirmation.rs) | 结构、确认与交易的边界说明 |
 | 选项默认值、前端状态投影 | [kernel.rs](../apps/servers/wavequant-quant-rs/src/analysis/kernel.rs)、[trend_state.rs](../apps/servers/wavequant-api-rs/src/application/trend_state.rs) | 当前范围、开关说明及索引输出 |
 | 资格确认四通道 | [eligibility.rs](../apps/servers/wavequant-quant-rs/src/analysis/kernel/eligibility.rs)、[single_n.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/single_n.rs)、[n_alternation.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/n_alternation.rs)、两份 confirmation.rs | 确认通道详解与六张细分图 |
+| 倍量阴线实体下移且长上影结束资格 | `eligibility.rs` 的 `double_volume_bearish_body_below_upper_shadow` / `calculate`；[entries.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/entries.rs) 的 `is_long_upper_shadow` | 资格生命周期图与结束条件 |
+| 直接来源翻空的资格处理 | `eligibility.rs` 的 `calculate` / `source_path` | 来源翻空只在当日关闭有效资格，不持久阻止开启 |
+| 正式来源时钟、回执与修订 | [promotions.rs](../apps/servers/wavequant-quant-rs/src/analysis/kernel/promotions.rs)、[observations.rs](../apps/servers/wavequant-quant-rs/src/analysis/kernel/observations.rs)、[qualification_n.rs](../apps/servers/wavequant-quant-rs/src/analysis/kernel/qualification_n.rs) | 图一、资格结束与 v32 候选补充图 |
 | 交易入口、资格、N 证据与候选回退 | [trading/day.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/day.rs)、[trading.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading.rs)、[qualification.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/qualification.rs) | 图五、图六与资格边界 |
 | 两类买点、仲裁、补充及独立买点 | [hierarchy.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/hierarchy.rs)、[arbiter.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/arbiter.rs)、[entries.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/entries.rs)、[secondary.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/secondary.rs)、[shallow.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/shallow.rs) | 图六、顺序与阈值 |
 | N 来源、轧空与波浪目标 | [candidates.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/candidates.rs)、[targets.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/targets.rs)、[target_lifecycle.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/target_lifecycle.rs)、[squeeze.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/squeeze.rs)、[waves.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/waves.rs)、[one_p.rs](../apps/servers/wavequant-quant-rs/src/analysis/trading/one_p.rs) | 图五、图六、图七中的来源与风险分支 |
@@ -45,7 +97,9 @@ flowchart TD
     D --> E["同一核心 level=1，读取折线"]
     E --> F["同一核心 level=2，读取一级及一级偏移"]
     F --> G["同一核心 level=3，读取二级及二级偏移"]
-    G --> N["四级首次翻向启动N搜索，以索引共用当前有效N"]
+    G --> R{"上级严格突破产生新索引回执？"}
+    R -->|是| V["更新受影响的来源版本；共用趋势核心重新收敛"] --> R
+    R -->|否| N["四级首次翻向启动N搜索，以索引共用当前有效N"]
     N --> Q["按启用级别消费 N 记忆并计算资格确认及结束"]
     Q --> H["返回四级索引数组、六态、偏移和资格区间"]
     H -.->|保持停用| I["交易及账户"]
@@ -53,8 +107,46 @@ flowchart TD
 
 `level` 与 `timeframe` 独立：同一份日线、周线或月线，各自形成折线及三级趋势。一级输入折线，二级输入一级，三级输入二级，不在层级之间切换周期。当前前端状态投影的 `enabled` 为 `[true, true, true, true]`。
 
-完整调度实现还保留方向确认、上级严格突破回执及来源版本变化后的收敛重算；这些不在当前数组快速路径中执行。未来启用时，应在此图补充其实际执行顺序，不能只把虚线换成实线。
+v32 数组路径在三级完成后执行索引回执收敛，与资格开关无关；资格和图表消费收敛后的同一份结果。普通通道仅读已结束来源，严格通道可读带本级正式突破证明的开放端点；无证明的发展尾端不能进入。回执、来源点及证明只保存索引，同一来源/规则/截止日期命中缓存后复用结果，不展开递归历史 JSON。其他方向发布流程仍保留在完整逐日入口，不将未启用行为写成快速路径现状。
 
+## 图一补充：严格外包阴母线直接连接母低
+
+前一根为子线、后一根为母线。仅当 `mother.high > child.high && mother.low < child.low && mother.close < mother.open && mother.open < min(child.open,child.close)` 同时成立时使用此分支。高低或实体边界相等不成立；实体重叠、阳母线等继续沿用原包含规则。子线可以是阴线、阳线或十字线，不额外要求倍量或长上影。
+
+```mermaid
+flowchart TD
+    A["相邻子线与母线"] --> B{"严格外包，且阴母实体整体严格在子实体下方？"}
+    B -->|否| OLD["原包含、颜色顺序及十字线处理"]
+    B -->|是| SKIP["跳过母高；只读取母低索引"]
+    SKIP --> HAS{"已有折线端点？"}
+    HAS -->|否| SEED["以子高起线，连接母低"]
+    HAS -->|是| KIND{"当前端点是高点？"}
+    KIND -->|是| TURN["确认原高点，连接母低，转向下"]
+    KIND -->|否| EXT{"母低严格低于当前低点？"}
+    EXT -->|是| LOW["延伸当前下降腿至母低"]
+    EXT -->|否| KEEP["保留当前更低或相等低点"]
+    SEED --> NEXT["沿用索引、可知日期与后续共用趋势计算"]
+    TURN --> NEXT
+    LOW --> NEXT
+    KEEP --> NEXT
+```
+
+该规则在唯一折线游标内生效，数组快速路径和逐日追加共用；母线当天才确认该路径，不改变更早可知日期。后续子线不把跳过的母高补回。未结束低点只严格向下延伸，不制造低点到更高低点的折返。回归源码为 `tests/polyline_mother_body.rs`，本轮未运行。
+
+## 图一补充：来源翻空与资格开启分离（v39）
+
+```mermaid
+flowchart TD
+    A["本级有效翻多候选"] --> B{"Python空多交替结束确认通过？"}
+    B -->|否| WAIT["等待新证据"]
+    B -->|是| OPEN["当日开启资格"]
+    OPEN --> C{"直接来源当日出现正式翻空？"}
+    C -->|是| END["当日关闭；不保存三日站稳开启限制"]
+    C -->|否| ACTIVE["检查其余结束规则，保留新增风险退出"]
+    END --> NEXT["本级翻多仍有效时等待关闭后的新证据"]
+```
+
+过去的次级翻空不延迟本级后续确认。确认当日的来源翻空仍可产生零长度窗口；新增结束规则可能使重开次数不同于旧Python，不能把整体区间列表完全相等作为唯一判断。
 ## 图二：共用趋势判断
 
 `TrendCursor` 校验和过滤来源后按 `path` 分组，各组的 `PathCursor` 调用 `path_trend`。图中循环遍历直接下级点数组；已结束且在当前时点可知的点才可进入判断，动态尾点不能成为下一级闭合证据。
@@ -72,12 +164,12 @@ flowchart TD
     H --> E
     G -->|否| I["比较最近两个高点与两个低点"]
     I --> J{"已经建立趋势方向？"}
-    J -->|否| K{"满足初始整波条件？"}
+    J -->|否| K{"满足初始整波条件，且有内部来源点或本级跨度放宽开启？"}
     K -->|是| L["发布整波起点，建立方向和极值"]
     K -->|否| P
     L --> P
     J -->|是| M["同向更强点：更新整波极值"]
-    M --> N{"反向结构及普通翻转条件成立？"}
+    M --> N{"反向结构及普通翻转成立，且有内部来源点或本级跨度放宽开启？"}
     N -->|是| O["发布原整波极值，切换起点与方向"]
     N -->|否| P
     O --> P
@@ -110,10 +202,10 @@ flowchart TD
 三个等级共用函数，但当前 `waves.rs` 内仍有以下判定差异。这是对现状的记录，不是对这些差异的批准，也不替代根 `AGENTS.md` 的多级统一规则。
 
 1. `level > 1` 时，上升过程的特定创新高可能进入收盘拒绝分支，再等待后续创新低处理。
-2. 初始整波判断使用 `level == 1 || end > start + 1`。
-3. 普通翻转使用 `level == 1 || counter > peak + 1`。
+2. 初始整波统一要求 `end > start + 1`，只有 `wave_span_relaxation[level - 1]` 开启才允许省略内部来源点。
+3. 普通翻转统一要求 `counter > peak + 1`，使用同一个本级放宽开关。
 
-本次仅整理文档，未修改上述判定。
+v38 已删除后两项中的一级硬编码例外。三个开关默认值为 `[true, false, false]`，一级放宽，二三级关闭；例如显式 `[false, true, false]` 只放宽二级。旧请求缺少字段时采用上述默认值；字段固定为3个布尔值。此次不改变第1项收盘拒绝分支，也不改变普通翻转其他通道、严格关键位突破、六态或发展尾点的语义，因此关闭跨度放宽不等价于“任何上涨线都必须突破指定末跌高”。源码配置位于 `kernel.rs::KernelOptions`，判断位于 `waves.rs::path_trend`；前端此次不新增设置项。
 
 ## 图三：偏移与增量续算
 
@@ -181,7 +273,7 @@ stateDiagram-v2
 
 有效回撤要求反向运动大于零且小于原推动幅度，交替还要求严格小于 `0.67`；等于 67% 不满足。小于 `0.33` 会记录弱反向运动证据，不另增一种六态。首次回撤不满足交替条件，不会直接确认反向趋势；攻击点后续延伸时重新等待回撤；翻多保留整段冻结最低起点，仅更新攻击高点，翻空沿用前驱更新规则。
 
-v31 的严格翻转入口只消费 `waves.rs` 已计算的 endpoint 证明，不从六态的局部高低点另选关键位。证明的起点及被突破位必须能匹配本级同路径已闭合前缀，关键位须在攻击日前可知，方向、价格、顺序、端点身份及证明可知日均须一致；下级同坐标、未来或异路径证据不能直接授予本级状态。`ObservationCursor` 按端点保存证明引用，并在端点闭合后继续传给 `SixStateCursor`，避免发展端正确、闭合后又恢复旧背景。六态、N 记忆和资格沿用同一翻向事件，不改变趋势坐标、67%/33% 或 N 外层确认阈值。
+严格证明的起点和关键位必须匹配本级同路径已闭合前缀，关键位在攻击日前可知，方向、价格、顺序和证明时钟一致。v32 限定它只补齐缺少方向或关键位的初始背景；已经存在的整波冻结关键位不能被波内较小 key 替换。`ObservationCursor` 按端点保留证明和首次可知时钟，六态、N 记忆及资格复用同一结果。67%/33% 和 N 外层确认阈值未改变。
 
 ## 结构、方向确认、交易与前端索引
 
@@ -203,18 +295,26 @@ flowchart TD
     B -->|否| OFF["资格 false；不调用开始或结束规则"]
     B -->|是| WAIT["等待本级返回空翻多"]
     WAIT --> SEED["冻结该轮起点、高点、关键位；进入空多交替结束确认阶段"]
-    SEED --> PENDING["逐日推进单N及其他确认通道"]
+    SEED --> PENDING["逐日推进资格候选及其他确认通道；独立保留ABC首N"]
     PENDING --> INVALID{"本级空头、正式反向事实或起点/路径失效？"}
     INVALID -->|是| WAIT
     INVALID -->|否| START{"空多交替结束确认成立？"}
     START -->|否| PENDING
-    START -->|是| ACTIVE["空多交替结束，资格开启；startIndex 为结束确认日"]
-    ACTIVE --> BEAR{"本级当时状态是空头？"}
+    START -->|是| ACTIVE["空多交替结束，资格开启；startIndex 为确认日及固定防守价的行情索引"]
+    ACTIVE --> REV{"资格依赖的来源回撤点已被整波修订？"}
+    REV -->|是| REVISED["按首次正式突破时钟关闭；等待新空翻多"] --> WAIT
+    REV -->|否| BEAR{"本级当时状态是空头？"}
     BEAR -->|是| CLOSEBEAR["强制结束；记录 endIndex；撤销本轮搜索"]
     CLOSEBEAR --> WAIT
     BEAR -->|否| END["判断资格结束；末升低破位只消费首次因果可知日"]
     END --> CLOSED{"结束确认成立？"}
-    CLOSED -->|否| ACTIVE
+    CLOSED -->|否| CONFIRMLOW{"确认日之后，当前最低价严格低于确认日最低价？"}
+    CONFIRMLOW -->|否| SHADOW{"倍量阴线，整个实体严格低于前日实体，且长上影？"}
+    SHADOW -->|否| ACTIVE
+    SHADOW -->|是| SHADOWEND["以当前日结束；double_volume_bearish_body_below_long_upper_shadow"]
+    SHADOWEND --> CLOSE
+    CONFIRMLOW -->|是| LOWEND["以当前日结束；qualification_confirmation_low_broken"]
+    LOWEND --> CLOSE
     CLOSED -->|是| CLOSE["资格 false；记录 endIndex 和原因"]
     CLOSE --> STILL{"本级翻多结构仍成立？"}
     STILL -->|否| WAIT
@@ -226,10 +326,14 @@ flowchart TD
 - 空多交替结束确认成立才进入 Active，交易资格从该结束确认日开启并画区间。仅 Active 可执行结束规则，确认当日即可执行；本级六态为 Bear/空头必须关闭并退出该轮，不能在后续多头日用旧种子重开。六态沿用趋势函数保存的当时观察状态，缺少观察历史的兼容帧才读取 RefContext.state，不由资格消费者重新判趋势。
 - v26按用户新方案改造N通道；独立量价、缺口及普通确认保留。其他确认规则参考 Python bull_alternation_confirmation.confirm_bull_alternation：冻结起点守住后，普通严格小于2/3回撤、深回撤后高点重突破、短浅回撤时间门槛，以及 N/轧空、量价、实体跳空确认。普通确认与兼容生命周期共用函数；不把六态的67%当作资格阈值。
 - 结束规则参考 Python TradingEligibility.observe / close_on_reversal_low_break / close_on_confirmation_gap_fill 和 confirmed_source_bear：本级正式冻结末升低破位、已确认多空交替、本级空头、直接来源正式空头/破位、本级最新已知反转低点破位、起点失效和来源路径结束。正式翻空必须使用攻击日前已知的冻结关键位；候选标签不替代正式破位证据。
+- v34 额外检查资格确认日最低价：`now > startIndex && bars[now].low < bars[startIndex].low`。startIndex 已属于本窗口并保持不变，直接索引原行情，不复制 K 线、不扫描历史、不增加 DTO 字段。现有结束规则保持原因优先级；仅新条件命中时 endReason 为 `qualification_confirmation_low_broken`，endIndex 为跌破当天，结束日不再有资格。确认当天及随后恰好碰到阈值均不触发；资格重开使用新 startIndex 的最低价。该规则针对所有股票和已开启级别，不按海洋王或日期设特例。
+- v35 额外检查倍量阴线长上影：上一交易日成交量必须为正，当日成交量 ≥ 前日成交量 × 2，`close < open < min(previous.open,previous.close)`，且 `2 × (high-max(open,close)) ≥ high-low > 0`、上影长度 ≥ 实体长度。复用 `entries::is_long_upper_shadow` 的 Decimal 比较；二倍量及半振幅边界包含，实体相接不包含。只读同证券有序相邻两根 K 线，不要求子母包含、不依赖 N 或成交账本，不新增历史扫描/数据副本。资格确认日也检查，命中即 endIndex=当前日、结束日无资格；原结束原因优先级保留，仅本规则命中时记录 `double_volume_bearish_body_below_long_upper_shadow`。尚未确认资格不产生关闭区间；关闭后沿用新证据门槛，不以旧证据立即重开。
 - v31 `eligibility::last_rise_broken` 只在 `max(首次严格跌破行情日, 高点可知日, 支撑低点可知日+1)` 消费旧末升低破位，仍要求当天低于支撑且高点之后未创新高。同一旧支撑不因后来反弹、再跌破而重复消费；新的本级或直接下级支撑仍可独立触发。本级当前资格低点破位、正式空头及其他退出条件不受此去重影响。
 - 依赖缺口的资格只在 now > startIndex 后检查缺口回补，与 Python 一致；其他结束条件在确认当日也检查。独立确认可解除既有窗口的缺口依赖，不重置开始日期、不另开区间。
-- 关闭后沿用 Python TrendLifecycle.resume_qualification_search：本级翻多结构仍成立才回到 AwaitingAlternationEnd { after: endIndex }；普通确认先排除关闭前已经可知的旧低点，再选新的最低点，v27 资格关闭不再清理 N 记忆；N通道重开仍须有关闭后才确认的轧空；普通通道过滤旧低点，量价及实体缺口的重开边界详见四通道说明。本级空头、正式反向或起点/路径失效则等待新的空翻多。
+- 关闭后本级翻多仍成立才进入 AwaitingAlternationEnd { after: endIndex }。ABC 首 N 记忆继续保留；资格另建重开候选，N 必须满足 `max(attackIndex, knownIndex) > endIndex`，不能仅靠旧 N 在关闭后再次出现轧空。普通确认先过滤旧低点。本轮已经确认过资格后，冻结的空翻多高点不被后续延伸改写；来源修订、本级空头、反向事实或起点/路径失效均等待新空翻多。
+- 来源修订由共同趋势观察提供：严格通道把波段起点接回更早起点、并突破旧边界时，记录被撤回的内部回撤点。最终同向极值若覆盖首次突破，读取直接下级保存的正式 endpoint 证明恢复首次可知日；资格只关闭依赖该点的窗口，返回 `source_evidence_revised`。不按股票或日期补区间，也不把之后恢复的最终点倒用于失效期间。
 - 默认开关 [false,false,true,false]。现有前端“买点筛选级别”由 API 映射为仅该级开启，分析配置支持独立开启各级；买卖与账户继续停用。
+- v39 开启流程取消直接来源首高/三日站稳门禁，首次开启及重开均直接调用原确认通道；来源当日翻空仍按结束规则处理，过去发生的来源翻空不持续阻断后续资格。
 - DTO 保持 state.qualification = { enabled, active, intervals }，每个区间仅含 path/startIndex/lowIndex/endIndex/confirmationRule/endReason。所有索引属于匹配 dataVersion 的独立行情数组；不添加K线、趋势副本或证据树。
 - 区间语义为 [startIndex,endIndex)，null终点表示仍有效。淡红色显示有效日期，淡蓝色显示确认/结束边界；同日确认并结束只显示边界。结构低点 lowIndex 不倒填成开始日期。
 - v23的失败翻向反向攻击修复保留，v24仅在原六态输出上记录历史状态供资格门禁消费；不改变趋势点坐标和判定规则。连续性桥接同步路径标识，状态与返回点属于同一路径。
@@ -246,12 +350,19 @@ flowchart TD
     P --> N{"第一组合法ABC？"}
     N -->|否| NEXT["等待下一日/新增点"]
     N -->|是| HOLD["冻结唯一候选；不找其他N"]
-    HOLD --> ATK{"当前K线首次有效突破颈线？"}
+    HOLD --> CHECK{"回撤C破位或来源修订？"}
+    CHECK -->|是| REPLACE
+    CHECK -->|否| ATK{"当前K线首次有效突破颈线？"}
     ATK -->|否| HOLD
     ATK -->|是| DEF["冻结攻击日、虚拟箱顶和轧空低"]
     DEF --> SQ["独立函数以当日K线推进轧空状态"]
     SQ --> BROKEN{"严格跌破轧空低或来源修订？"}
-    BROKEN -->|是| RETIRE["旧N失效；下一日从失效时点后的结构找新N"]
+    BROKEN -->|是| RETIRE
+    REPLACE{"尚未攻击、A未破且A/B来源未修订？"}
+    REPLACE -->|是| EXTEND["归档旧N；保留A/B索引等待新的已确认C"]
+    EXTEND --> SAME["当天继续消费已知新C与K线；不跳过当日突破"]
+    SAME --> P
+    REPLACE -->|否| RETIRE["旧N失效；下一日从失效时点后的结构找新N"]
     RETIRE --> P
     BROKEN -->|否| CONF{"出现轧空/强轧空？"}
     CONF -->|否| SQ
@@ -269,8 +380,9 @@ flowchart TD
 - v29运行入口 `trading/single_n.rs::advance_n_indexed` 输入共享折线点数组、一次准备的价格和K线数组下标；颈线收盘通过数组下标只读取一次。返回ABC各自来源数组下标/K线下标/可知时钟、颈线极值及收盘、攻击日、轧空低、箱顶和失效状态。只保留三个准备点和一个候选，不持有历史行情副本。
 - `advance_squeeze_indexed` 输入共享N数据及K线数组，以当前/上一根/攻击K线下标读取固定大小状态；每个新交易日最多推进一次，最早攻击后第二日确认。相等不算破位；严格跌破防守位后整组失效，不再以放量反转复活该N。已有候选不被更晚的ABC替换。
 - 出现轧空后才初始化目标。一饱/二吐复用 `project_n_targets`；五顶/十满复用 `waves::ProjectionState::advance_bar` 的动态回调、推动和叠加规则，未具备条件时保留null，不伪造固定价格。目标到达日从轧空可知日开始记录，不倒填历史；每步丢弃临时目标事件，不保留目标临时事件列表；首 N 集合随本周期实际趋势数增长，关键位换新后清空。
-- 同一共享N每天最多一次 `advance_n_indexed`，各级只在本趋势首次翻向后持有一个当前有效索引，N维护不依赖资格开关；锁定后只推进防守、轧空及目标。资格消费者不再另算 N。其他确认通道仍按原优先级N→独立量价→实体缺口→普通确认执行；买卖账户仍停用。单N数据是函数内部返回模型，本轮未扩展前端DTO或新增目标图层。
+- 同一 ABC 共享 N 每天最多一次 `advance_n_indexed`，各级持有一个有效首 N 索引，维护不依赖资格开关。v32 资格确认额外维护重开候选及折叠 N，不能把 ABC 首 N 所有权当成所有确认通道的唯一候选。四通道仍依次为 N→独立量价→实体缺口→普通确认；买卖和账户停用，资格 DTO 不增加行情或证据树。
 - 来源修订以已保存的三个直接来源下标检查；若坐标、价格、路径或可知时钟改变，候选失效。不能从最终点快照反推所有历史修订，此轮没有修复该既有历史输入缺口。
+- v42 的 `SingleNState::after_invalidation` 由 `PathState::advance` 在共享候选失效时调用：未攻击且原始推动起点严格未破，只保存原 A/B 的两个索引与印记，从失效日继续消费已确认点；新 C 使用自身可知时钟，形成新共享 N 身份。旧 C 及旧 N 失效记录保持不变。正 N 下探延伸和倒 N 上探延伸对称；已攻击或 A/B 修订不保留锚点，不扫描历史前缀。资格折叠候选通道仍独立维护。
 - 用户授权同海洋王2133根K线、旧→新各预热1次/测量5次：资格中位2316.5288→6.7525ms，分析2342.1111→35.5593ms；四级结构摘要一致，资格12→10条（6段非零），不宣称资格等价。新N日推进614次、轧空284次；旧observe_n重算10360次已从该资格通道移除。报告为本worktree .codex-runtime/rust-startup/single-n-comparison.md。默认API已重新编译并启动；提交前已运行单N、防守、来源修订、同日限制及投射边界回归；不沿用旧规则测试作为新规则正确性证据。
 
 ## 空多交替结束确认通道详解（v27）
@@ -297,8 +409,8 @@ flowchart TD
     A["本级开关开启且收到合法空翻多"] --> B["等待交替结束；资格仍为 false"]
     B --> C{"种子、路径失效或本级转空？"}
     C -->|是| Z["撤销等待；等新空翻多"]
-    C -->|否| D["推进当天唯一 N 和轧空状态"]
-    D --> E{"1. 单 N 及外层回撤确认？"}
+    C -->|否| D["读取首 N，并推进资格重开/折叠候选"]
+    D --> E{"1. 有效 N 及外层回撤确认？"}
     E -->|否| F{"2. 独立量价确认？"}
     F -->|否| G{"3. 实体缺口确认？"}
     G -->|否| H{"4. 普通回撤确认？"}
@@ -315,14 +427,49 @@ flowchart TD
 
 | 顺序 | 函数 | confirmationRule |
 | --- | --- | --- |
-| 1 | n_alternation::confirm_single_n | single_n_and_squeeze_after_qualified_b |
+| 1 | n_alternation::confirm_single_n / confirm_single_n_snapshot | positive_n_and_squeeze_after_qualified_b |
 | 2 | confirmation::confirm_volume_breakout_alternation，参数 confirmed_n_squeeze=false | volume_bullish_polyline_last_fall_high_breakout |
 | 3 | confirmation::confirm_body_gap_alternation | body_gap_volume_bullish_breakout_after_defended_low |
 | 4 | kernel::confirmation::confirm_ordinary_bull_counter_after | confirmed_higher_pullback_strictly_below_two_thirds 或 confirmed_higher_pullback_then_confirmed_flip_high_rebreak |
 
-### 通道一：单 N → 轧空 → 外层回撤确认
+### 通道一：有效 N → 轧空 → 外层回撤确认
 
-**N 结构，single_n::advance_n_indexed：** 由本级记忆簿按方向、趋势起点维护游标，沿共享折线数组读取已确认且当日可知的点，保留至多三个待选点。资格确认另要求 N 的 A 在空翻多高点 h 之后；记忆簿本身不依赖资格开关。取第一组同路径、按 `(barIndex,ordinal)` 严格排序的低—高—低，要求 `nA.price < nC.price < nB.price`；同根 K 线通过 ordinal 排序。冻结 ABC 和颈线 K 线收盘，不枚举 120 日组合，不用更晚 N 替换有效候选。
+v33 校验复用：折叠 N 通过 observe_n_validated 借用入口已验证的同一数组，只读视图的上界限定为当前日。共同 observe_n_core 仍检查原 A/B/C、攻击和防守区间；A 点之前的数据不再逐候选重复校验，较晚发现候选的攻击后补推进保持。外部原始行情入口必须先校验可见前缀，不提供跳过校验的公共布尔开关。
+
+```mermaid
+flowchart TD
+    A[分析入口校验行情一次] --> B[不可变行情容器]
+    C[追加行情] --> D[校验新增部分及旧尾部边界]
+    D --> B
+    B --> E[四级资格借用已处理前缀]
+    E --> F[来源变化时发现新折叠 N]
+    F --> G[截至当前日的只读前缀视图]
+    G --> H[共同 N 核心检查 A/B/C 与攻击防守区间]
+    H --> I[已有候选按新 K 线增量推进]
+    J[外部原始行情调用 observe_n] --> K[校验当前可见前缀]
+    K --> H
+```
+
+源码映射：analysis/analyzer.rs、trading/validated_bars.rs、kernel/eligibility.rs、kernel/qualification_n.rs、trading/n_shape.rs。视图保持原数组索引；不能截到更晚的趋势起点丢失 A 点或前置关键位。
+
+v32 区分 ABC 首 N 与资格候选。ABC 仍按下述单 N 所有权规则共享；资格关闭后可独立找新确认，已有首 N 不阻止重开。`qualification_n::FoldedNs` 仅在折线来源增长时，在 `structure_window` 范围发现折叠组合；颈线左侧至更高峰之间取最低 A、右侧至下一次越峰之前取未破 A 的最低 C。同一 ABC 身份只初始化一次，先通过 `observe_n_validated` 调用共用 `observe_n_core` 核对实际 K 线结构，再复用索引增量 N/轧空函数；破位、超出窗口或 TTL 后淘汰。它不保存 K 线副本、不逐日重跑每个 N 的完整历史，也不替换共享首 N。
+
+```mermaid
+flowchart TD
+    S["等待资格确认"] --> SHARED["读取当日共享首N"]
+    SHARED --> REOPEN["若是重开窗口，推进关闭后独立候选"]
+    REOPEN --> CHANGED{"折线来源新增？"}
+    CHANGED -->|是| FOLD["发现相邻/折叠ABC；身份去重；首次核对结构"]
+    CHANGED -->|否| STEP["按当日K线索引推进已存候选"]
+    FOLD --> STEP
+    STEP --> VALID{"防守、时效、攻击质量及重开时钟有效？"}
+    VALID -->|否| DROP["淘汰失效候选；不清ABC首N"]
+    VALID -->|是| OUTER["检查轧空及外层回撤条件"]
+    OUTER -->|成立| OPEN["资格从确认日开启"]
+    OUTER -->|未成立| OTHER["量价、缺口、普通回撤通道"]
+```
+
+**ABC 首 N 结构，single_n::advance_n_indexed：** 由本级记忆簿按方向、趋势起点维护游标，沿共享折线数组读取已确认且当日可知的点，保留至多三个待选点。资格确认另要求 N 的 A 在空翻多高点 h 之后；记忆簿本身不依赖资格开关。取第一组同路径、按 `(barIndex,ordinal)` 严格排序的低—高—低，要求 `nA.price < nC.price < nB.price`；同根 K 线通过 ordinal 排序。冻结 ABC 和颈线 K 线收盘，首 N 搜索不枚举 120 日组合，不用更晚 N 替换有效候选；资格折叠候选另按上图维护。
 
 - 攻击前 low 严格跌破 nC，候选失效。
 - 首次 high ≥ 颈线 high 或 close > 颈线 close 时，阶段防守初始化为 min(前收盘,当天 low)，随后逐日取更低 low。
@@ -551,7 +698,7 @@ flowchart TD
     I -->|尚无有效N| L["明确提示尚无有效N，不借用其他级别"]
 ```
 
-2026-10-26 最新展示入口：普通鼠标位置和日期定位默认读取其所在的一级趋势整段；不要求鼠标靠近N字母、折线或一级趋势线。优先读取本级引用；一级没有匹配引用时，可显示其他级别已经发布、ABC和已有攻击均位于本段且方向/path一致的共享N，提示保留其真实来源级别，不为一级新增策略订阅。形成前可回看段内在实际截止日前已经产生的N，提示明确是目标回看。目标快照仍受真实来源的使用结束、失效、实际维护日期及回放截止约束；一级段控制展示范围，不重写共享N的维护时钟。N字母命中保留一级展示范围及真实来源，明确命中二/三级趋势线时仍只读取该级来源；橙色折线不抢走一级整段默认N。一级图层关闭时回退到可见级别。点击保存当前回看，移出恢复已保存来源。不连接新线、不重判六态、不运行N或资格规则、不发送新请求。正N使用低—高—低，倒N使用高—低—高；实际回放截止在轧空/杀多确认前时不显示之后的目标，严格失效后不沿用旧N，后续候选不得跨一级段借用。N形态使用被动图表基元，目标复用现有 `TargetGuideOverlay` 的标签避让和图外提示；不新增series或改变价格范围。
+2026-10-26 最新展示入口：普通鼠标位置和日期定位默认读取其所在的一级趋势整段；不要求鼠标靠近N端点、折线或一级趋势线。优先读取本级引用；一级没有匹配引用时，可显示其他级别已经发布、ABC和已有攻击均位于本段且方向/path一致的共享N，提示保留其真实来源级别，不为一级新增策略订阅。形成前可回看段内在实际截止日前已经产生的N，提示明确是目标回看。目标快照仍受真实来源的使用结束、失效、实际维护日期及回放截止约束；一级段控制展示范围，不重写共享N的维护时钟。N端点与线段命中保留一级展示范围及真实来源，明确命中二/三级趋势线时仍只读取该级来源；橙色折线不抢走一级整段默认N。一级图层关闭时回退到可见级别。点击保存当前回看，移出恢复已保存来源。不连接新线、不重判六态、不运行N或资格规则、不发送新请求。正N使用低—高—低，倒N使用高—低—高；实际回放截止在轧空/杀多确认前时不显示之后的目标，严格失效后不沿用旧N，后续候选不得跨一级段借用。N形态使用被动图表基元，目标复用现有 `TargetGuideOverlay` 的标签避让和图外提示；不新增series或改变价格范围。
 
 ```mermaid
 flowchart TD
@@ -572,7 +719,9 @@ flowchart TD
 
 本轮方向联调已读取海洋王已有完成结果：二级上涨段不再显示倒N，一级正N为红色，二级倒N为绿色，N字母命中保留同一来源；详情见[显示修复记录](diagnostics/n-trend-hover-display-fix-2026-10-26.md)。
 
-命名统一：正N为“轧空”，防守位为“轧空低”；倒N为“杀多”，防守位为“杀多高”。后端旧市场状态枚举/历史诊断中的“轧多”不在本次改名范围，价格与严格破位规则不变。N字母、端点和N线段有独立命中入口；在N来源上移动时保持已经展示的同一快照及截止日，不因A/B/C早于N确认日而切到其他N。该查看行为不会回填资格或回测状态，也不读取回放截止日之后的数据。
+命名统一：正N为“轧空”，防守位为“轧空低”；倒N为“杀多”，防守位为“杀多高”。后端旧市场状态枚举/历史诊断中的“轧多”不在本次改名范围，价格与严格破位规则不变。N端点和N线段有独立命中入口；在N来源上移动时保持已经展示的同一快照及截止日，不因A/B/C早于N确认日而切到其他N。该查看行为不会回填资格或回测状态，也不读取回放截止日之后的数据。
+
+2026-10-27 图面精简：`TrendNHoverOverlay` 保留正N/倒N线段与端点圆点，不绘制 N·A/N·B/N·C/攻击文字，并移除对应的隐形文字命中区；`trendNTargetGuides` 的防守价通过 `showLabel:false` 交给 `TargetGuideOverlay`，只在原攻击日锚点和真实防守价格画短虚线，不画轧空低/杀多高、价格或有效防守文字，也不参与其他目标标签避让。一饱/二吐/五顶/十满标签和悬停详情保留；坐标、方向色、N归属及计算规则不变。
 
 2026-10-26 目标回看时钟：一级段内任意鼠标位置、日期定位及N标识可查看该来源已发布目标；读取边界为实际回放截止、本级使用结束前、N严格失效前及已观察日期中的最早者。锁定同级/path/方向/nIndex，不前端推算目标。提示写“N目标回看截至…；非光标当日状态”。底层`read`仍提供当日因果截面，UI默认整段回看改用`inspectStage`；不会把查看结果写回资格或交易。海洋王N204在7月29日发布一饱/二吐，鼠标在其一级上涨段内可查看；回放截止7月27日则不能显示7月29日目标。
 
@@ -808,7 +957,11 @@ flowchart TD
     E -->|否| G["从最新闭合状态试算一个端点"]
     F --> H["保存段枚举及首次可知观察；事件按身份去重"]
     G --> H
-    H --> I["N 记忆、资格和索引输出直接复用"]
+    H --> M{"正式通道替换发展端？"}
+    M -->|是| J["端点、六态、观察时钟一起替换"]
+    M -->|否| K["保留普通通道的完整端点事实"]
+    J --> I["N 记忆、资格和索引输出直接复用"]
+    K --> I
 ```
 
 源码映射：`kernel.rs::TrendState`、`kernel/structure.rs::{SixStateMachine,SixStateCursor}`、`kernel/observations.rs::ObservationCursor`、`kernel/waves.rs::publish/path_trend`、`kernel/drawing.rs::snapshot_indices`、`analysis/indexed.rs`、`application/trend_state.rs`、`@repo/contracts` 的 `TrendStateSchema` 及前端 `public/trend-state.js`。历史 Python 资格差异仍单独留项，本次优化不修订结束门槛。

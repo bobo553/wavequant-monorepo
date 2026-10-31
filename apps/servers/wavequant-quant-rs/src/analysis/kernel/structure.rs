@@ -106,10 +106,10 @@ impl SixStateMachine {
         if previous.is_some()&&anchored_extremes[slot].is_none_or(|(old,_)|point.kind.sign()*(point.value-pool.view(old,bars).value)>0.0){
             anchored_extremes[slot]=Some((id,previous));
         }
-        if let Some(strict)=strict{
+        if let Some(strict)=strict.filter(|_|direction.is_none()||key.is_none()){
             let continuing=direction.is_some_and(|current|if attack.is_some(){current.opposite()==strict.direction}else{current==strict.direction});
             if !continuing{
-                // 本级真实严格翻向优先于旧的未完成交替；同向延伸仍保留首次整波起点。
+                // 升级证书补齐初始背景；已冻结的六态关键位不能被腿内局部突破替换。
                 direction=Some(strict.direction.opposite());anchor=Some(strict.origin);key=Some(strict.key);
                 attack=None;suspicion=false;
             }

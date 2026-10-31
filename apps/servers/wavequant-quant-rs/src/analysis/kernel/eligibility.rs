@@ -40,6 +40,10 @@ struct Search {
     key: KernelPoint,
     started: usize,
     phase: QualificationPhase,
+    confirmed_once:bool,
+    resume_n:Option<crate::analysis::trading::single_n::SingleNState>,
+    resume_squeeze:crate::analysis::trading::single_n::SqueezeState,
+    folded:super::qualification_n::FoldedNs,
 }
 fn price(p: &KernelPoint) -> Result<Decimal, String> {
     p.value.to_string().parse().map_err(|_|"qualification price exceeds decimal range".into())
@@ -87,7 +91,7 @@ fn seed(event:&KernelEvent,up:bool)->Option<Search> {
         ||key.known_index>=high.index
         ||[origin,key,high].iter().any(|p|p.known_index>event.known_index){return None;}
     Some(Search{origin:origin.clone(),high:high.clone(),key:key.clone(),started:event.known_index,
-        phase:QualificationPhase::AwaitingAlternationEnd{after:None}})
+        phase:QualificationPhase::AwaitingAlternationEnd{after:None},confirmed_once:false,resume_n:None,resume_squeeze:Default::default(),folded:Default::default()})
 }
 fn path_points(frame:&KernelFrame)->BTreeMap<usize,Vec<KernelPoint>> {
     let mut paths:BTreeMap<usize,Vec<KernelPoint>>=BTreeMap::new();
@@ -98,12 +102,49 @@ fn visible(points:&[KernelPoint],now:usize)->&[KernelPoint] {
     &points[..points.partition_point(|p|p.known_index<=now)]
 }
 pub(crate) struct PairContext {pub known:usize,pub path:usize,pub pair:Option<(KernelPoint,KernelPoint)>}
-pub(crate) fn pair_contexts(pool:&PointArena,bars:&[KernelBar],frame:&RefFrame)->Vec<PairContext>{
+pub(crate) fn pair_contexts(pool:&PointArena,bars:&[KernelBar],frame:&RefFrame)->Result<Vec<PairContext>,String>{
     #[cfg(feature="qualification-timing")]
     let _profile_scope=crate::analysis::kernel::qualification_profile::enter("pair_contexts");
 
-    frame.contexts.iter().map(|context|PairContext{known:context.known_index,path:context.path,
-        pair:if context.direction==Some(super::Direction::Down){context.key.zip(context.anchor).map(|(key,low)|(scalar(pool,bars,key),scalar(pool,bars,low)))}else{None}}).collect()
+    // 量价门禁沿用 Python polyline_last_fall_pair 的冻结折线关键位。
+    // 它按攻击前一腿测回撤，不能借用整波六态的测幅锚点。
+    let mut result=Vec::new();let mut paths:BTreeMap<usize,Vec<PointId>>=BTreeMap::new();
+    for id in &frame.points{paths.entry(pool.view(*id,bars).path).or_default().push(*id);}
+    for (path,points) in paths{
+        let(mut prices,mut extremes,mut bull,mut anchor,mut key,mut attack,mut previous)=
+            ([Vec::<f64>::new(),Vec::new()],[None::<(PointId,Option<PointId>)>;2],None::<bool>,None::<PointId>,None::<PointId>,None::<(PointId,PointId,PointId,bool)>,None::<PointId>);
+        for id in points{let p=pool.view(id,bars);let slot=usize::from(p.kind==PointKind::L);
+            prices[slot].push(p.value);if prices[slot].len()>2{prices[slot].remove(0);}
+            if extremes[slot].is_none_or(|(old,_)|p.kind.sign()*(p.value-pool.view(old,bars).value)>0.0){extremes[slot]=Some((id,previous));}
+            if bull.is_none(){
+                bull=super::classify_prices(&prices[0],&prices[1])?.map(|d|d==super::Direction::Up);
+                if let Some(up)=bull{if let Some((a,k))=extremes[usize::from(!up)]{anchor=Some(a);key=k;}}
+            }else if key.is_none(){if let Some((a,k))=extremes[usize::from(bull==Some(false))]{anchor=Some(a);key=k;}}
+            else if let (Some(up),Some(a),Some(k))=(bull,anchor,key){
+                let sign=if up{-1.0}else{1.0};let target=if up{PointKind::L}else{PointKind::H};
+                if attack.is_none(){
+                    if p.kind==pool.view(a,bars).kind&&previous.is_some()&&sign*(p.value-pool.view(a,bars).value)<0.0{anchor=Some(id);key=previous;}
+                    if p.kind==target&&sign*(p.value-pool.view(key.unwrap_or(k),bars).value)>0.0{
+                        if let Some(origin)=previous{attack=Some((origin,id,anchor.unwrap_or(a),false));}
+                    }
+                }else if let Some((origin,extreme,frozen,checked))=attack{
+                    if p.kind!=target&&!checked{
+                        let r=super::retracement(pool.view(origin,bars).value,pool.view(extreme,bars).value,p.value,if up{super::Direction::Down}else{super::Direction::Up})?;
+                        attack=Some((origin,extreme,frozen,true));
+                        if r.partial&&r.below_67_percent{bull=Some(!up);anchor=Some(extreme);key=Some(origin);attack=None;}
+                    }else if p.kind==target&&sign*(p.value-pool.view(extreme,bars).value)>0.0{
+                        if let Some(origin)=previous{attack=Some((origin,id,frozen,false));}
+                    }
+                }
+                if let Some((_,_,frozen,_))=attack{
+                    if p.kind==pool.view(frozen,bars).kind&&sign*(p.value-pool.view(frozen,bars).value)<0.0{anchor=Some(id);key=previous;attack=None;}
+                }
+            }
+            result.push(PairContext{known:p.known_index,path,pair:if bull==Some(false){key.zip(anchor).map(|(k,a)|(scalar(pool,bars,k),scalar(pool,bars,a)))}else{None}});
+            previous=Some(id);
+        }
+    }
+    result.sort_by_key(|context|context.known);Ok(result)
 }
 /// 直接使用同次趋势函数返回的六态时钟；资格层不按高低点重新识别趋势。
 #[derive(Clone, Copy)]
@@ -122,17 +163,27 @@ struct NOrder([(usize,usize);3]);
 fn n_order(n:&crate::analysis::trading::single_n::SingleNData)->NOrder{NOrder([&n.a,&n.b,&n.c].map(|p|(p.bar_index,p.ordinal)))}
 type AvailableNs=BTreeMap<NOrder,(super::n_memory::NIndex,super::n_memory::NConfirmationSnapshot)>;
 fn confirm_bull_alternation_end(search:&Search,own:&[KernelPoint],polyline:&[KernelPoint],bars:&[RuleCandle],market:&[KernelBar],
-    now:usize,level:u8,_config:&TradingDayConfig,ns:&AvailableNs,records:&[super::n_memory::SharedNRecord],pair:Option<(&KernelPoint,&KernelPoint)>,after:Option<usize>,allow_gap:bool)
+    now:usize,level:u8,config:&TradingDayConfig,ns:&AvailableNs,records:&[super::n_memory::SharedNRecord],pair:Option<(&KernelPoint,&KernelPoint)>,after:Option<usize>,allow_gap:bool,cache:&mut n_alternation::ConfirmationCache)
     ->Result<Option<AlternationProof>,String> {
     #[cfg(feature="qualification-timing")]
     let _profile_scope=crate::analysis::kernel::qualification_profile::enter("confirm_start");
 
     if now<search.started||after.is_some_and(|after|now<=after){return Ok(None);}
     let path=format!("lecture-{}",search.origin.path);
+    let quality=|attack:Option<usize>|!config.strict_n_attack_quality||attack.is_some_and(|i|i>0&&i<=now
+        &&crate::analysis::trading::entries::v3_positive_n_attack_rejection(&bars[i],Some(bars[i].volume>bars[i-1].volume)).is_none());
     for (index,snapshot) in ns.values(){
         let n=&records.get(index.0).ok_or("qualification N index outside shared array")?.data;
+        if !quality(snapshot.attack){continue;}
         if let Some(proof)=n_alternation::confirm_single_n_snapshot(bars,now,&search.origin,&search.high,&search.key,
-            polyline,n,*snapshot,level,&path,after)? {return Ok(Some(proof));}
+            polyline,n,*snapshot,level,&path,after,pair,config,allow_gap,cache)? {return Ok(Some(proof));}
+    }
+    if let Some(n)=search.resume_n.as_ref().and_then(|state|state.candidate.as_ref()).filter(|n|quality(n.attack_index)){
+        if let Some(proof)=n_alternation::confirm_single_n_snapshot(bars,now,&search.origin,&search.high,&search.key,polyline,n,super::n_memory::NConfirmationSnapshot::of(n),level,&path,after,pair,config,allow_gap,cache)?{return Ok(Some(proof));}
+    }
+    for n in search.folded.values(){
+        if !quality(n.attack_index){continue;}
+        if let Some(proof)=n_alternation::confirm_single_n_snapshot(bars,now,&search.origin,&search.high,&search.key,polyline,n,super::n_memory::NConfirmationSnapshot::of(n),level,&path,after,pair,config,allow_gap,cache)?{return Ok(Some(proof));}
     }
     if let Some(proof)=confirmation::confirm_volume_breakout_alternation(bars,now,&search.origin,&search.high,pair,false)?{
         return Ok(Some(proof));
@@ -171,19 +222,28 @@ fn last_rise_broken(points:&[KernelPoint],bars:&[RuleCandle],now:usize)->Result<
 fn close(active:&ActiveQualification,intervals:&mut[QualificationInterval],now:usize,reason:&str) {
     intervals[active.interval].end_index=Some(now);intervals[active.interval].end_reason=Some(reason.into());
 }
+/// 只读相邻已收盘K线；资格风险不要求子母包含，也不触发交易或重扫历史。
+fn double_volume_bearish_body_below_upper_shadow(previous:&RuleCandle,current:&RuleCandle)->bool {
+    previous.symbol==current.symbol&&previous.timestamp<current.timestamp
+        &&previous.volume>Decimal::ZERO&&current.volume>=Decimal::TWO*previous.volume
+        &&current.close<current.open&&current.open<previous.open.min(previous.close)
+        &&crate::analysis::trading::entries::is_long_upper_shadow(current)
+}
 fn source_path(paths:&BTreeMap<(usize,usize),(usize,usize)>,path:usize,index:usize)->(usize,usize){
     paths.range((path,0)..=(path,index)).next_back().map_or((path,path),|(_,source)|*source)
 }
 /// 每级一次按日期推进；空翻多只创建 AwaitingAlternationEnd，只有 Active 才调用结束条件。
 /// source_paths 显式绑定直接下级路径，不能把其他来源的翻空拿来关闭本级资格。
 pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFrame,source_paths:&BTreeMap<(usize,usize),(usize,usize)>,
-    bars:&[RuleCandle],market:&[KernelBar],config:&TradingDayConfig,pairs:&[PairContext],states:&[StateContext],enabled:bool,cancel:Option<&AtomicBool>,n_facts:&[super::n_memory::NFact],records:&[super::n_memory::SharedNRecord])
+    validated:crate::analysis::trading::validated_bars::ValidatedBarSlice<'_>,market:&[KernelBar],config:&TradingDayConfig,pairs:&[PairContext],states:&[StateContext],revisions:&[(usize,usize,usize,usize)],enabled:bool,cancel:Option<&AtomicBool>,n_facts:&[super::n_memory::NFact],records:&[super::n_memory::SharedNRecord])
     ->Result<Vec<QualificationInterval>,String> {
     #[cfg(feature="qualification-timing")]
     let _profile_scope=crate::analysis::kernel::qualification_profile::enter("daily_eligibility");
 
+    let bars=validated.as_slice();
     if !enabled||bars.is_empty(){return Ok(Vec::new());}
     let own=path_points(frame);let lower_points=path_points(lower);let line=path_points(polyline);
+    let line_prices:BTreeMap<_,Vec<_>>=line.iter().map(|(path,points)|Ok((*path,points.iter().map(price).collect::<Result<Vec<_>,String>>()?))).collect::<Result<_,String>>()?;
     let mut events:Vec<_>=frame.events.iter().collect();events.sort_by_key(|e|(e.known_index,e.point.order()));
     let mut lower_events:Vec<_>=lower.events.iter().filter(|e|e.title=="翻多为空"&&seed(e,false).is_some()).collect();
     lower_events.sort_by_key(|e|e.known_index);
@@ -194,6 +254,8 @@ pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFr
     let(mut event_index,mut lower_index,mut state_index,mut n_index)=(0,0,0,0);
     let mut current_ns:BTreeMap<usize,AvailableNs>=BTreeMap::new();
     let empty_ns=BTreeMap::new();
+    let mut confirmation_cache=n_alternation::ConfirmationCache::default();
+
     for now in 0..bars.len(){
         if cancel.is_some_and(|flag|flag.load(Ordering::Relaxed)){return Err("qualification calculation cancelled".into());}
         while n_index<n_facts.len()&&n_facts[n_index].known<=now{
@@ -217,7 +279,7 @@ pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFr
                 let origin=price(&next.origin)?;
                 if bars[next.origin.index+1..=now].iter().any(|bar|bar.low<origin){continue;}
                 if let Some(previous)=searches.get_mut(&path){
-                    if matches!(previous.phase,QualificationPhase::Active(_)){continue;}
+                    if previous.confirmed_once||matches!(previous.phase,QualificationPhase::Active(_)){continue;}
                     // 延续同一轮空翻多只提高攻击高点，保留首次起点、关键位及重开门槛。
                     if current_ns.get(&path).is_none_or(|ns|!ns.values().any(|(index,_)|records.get(index.0).is_some_and(|n|n.data.a.bar_index>previous.high.index)))&&next.high.order()>previous.high.order()&&next.high.value>previous.high.value{
                         previous.high=next.high;
@@ -238,31 +300,48 @@ pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFr
             let origin_broken=bars[now].low<price(&search.origin)?;
             let invalid_candidate=path_ended||bear_state||bear_flip||bear_alternation||origin_broken;
             let pair=pairs.iter().rev().find(|p|p.path==base&&p.known<=now).and_then(|p|p.pair.as_ref()).map(|(key,low)|(key,low));
-            // N 已由本级记忆簿推进；资格消费者只读当日已知记录，不再搜索或清空 N。
+            // ABC 首 N 记忆不被资格关闭清空；资格重开和折叠 N 使用独立候选。
             let ns=current_ns.get(&path).unwrap_or(&empty_ns);
             if let QualificationPhase::AwaitingAlternationEnd{after}=search.phase{
                 // 没有有效资格可关闭；仅撤销已经失效的翻多候选，不生成结束区间。
                 if invalid_candidate{retired.push(path);continue;}
-                let Some(proof)=confirm_bull_alternation_end(search,own,polyline,bars,market,now,frame.level,config,ns,records,pair,after,true)? else{continue;};
+                search.folded.advance(polyline,line_prices.get(&base).map(Vec::as_slice).unwrap_or(&[]),validated,now,search.high.index,
+                    config.structure_window,config.pattern_ttl,config.shadow_fraction)?;
+                if let Some(state)=search.resume_n.as_mut(){
+                    let prices=line_prices.get(&base).map(Vec::as_slice).unwrap_or(&[]);
+                    let step=crate::analysis::trading::single_n::advance_n_indexed(state,polyline,prices,bars,now)?;
+                    if step.invalidated{search.resume_squeeze=Default::default();}
+                    if let Some(n)=state.candidate.as_mut(){
+                        if now>0{crate::analysis::trading::single_n::advance_squeeze_indexed(&mut search.resume_squeeze,n,bars,now,config.shadow_fraction)?;}
+                    }
+                }
+                // 与 Python 一致：来源翻空只在发生日关闭已开启资格，不额外延迟开始确认。
+
+                let Some(proof)=confirm_bull_alternation_end(search,own,polyline,bars,market,now,frame.level,config,ns,records,pair,after,true,&mut confirmation_cache)? else{continue;};
                 let active=ActiveQualification{interval:intervals.len(),low:proof.low.clone(),gap:gap_lower(&proof)};
                 // 空多交替结束的真实确认日就是交易资格开始日，不回填翻多或结构低点日期。
                 intervals.push(QualificationInterval{path,start_index:now,low_index:proof.low.index,end_index:None,
                     confirmation_rule:proof.rule,end_reason:None});
                 search.phase=QualificationPhase::Active(active);
+                search.confirmed_once=true;
             }
             let QualificationPhase::Active(active)=&search.phase else{continue;};
             let mut active=active.clone();
             let start=intervals[active.interval].start_index;
             // Python 的独立确认可解除缺口依赖；这里只更新现有窗口，不重复开启资格。
             if active.gap.is_some()&&now>start&&!invalid_candidate
-                &&confirm_bull_alternation_end(search,own,polyline,bars,market,now,frame.level,config,ns,records,pair,None,false)?.is_some(){
+                &&confirm_bull_alternation_end(search,own,polyline,bars,market,now,frame.level,config,ns,records,pair,None,false,&mut confirmation_cache)?.is_some(){
                 active.gap=None;
             }
             // 以下结束规则仅 Active 可达；确认当日也执行，空头具有强制关闭优先级。
             let source_bear=lower_events[lower_first..lower_index].iter().any(|e|e.point.path==direct);
             let latest_low=own.iter().rev().find(|p|p.kind==PointKind::L&&p.known_index<now&&p.order()>=active.low.order());
             let low_broken=latest_low.map(price).transpose()?.is_some_and(|p|bars[now].low<p);
-            let reason=if bear_state{Some("same_level_bear_trend_confirmed")}
+            let revised=revisions.iter().any(|&(known,source,index,ordinal)|known==now&&source==path&&(index,ordinal)==active.low.order());
+            // 确认日下标冻结本窗口的防守价，不能随结构低点或后续行情移动。
+            let confirmation_low_broken=now>start&&bars[now].low<bars[start].low;
+            let reason=if revised{Some("source_evidence_revised")}
+                else if bear_state{Some("same_level_bear_trend_confirmed")}
                 else if path_ended{Some("source_path_ended")}
                 else if bear_flip{Some("same_level_last_rise_low_broken")}
                 else if bear_alternation{Some("bear_alternation_completed")}
@@ -270,17 +349,25 @@ pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFr
                 else if last_rise_broken(own,bars,now)?{Some("same_level_last_rise_low_broken")}
                 else if origin_broken{Some("special_bull_origin_broken")}
                 else if now>start&&active.gap.is_some_and(|gap|bars[now].low<=gap){Some("confirmation_gap_filled")}
-                else if low_broken{Some("reversal_low_broken")}else{None};
+                else if low_broken{Some("reversal_low_broken")}
+                else if confirmation_low_broken{Some("qualification_confirmation_low_broken")}
+                else if now>0&&double_volume_bearish_body_below_upper_shadow(&bars[now-1],&bars[now]){
+                    Some("double_volume_bearish_body_below_long_upper_shadow")
+                }else{None};
             if let Some(reason)=reason{
                 close(&active,&mut intervals,now,reason);
                 // 沿用 Python resume_qualification_search：本级翻多仍成立才等待新证据。
                 // 本级空头/反向事实/起点或路径失效必须回到等待新的空翻多。
-                if invalid_candidate{retired.push(path);}else{
+                if invalid_candidate||revised{retired.push(path);}else{
                     search.phase=QualificationPhase::AwaitingAlternationEnd{after:Some(now)};
+                    search.resume_n=Some(crate::analysis::trading::single_n::SingleNState::new(now));
+                    search.resume_squeeze=Default::default();
+                    search.folded=Default::default();
                 }
             }else{search.phase=QualificationPhase::Active(active);}
         }
         for path in retired{searches.remove(&path);}
+        confirmation_cache.retain_used(now);
     }
     Ok(intervals)
 }
@@ -314,7 +401,7 @@ mod tests {
         run_with_states(frame,lower,bars,market,&states,enabled)
     }
     fn run_with_states(frame:&KernelFrame,lower:&KernelFrame,bars:&[RuleCandle],market:&[KernelBar],states:&[StateContext],enabled:bool)->Vec<QualificationInterval>{
-        calculate(frame,lower,&KernelFrame::empty(0),&BTreeMap::new(),bars,market,&TradingDayConfig::lecture(),&[],states,enabled,None,&[],&[]).unwrap()
+        calculate(frame,lower,&KernelFrame::empty(0),&BTreeMap::new(),crate::analysis::trading::validated_bars::ValidatedBarSlice::new(bars).unwrap(),market,&TradingDayConfig::lecture(),&[],states,&[],enabled,None,&[],&[]).unwrap()
     }
     #[test]
     fn enabled_and_bear_to_bull_are_both_required_at_each_level(){
@@ -334,15 +421,14 @@ mod tests {
         assert_eq!(run(&frame,&KernelFrame::empty(1),&bars,&market,true)[0].start_index,8);
     }
     #[test]
-    fn confirmation_day_can_close_and_old_evidence_cannot_reopen(){
+    fn source_bear_on_confirmation_day_closes_the_confirmed_interval(){
         for level in 1..=3{
             let(frame,bars,market)=fixture(level);let mut lower=KernelFrame::empty(level-1);
             lower.events.push(KernelEvent{title:"翻多为空".into(),known_index:6,
                 point:point(level-1,5,6,PointKind::L,24.0),key:Some(point(level-1,1,1,PointKind::L,26.0)),
                 origin:Some(point(level-1,3,3,PointKind::H,32.0)),evidence:Value::Null});
             let windows=run(&frame,&lower,&bars,&market,true);
-            assert_eq!(windows.len(),1);assert_eq!(windows[0].start_index,6);assert_eq!(windows[0].end_index,Some(6));
-            assert_eq!(windows[0].end_reason.as_deref(),Some("source_bear_trend_confirmed"));
+            assert_eq!(windows.len(),1);assert_eq!(windows[0].start_index,6);assert_eq!(windows[0].end_index,Some(6));assert_eq!(windows[0].end_reason.as_deref(),Some("source_bear_trend_confirmed"));
         }
     }
     #[test]
@@ -351,6 +437,85 @@ mod tests {
         let windows=run(&frame,&KernelFrame::empty(1),&bars,&market,true);
         assert_eq!(windows.len(),1);assert_eq!(windows[0].end_index,Some(8));
         assert_eq!(windows[0].end_reason.as_deref(),Some("reversal_low_broken"));
+    }
+    #[test]
+    fn confirmation_candle_low_closes_every_level_before_the_structure_low_breaks(){
+        for level in 0_u8..=3{
+            let(mut frame,mut bars,mut market)=fixture(level);
+            frame.points[3].known_index=8;
+            let lower=KernelFrame::empty(level.saturating_sub(1));
+            // 结构低点在第6根且为22，资格第8根才确认，冻结该日最低价24。
+            // 第7根低于24发生在确认前；第9根触及24不结束，跌到23才结束。
+            bars[7].low=Decimal::from(23);market[7].low=23.0;
+            let equal=run(&frame,&lower,&bars,&market,true);
+            assert_eq!(equal.len(),1);assert_eq!(equal[0].start_index,8);
+            assert_eq!(equal[0].low_index,6);assert_eq!(equal[0].end_index,None);
+            bars[9].low=Decimal::from(23);market[9].low=23.0;
+            let prefix=run(&frame,&lower,&bars[..9],&market[..9],true);
+            assert_eq!(prefix[0].start_index,8);assert_eq!(prefix[0].end_index,None);
+            let windows=run(&frame,&lower,&bars,&market,true);
+            assert_eq!(windows.len(),1);assert_eq!(windows[0].start_index,8);
+            assert_eq!(windows[0].low_index,6);assert_eq!(windows[0].end_index,Some(9));
+            assert_eq!(windows[0].end_reason.as_deref(),Some("qualification_confirmation_low_broken"));
+            // 当日收盘仍高于确认日最低价，结束依据是最低价而非收盘价。
+            assert!(bars[9].close>bars[8].low);
+            assert!(run(&frame,&lower,&bars,&market,false).is_empty());
+        }
+    }
+    #[test]
+    fn double_volume_shadow_closes_active_qualifications_at_every_level_without_breaking_support(){
+        for level in 0_u8..=3{
+            let(frame,mut bars,mut market)=fixture(level);
+            bars[8].open=Decimal::from(24);bars[8].close=Decimal::from(23);
+            bars[8].high=Decimal::from(28);bars[8].low=Decimal::new(225,1);bars[8].volume=Decimal::from(200);
+            market[8].open=24.0;market[8].close=23.0;market[8].high=28.0;market[8].low=22.5;
+            let lower=KernelFrame::empty(level.saturating_sub(1));
+            let prefix=run(&frame,&lower,&bars[..8],&market[..8],true);
+            assert_eq!(prefix.len(),1);assert_eq!(prefix[0].end_index,None);
+            let windows=run(&frame,&lower,&bars,&market,true);
+            assert_eq!(windows.len(),1);assert_eq!(windows[0].start_index,6);assert_eq!(windows[0].end_index,Some(8));
+            assert_eq!(windows[0].end_reason.as_deref(),Some("double_volume_bearish_body_below_long_upper_shadow"));
+            assert!(bars[8].low>bars[windows[0].start_index].low);
+            assert!(run(&frame,&lower,&bars,&market,false).is_empty());
+            let mut no_flip=frame.clone();no_flip.events.clear();
+            assert!(run(&no_flip,&lower,&bars,&market,true).is_empty());
+        }
+    }
+    #[test]
+    fn double_volume_shadow_can_close_on_the_confirmation_day(){
+        for level in 0_u8..=3{
+            let(frame,mut bars,mut market)=fixture(level);
+            bars[6].high=Decimal::from(27);bars[6].close=Decimal::new(225,1);bars[6].volume=Decimal::from(200);
+            market[6].high=27.0;market[6].close=22.5;
+            let windows=run(&frame,&KernelFrame::empty(level.saturating_sub(1)),&bars,&market,true);
+            assert_eq!(windows.len(),1);assert_eq!(windows[0].start_index,6);assert_eq!(windows[0].end_index,Some(6));
+            assert_eq!(windows[0].end_reason.as_deref(),Some("double_volume_bearish_body_below_long_upper_shadow"));
+        }
+    }
+    #[test]
+    fn double_volume_shadow_requires_every_condition_and_uses_exact_boundaries(){
+        let(_,bars,_)=fixture(2);let previous=&bars[7];let mut current=bars[8].clone();
+        current.open=Decimal::from(24);current.close=Decimal::from(23);
+        current.high=Decimal::from(26);current.low=Decimal::from(22);current.volume=Decimal::from(200);
+        // 恰好二倍量、上影占一半都成立；不要求当前高低外包前日。
+        assert!(double_volume_bearish_body_below_upper_shadow(previous,&current));
+        let mut changed=current.clone();changed.volume=Decimal::from(199);
+        assert!(!double_volume_bearish_body_below_upper_shadow(previous,&changed));
+        let mut changed=current.clone();changed.open=previous.open;
+        assert!(!double_volume_bearish_body_below_upper_shadow(previous,&changed));
+        let mut changed=current.clone();changed.close=changed.open;
+        assert!(!double_volume_bearish_body_below_upper_shadow(previous,&changed));
+        let mut changed=current.clone();changed.high=Decimal::new(2599,2);
+        assert!(!double_volume_bearish_body_below_upper_shadow(previous,&changed));
+        let mut changed=current.clone();changed.symbol="other".into();
+        assert!(!double_volume_bearish_body_below_upper_shadow(previous,&changed));
+        let mut changed=current.clone();changed.timestamp=previous.timestamp.clone();
+        assert!(!double_volume_bearish_body_below_upper_shadow(previous,&changed));
+        let mut zero=previous.clone();zero.volume=Decimal::ZERO;
+        assert!(!double_volume_bearish_body_below_upper_shadow(&zero,&current));
+        // 前日阴线取其收盘价为实体下沿，不能只比较两日开盘。
+        let mut bearish_previous=previous.clone();bearish_previous.close=Decimal::new(235,1);
+        assert!(!double_volume_bearish_body_below_upper_shadow(&bearish_previous,&current));
     }
     #[test]
     fn an_old_source_support_break_cannot_close_a_later_qualification(){
@@ -466,7 +631,7 @@ mod tests {
         assert!(run_with_states(&frame,&KernelFrame::empty(1),&bars,&market,&states,true).is_empty());
     }
     #[test]
-    fn an_exit_before_start_does_not_close_a_future_qualification(){
+    fn a_past_source_bear_does_not_delay_python_confirmation(){
         let(frame,bars,market)=fixture(2);let mut lower=KernelFrame::empty(1);
         lower.events.push(KernelEvent{title:"翻多为空".into(),known_index:5,
             point:point(1,5,5,PointKind::L,24.0),key:Some(point(1,1,1,PointKind::L,26.0)),
@@ -485,16 +650,28 @@ mod tests {
     }
     #[test]
     fn resuming_requires_a_new_counter_not_a_new_read_of_the_old_low(){
-        let(mut frame,mut bars,mut market)=fixture(2);let mut lower=KernelFrame::empty(1);
-        lower.events.push(KernelEvent{title:"翻多为空".into(),known_index:6,
-            point:point(1,5,6,PointKind::L,24.0),key:Some(point(1,1,1,PointKind::L,26.0)),
-            origin:Some(point(1,3,3,PointKind::H,32.0)),evidence:Value::Null});
+        let(mut frame,mut bars,mut market)=fixture(2);let lower=KernelFrame::empty(1);
+        // 新增长上影结束条件仍允许后续用新的独立证据重新确认。
+        bars[6].high=Decimal::from(27);bars[6].close=Decimal::new(225,1);bars[6].volume=Decimal::from(200);
+        market[6].high=27.0;market[6].close=22.5;
         frame.points.push(point(2,7,7,PointKind::H,28.0));
         frame.points.push(point(2,8,8,PointKind::L,24.0));
         bars[7].high=Decimal::from(28);market[7].high=28.0;
         let windows=run(&frame,&lower,&bars,&market,true);
         assert_eq!(windows.len(),2);assert_eq!(windows[0].start_index,6);assert_eq!(windows[0].end_index,Some(6));
         assert_eq!(windows[1].start_index,8);assert_eq!(windows[1].end_index,None);
+    }
+    #[test]
+    fn a_future_source_bear_does_not_block_the_past_but_closes_an_already_active_interval(){
+        let(frame,bars,market)=fixture(2);let mut lower=KernelFrame::empty(1);
+        lower.events.push(KernelEvent{title:"翻多为空".into(),known_index:8,
+            point:point(1,5,8,PointKind::L,24.0),key:Some(point(1,1,1,PointKind::L,26.0)),
+            origin:Some(point(1,3,3,PointKind::H,32.0)),evidence:Value::Null});
+        let prefix=run(&frame,&lower,&bars[..8],&market[..8],true);
+        assert_eq!(prefix[0].start_index,6);assert_eq!(prefix[0].end_index,None);
+        let windows=run(&frame,&lower,&bars,&market,true);
+        assert_eq!(windows.len(),1);assert_eq!(windows[0].start_index,6);assert_eq!(windows[0].end_index,Some(8));
+        assert_eq!(windows[0].end_reason.as_deref(),Some("source_bear_trend_confirmed"));
     }
     #[test]
     fn unanchored_history_reaches_qualification_through_real_state_contexts(){

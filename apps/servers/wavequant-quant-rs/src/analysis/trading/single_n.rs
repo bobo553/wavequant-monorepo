@@ -33,10 +33,33 @@ pub struct SingleNTargets {pub one_p:Decimal,pub two_t:Decimal,pub five_top:Opti
 pub struct SingleNState {
     direction:Option<Direction>,start_order:Option<(usize,usize)>,start:usize,floor:usize,cursor:usize,tail:VecDeque<(usize,PointStamp)>,last:Option<usize>,previous_index:Option<usize>,source_versions:Option<[u64;3]>,
     #[cfg(test)] previous:Option<RuleCandle>,
-    stage_defense:Option<Decimal>,pub candidate:Option<SingleNData>,pub(crate) retired:Option<SingleNData>,pub evaluated_days:usize,pub formations:usize,pub invalidations:usize,
+    stage_defense:Option<Decimal>,extension_origin:Option<Decimal>,pub candidate:Option<SingleNData>,pub(crate) retired:Option<SingleNData>,pub evaluated_days:usize,pub formations:usize,pub invalidations:usize,
 }
 impl SingleNState {
+    /// 资格折叠 N 使用同一个增量观察器；ABC 来源冻结后不再枚举历史。
+    pub(crate) fn from_candidate(data:SingleNData,points:&[KernelPoint],now:usize)->Self{
+        let versions=[&data.a,&data.b,&data.c].map(|p|points[p.source_index].reference_id());
+        Self{direction:Some(data.direction),start:data.a.bar_index,floor:data.a.bar_index,cursor:points.len(),
+            last:Some(now),previous_index:Some(now),source_versions:Some(versions),candidate:Some(data),..Self::default()}
+    }
     pub(crate) fn last_day(&self)->Option<usize>{self.last}
+    /// 未突破的回撤延伸只撤销 C；冻结 A/B 后等待新的已确认 C，不重扫历史。
+    /// 已攻击、起点破位或来源修订则开始全新的搜索，不能复活旧 N。
+    pub(crate) fn after_invalidation(n:&SingleNData,points:&[KernelPoint],prices:&[Decimal],bar:&RuleCandle,now:usize)->Self{
+        let mut next=Self::from_origin(now,0,n.direction);
+        if n.attack_index.is_some()||!ahead(adverse(bar,n.direction),n.origin,n.direction){return next;}
+        for (r,value) in [(&n.a,n.origin),(&n.b,n.neckline)]{
+            let Some(p)=points.get(r.source_index)else{return next;};
+            if p.path!=r.path||p.index!=r.bar_index||p.ordinal!=r.ordinal||p.known_index!=r.known_index
+                ||prices.get(r.source_index)!=Some(&value){return next;}
+        }
+        next.start=n.a.bar_index;next.start_order=Some((n.a.bar_index,n.a.ordinal));
+        // 包含线可在同日先延伸 C 再突破 B；新候选必须消费当天，而非跳到下一日。
+        next.cursor=points.partition_point(|p|p.index<now);next.last=now.checked_sub(1);next.previous_index=None;
+        next.extension_origin=Some(n.origin);
+        next.tail=[n.a.source_index,n.b.source_index].into_iter().map(|i|(i,PointStamp::of(&points[i]))).collect();
+        next
+    }
     pub fn new(start:usize)->Self{Self::directional(start,Direction::Up)}
     pub fn directional(start:usize,direction:Direction)->Self{Self{direction:Some(direction),start,floor:start.saturating_add(1),..Self::default()}}
     pub fn from_origin(index:usize,ordinal:usize,direction:Direction)->Self{Self{direction:Some(direction),start_order:Some((index,ordinal)),start:index,floor:index,..Self::default()}}
@@ -83,7 +106,10 @@ fn advance_n_core(state:&mut SingleNState,points:&[KernelPoint],bar:&RuleCandle,
         }
     }
     if state.tail.iter().any(|(index,stamp)|points.get(*index).is_none_or(|p|PointStamp::of(p)!=*stamp)){
-        state.tail.clear();state.cursor=0;state.floor=now;
+        state.tail.clear();state.cursor=0;state.floor=now;state.extension_origin=None;
+    }
+    if state.extension_origin.is_some_and(|origin|!ahead(adverse(bar,direction),origin,direction)){
+        state.tail.clear();state.floor=now;state.extension_origin=None;
     }
     if state.cursor>points.len(){state.cursor=0;state.tail.clear();state.floor=now;}
     if let Some(n)=&state.candidate {
@@ -103,7 +129,7 @@ fn advance_n_core(state:&mut SingleNState,points:&[KernelPoint],bar:&RuleCandle,
             if !(ahead(pullback,low,direction)&&ahead(high,pullback,direction)){continue;}
             let close=source_close(b.index).ok_or("N neckline bar unavailable")?;
             if close<=Decimal::ZERO||ahead(close,high,direction){return Err("N neckline close outside bar range".into());}
-            state.retired=None;state.source_versions=Some([a.reference_id(),b.reference_id(),c.reference_id()]);
+            state.retired=None;state.extension_origin=None;state.source_versions=Some([a.reference_id(),b.reference_id(),c.reference_id()]);
             state.candidate=Some(SingleNData{direction,a:NPointRef::new(state.tail[0].0,a),b:NPointRef::new(state.tail[1].0,b),c:NPointRef::new(state.tail[2].0,c),origin:low,neckline:high,neckline_close:close,
                 pullback,known_index:a.known_index.max(b.known_index).max(c.known_index),attack_index:None,defense:None,box_anchor:None,
                 squeeze_index:None,regime:None,targets:None});state.tail.clear();break;
@@ -234,6 +260,38 @@ mod tests {
         let attack=bar(4,"14","16","13.5","15.5");
         assert!(advance_n(&mut state,&points,&attack,4,Some(&current),|_|Some(Decimal::new(145,1))).unwrap().formed);
         (state,points)
+    }
+    #[test]
+    fn unbroken_impulse_survives_pending_pullback_extension_in_both_directions(){
+        for direction in [Direction::Up,Direction::Down]{
+            let mirror=|v:Decimal|if direction==Direction::Up{v}else{Decimal::from(30)-v};
+            let reflect=|mut b:RuleCandle|{let high=b.high;b.open=mirror(b.open);b.close=mirror(b.close);
+                if direction==Direction::Down{b.high=mirror(b.low);b.low=mirror(high);}b};
+            let mut points=points();
+            if direction==Direction::Down{points=points.into_iter().map(|p|KernelPoint::new(KernelPointData{index:p.index,kind:if p.kind==PointKind::L{PointKind::H}else{PointKind::L},value:30.0-p.value,
+                ordinal:p.ordinal,known_index:p.known_index,level:0,path:0,state:PointState::Confirmed,time:p.time.clone(),evidence:Value::Null})).collect();}
+            let mut state=SingleNState::directional(0,direction);
+            let previous=reflect(bar(2,"14","15","12","14.5"));let current=reflect(bar(3,"13","14","12","13"));
+            advance_n(&mut state,&points,&current,3,Some(&previous),|_|Some(mirror(Decimal::new(145,1)))).unwrap();
+            let old=state.candidate.as_ref().unwrap().clone();let extension=reflect(bar(4,"12","14","11","12"));
+            assert!(advance_n(&mut state,&points,&extension,4,Some(&current),|_|None).unwrap().invalidated);
+            points.push(KernelPoint::new(KernelPointData{index:4,kind:points[0].kind,value:if direction==Direction::Up{11.0}else{19.0},ordinal:0,known_index:5,level:0,path:0,state:PointState::Confirmed,time:"2026-01-04".into(),evidence:Value::Null}));
+            let prices=points.iter().map(|p|price(p).unwrap()).collect::<Vec<_>>();
+            let mut replacement=SingleNState::after_invalidation(&old,&points,&prices,&extension,4);
+            let attack=reflect(bar(5,"14","16","12","15.5"));
+            assert!(advance_n(&mut replacement,&points,&attack,5,Some(&extension),|_|Some(mirror(Decimal::new(145,1)))).unwrap().formed);
+            let n=replacement.candidate.unwrap();assert_eq!((n.a.bar_index,n.b.bar_index,n.c.bar_index,n.attack_index),(1,2,4,Some(5)));
+            let mut same_day_points=points[..3].to_vec();
+            same_day_points.push(KernelPoint::new(KernelPointData{index:4,kind:points[0].kind,value:if direction==Direction::Up{11.0}else{19.0},ordinal:0,known_index:4,level:0,path:0,state:PointState::Confirmed,time:"2026-01-04".into(),evidence:Value::Null}));
+            let outside=reflect(bar(4,"14","16","11","15.5"));
+            let mut replacement=SingleNState::after_invalidation(&old,&same_day_points,&prices,&outside,4);
+            assert!(advance_n(&mut replacement,&same_day_points,&outside,4,Some(&current),|_|Some(mirror(Decimal::new(145,1)))).unwrap().formed);
+            assert_eq!(replacement.candidate.as_ref().unwrap().attack_index,Some(4));
+            let mut attacked=old.clone();attacked.attack_index=Some(3);
+            assert!(SingleNState::after_invalidation(&attacked,&points,&prices,&extension,4).tail.is_empty());
+            let broken=reflect(bar(4,"11","14","9","11"));
+            assert!(SingleNState::after_invalidation(&old,&points,&prices,&broken,4).tail.is_empty());
+        }
     }
     #[test]
     fn frozen_defense_touch_survives_strict_break_retires(){

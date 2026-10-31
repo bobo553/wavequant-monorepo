@@ -21,6 +21,11 @@ fn coloured(pool:&mut PointArena,bars:&[KernelBar],position:usize,known:usize,pa
     [vertex(pool,bars,position,first,0,PointState::Developing,known,path),
         vertex(pool,bars,position,first.opposite(),1,PointState::Developing,known,path)]
 }
+/// 严格外包且阴母实体整体位于子实体下方时，不用母高推断额外上攻。
+fn bearish_mother_body_below_child(child:&KernelBar,mother:&KernelBar)->bool {
+    mother.high>child.high&&mother.low<child.low&&mother.close<mother.open
+        &&mother.open<child.open.min(child.close)
+}
 fn archive(pool:&PointArena,bars:&[KernelBar],points:&[PointId],output:&mut Vec<PointId>){
     output.extend(points.iter().copied().filter(|id|pool.view(*id,bars).is_closed()));
 }
@@ -89,7 +94,17 @@ impl PolylineCursor {
         if inside || outside {
             let mut ordered = Vec::new();
             let mut source = "lecture_containment_colour_convention_not_observed_intrabar_path";
-            if previous.open != previous.close && bar.open != bar.close {
+            let direct_mother_low=bearish_mother_body_below_child(previous,bar);
+            if direct_mother_low {
+                source="bearish_strict_mother_body_below_child_direct_low";
+                if let Some(last)=points.last().map(|id|pool.view(*id,bars)) {
+                    // 仍按未结束腿的严格延伸规则推进，不能制造低点到更高低点的折返。
+                    if last.kind==PointKind::L&&bar.low>=last.value{continue;}
+                }else{
+                    ordered.push(vertex(pool,bars,position-1,PointKind::H,0,PointState::Developing,bar.index,epoch));
+                }
+                ordered.push(vertex(pool,bars,position,PointKind::L,0,PointState::Developing,bar.index,epoch));
+            } else if previous.open != previous.close && bar.open != bar.close {
                 ordered.extend(coloured(pool,bars,position-1,bar.index,epoch));
                 ordered.extend(coloured(pool,bars,position,bar.index,epoch));
             } else if outside && previous.open == previous.close && bar.open != bar.close && direction.is_some() && !points.is_empty() {
@@ -106,7 +121,7 @@ impl PolylineCursor {
             }
             if !ordered.is_empty() {
                 let mut offset = 0;
-                if let Some(last_id)=points.last().copied().filter(|id|pool.view(*id,bars).index==previous.index){
+                if let Some(last_id)=points.last().copied().filter(|id|!direct_mother_low&&pool.view(*id,bars).index==previous.index){
                     let last=pool.view(last_id,bars);
                     if ordered.len()>1&&last.kind==pool.view(ordered[1],bars).kind&&last.value==pool.view(ordered[1],bars).value{offset=2;}
                     else if last.kind==pool.view(ordered[0],bars).kind&&last.value==pool.view(ordered[0],bars).value{offset=1;}

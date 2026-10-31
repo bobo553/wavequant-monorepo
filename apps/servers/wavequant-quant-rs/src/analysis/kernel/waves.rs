@@ -5,6 +5,44 @@ use crate::indexed_json::Value;
 use std::collections::BTreeMap;
 use super::{KernelBar,arena::{PointArena,PointId,PointView,RefFrame,RefEvent,EventProof,Evidence,Fact,Proof}};
 
+#[cfg(test)]
+mod formal_candidate_tests {
+    use super::*;
+    use crate::analysis::kernel::KernelPointData;
+
+    #[test]
+    fn a_formal_tail_keeps_its_own_state_and_clock_across_levels() {
+        for level in 1..=3 {
+            for mirrored in [false, true] {
+                let mut pool=PointArena::default();
+                let source:Vec<_>=[30.0,10.0,25.0,8.0,20.0,6.0,18.0,9.0,26.0,12.0,32.0].into_iter().enumerate().map(|(i,value)|{
+                    let kind=if i%2==0{PointKind::H}else{PointKind::L};
+                    pool.import(&KernelPoint::new(KernelPointData{index:i*2,known_index:i*2+1,ordinal:0,path:0,level:level-1,
+                        kind:if mirrored{kind.opposite()}else{kind},value:if mirrored{40.0-value}else{value},
+                        time:format!("2020-01-{:02}",i*2+1),state:PointState::Reversal,evidence:Value::Null}))
+                }).collect();
+                let options=KernelOptions::default();let closed=&source[..source.len()-1];let asof=21;
+                let regular=TrendCursor::default().advance_indices(&mut pool,&[],closed,0,level,asof,&options).unwrap();
+                let (expected,_,_)=path_trend(&mut pool,&[],&source,level,&options,None,0,None,Some(&regular.points)).unwrap();
+                let endpoint=expected.candidate.unwrap();
+                assert_eq!(pool.view(endpoint,&[]).index,20);
+                assert_ne!(regular.candidate_state_known,expected.candidate_state_known);
+                let mut cursor=TrendCursor::default();
+                // 冷计算及同版本复用都必须把选中端点、六态和时钟作为同一份事实。
+                for _ in 0..2 {
+                    let actual=cursor.advance_formal_indices(&mut pool,&[],closed,&source,0,level,asof,&options).unwrap();
+                    let actual_endpoint=pool.view(actual.candidate.unwrap(),&[]);
+                    assert_eq!(actual_endpoint.order(),pool.view(endpoint,&[]).order());
+                    assert_eq!(actual.candidate_trend_state,expected.candidate_trend_state);
+                    assert_eq!(actual.candidate_state_known,expected.candidate_state_known);
+                    assert!(actual.candidate_state_known.unwrap()>=actual_endpoint.known_index);
+                    assert!(actual.candidate_state_known.unwrap()<=asof);
+                }
+            }
+        }
+    }
+}
+
 fn slot(kind: PointKind) -> usize { if kind == PointKind::H {0} else {1} }
 #[derive(Clone)]
 struct RangeExtremes { size: usize, tree: Vec<Option<usize>>, kind: PointKind }
@@ -88,12 +126,12 @@ impl PathCursor {
         let checkpoint_at=(options.trend_offset_enabled&&offset>=processed).then_some(offset);
         stats.scanned_points+=source.len()-processed;stats.reused_prefix_points+=processed;
         self.result=None;
-        let(frame,state,new_checkpoint)=path_trend(pool,bars,source,level,options,saved,processed,checkpoint_at)?;
+        let(frame,state,new_checkpoint)=path_trend(pool,bars,source,level,options,saved,processed,checkpoint_at,None)?;
         self.source.clear();self.source.extend_from_slice(source);self.state=Some(state);
         self.checkpoint=new_checkpoint.or(checkpoint);self.result=Some(frame.clone());Ok(frame)
     }
 }
-fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u8, options: &KernelOptions,saved:Option<PathState>,processed:usize,checkpoint_at:Option<usize>) -> Result<(RefFrame,PathState,Option<Checkpoint>),String> {
+fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u8, options: &KernelOptions,saved:Option<PathState>,processed:usize,checkpoint_at:Option<usize>,regular:Option<&[PointId]>) -> Result<(RefFrame,PathState,Option<Checkpoint>),String> {
     macro_rules! at {($i:expr)=>{pool.view(source[$i],bars)}}
     let PathState{mut frame,mut observer,mut extremes,mut closed,mut keys,mut recent,mut latest,mut preceding,
         mut owned,mut origin,mut extreme,mut pending_origin,mut pending_extreme,mut marker,
@@ -103,6 +141,7 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
     let mut promotions:Vec<super::PromotionReceipt>=Vec::new();
     for id in source {
         let point=pool.view(*id,bars);
+        promotions.extend(super::promotions::attached(pool,bars,*id));
         if let Some(raw)=pool.imported(*id).and_then(|point|point.evidence.get("higher_promotions")) {
             let parsed:Vec<super::PromotionReceipt>=crate::indexed_json::from_value(raw.clone()).map_err(|_|"invalid higher promotion receipts")?;
             for receipt in parsed {
@@ -115,18 +154,30 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
         }
     }
     let mut checkpoint=None;
+    let mut regular_points=regular.unwrap_or(&[]).to_vec();regular_points.sort_by_key(|id|pool.view(*id,bars).known_index);
+    let mut regular_cursor=0;
+    let positions:BTreeMap<_,_>=source.iter().enumerate().map(|(i,id)|(pool.view(*id,bars).order(),i)).collect();
     macro_rules! save_checkpoint {()=>{PathState{frame:frame.clone(),observer:observer.clone(),extremes:extremes.clone(),closed:closed.clone(),keys:keys.clone(),recent:recent.clone(),latest,preceding:preceding.clone(),owned,origin,extreme,pending_origin,pending_extreme,marker,known,body_rejection,latest_upgrade}}}
     let mut cursor_position=processed;
     while cursor_position<source.len(){
         super::observations::observe_path(pool,bars,source,&closed,origin,extreme,owned,latest_upgrade,known,level,&mut observer,&mut frame)?;
         let cursor=cursor_position;if checkpoint_at==Some(cursor){checkpoint=Some(Checkpoint{position:cursor,state:save_checkpoint!()});}cursor_position+=1;let attack=at!(cursor);
         known=known.max(attack.known_index);
+        while regular_cursor<regular_points.len()&&pool.view(regular_points[regular_cursor],bars).known_index<=known{
+            let id=regular_points[regular_cursor];regular_cursor+=1;let p=pool.view(id,bars);
+            if let Some(position)=positions.get(&p.order()).copied(){
+                if pool.same(source[position],id,bars)&&at!(position).known_index<=p.known_index{
+                    if closed.get(&p.order()).is_none_or(|old|p.known_index<pool.view(*old,bars).known_index){closed.insert(p.order(),id);observer.changed(p.order());}
+                    keys[slot(p.kind)].entry(position).and_modify(|old|{if p.known_index<pool.view(*old,bars).known_index{*old=id;}}).or_insert(id);
+                }
+            }
+        }
         let kind=slot(attack.kind); let opposite_kind=1-kind;
         preceding[cursor]=latest[opposite_kind]; latest[kind]=Some(cursor);
         let old_extreme=extreme;
         extremes[kind].insert(cursor,source,pool,bars);
         recent[kind].push(cursor); if recent[kind].len()>2 { recent[kind].remove(0); }
-        if owned.is_none() && closed.is_empty() {
+        if regular.is_none() && owned.is_none() && closed.is_empty() {
             match (pending_origin,pending_extreme) {
                 (Some(start),Some(end)) => {
                     if attack.kind==at!(end).kind {
@@ -138,7 +189,7 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
                 _ => if let Some(previous)=preceding[cursor] { pending_origin=Some(previous); pending_extreme=Some(cursor); },
             }
         }
-        if owned == Some(Direction::Up) && level > 1 && attack.kind == PointKind::H {
+        if regular.is_none() && owned == Some(Direction::Up) && level > 1 && attack.kind == PointKind::H {
             if let (Some(peak),Some(counter)) = (extreme,recent[1].last().copied()) {
                 if peak < counter && counter < cursor && rejects_wick_indices(pool,bars,source[peak],source[counter],source[cursor]) {
                     body_rejection = Some((peak,counter,cursor)); continue;
@@ -170,11 +221,11 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
         let current=classify_prices(&highs[..recent[0].len()],&lows[..recent[1].len()])?;
         let proof_positions=recent[0].iter().chain(&recent[1]);
 
-        if owned.is_none() {
+        if regular.is_none() && owned.is_none() {
             if let Some(direction)=current {
                 if let (Some(start),Some(end))=(pending_origin,pending_extreme) {
                     if at!(end).kind==direction.target() && proof_positions.clone().all(|p|*p>=start)
-                        && (level==1 || end>start+1) {
+                        && (options.wave_span_relaxation[usize::from(level-1)] || end>start+1) {
                         let evidence=vec![("origin",Fact::Point(source[start])),("endpoint",Fact::Point(source[end])),("confirmed_by",Fact::Point(source[cursor])),
                             ("direction",Fact::Direction(direction)),("definition",Fact::Points(proof_positions.clone().map(|i|source[*i]).collect())),
                             ("initial_boundary",Fact::Bool(true)),("interior",Fact::OptionalPoint((end>start+1).then(||source[start+1])))];
@@ -187,7 +238,7 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
                 }
             }
         }
-        if let Some(direction)=owned {
+        if let Some(direction)=owned.filter(|_|regular.is_none()) {
             if attack.kind==direction.target() && extreme.is_none_or(|old| direction.sign()*(attack.value-at!(old).value)>0.0) { extreme=Some(cursor); }
             if let (Some(reversed),Some(peak))=(current,extreme) {
                 if reversed!=direction {
@@ -207,7 +258,7 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
                             !high.is_some_and(|p|at!(p).value>ceiling) && !low.is_some_and(|p|at!(p).value<floor)
                         });
                         let local_definition=promotion.is_some() && proof_positions.clone().all(|position|*position>=peak);
-                        if (local_definition || ordinary || options.ordinary_trend_completion_enabled) && (level==1 || counter>peak+1) {
+                        if (local_definition || ordinary || options.ordinary_trend_completion_enabled) && (options.wave_span_relaxation[usize::from(level-1)] || counter>peak+1) {
                             let key=old_key.map(|p|source[p]);
                             let preceding_start=origin.map(|p|source[p]);
                             let evidence=vec![("origin",Fact::Point(source[peak])),("endpoint",Fact::Point(source[counter])),("wave_origin",Fact::OptionalPoint(preceding_start)),
@@ -245,6 +296,7 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
         let start=if continuing {origin} else if owned.is_some_and(|d|d!=attack_direction) && extreme.is_some() { extreme }
             else { extremes[opposite_kind].query(key_position+1,cursor,source,pool,bars) };
         let Some(start)=start else { continue; };
+        known=known.max(pool.view(key,bars).known_index).max(at!(start).known_index);
         if continuing && old_extreme.is_some_and(|p|at!(p).kind==attack.kind && sign*(attack.value-at!(p).value)<=0.0) {continue;}
         let closes_origin=key_position<start && start<cursor && sign*(pool.view(key,bars).value-at!(start).value)>0.0;
         if !continuing && !closes_origin {continue;}
@@ -261,7 +313,12 @@ fn path_trend(pool:&mut PointArena,bars:&[KernelBar],source:&[PointId], level: u
             ("confirmation_rule",Fact::Text(format!("level{}_confirmed_{}_breaks_known_level{}_{}",level-1,
                 if attack.kind==PointKind::H{"high"}else{"low"},level,if attack.kind==PointKind::H{"last_fall_high"}else{"last_rise_low"}))),
             ("origin",Fact::Point(source[start])),("broken_key",Fact::Point(key)),("confirmed_by",Fact::Point(source[cursor]))]));
+        frame.promotions.push(latest_upgrade.ok_or("missing strict endpoint proof")?);
         owned=Some(attack_direction);
+    }
+    for id in &regular_points[regular_cursor..]{let p=pool.view(*id,bars);
+        if closed.get(&p.order()).is_none_or(|old|p.known_index<pool.view(*old,bars).known_index){closed.insert(p.order(),*id);observer.changed(p.order());}
+        known=known.max(p.known_index);
     }
     super::observations::observe_path(pool,bars,source,&closed,origin,extreme,owned,latest_upgrade,known,level,&mut observer,&mut frame)?;
     let annotated=observer.frame(level);
@@ -328,8 +385,44 @@ pub fn trend(points:&[KernelPoint],level:u8,asof:usize,options:&KernelOptions)->
 pub struct TrendCursor {
     paths:BTreeMap<usize,PathCursor>,identity:Option<(u8,KernelOptions)>,
     legacy_arena:PointArena,legacy_source:Vec<PointId>,external:bool,statistics:TrendScanStatistics,
+    formal_cache:Option<(Vec<PointId>,Vec<PointId>,usize,u8,KernelOptions,RefFrame)>,
 }
 impl TrendCursor {
+    /// 开放严格端点只参与严格突破通道；普通四点定义仍读取已结束来源。
+    pub(crate) fn advance_formal_indices(&mut self,pool:&mut PointArena,bars:&[KernelBar],closed:&[PointId],formal:&[PointId],offset:usize,level:u8,asof:usize,options:&KernelOptions)->Result<RefFrame,String>{
+        if let Some((old_closed,old_formal,old_asof,old_level,old_options,frame))=&self.formal_cache{
+            if old_closed==closed&&old_formal==formal&&*old_asof==asof&&*old_level==level&&old_options==options{return Ok(frame.clone());}
+        }
+        let mut frame=self.advance_indices(pool,bars,closed,offset,level,asof,options)?;
+        if closed==formal||!options.secondary_reversal_enabled{return Ok(frame);}
+        let mut groups:BTreeMap<usize,Vec<PointId>>=BTreeMap::new();
+        for id in formal{let p=pool.view(*id,bars);if p.known_index<=asof{groups.entry(p.path).or_default().push(*id);}}
+        let mut points=BTreeMap::new();
+        for id in &frame.points{points.insert(pool.view(*id,bars).order(),*id);}
+        for (path,source) in groups{
+            let regular=frame.points.iter().copied().filter(|id|pool.view(*id,bars).path==path).collect::<Vec<_>>();
+            let (strict,_,_)=path_trend(pool,bars,&source,level,options,None,0,None,Some(&regular))?;
+            for id in strict.points{let p=pool.view(id,bars);
+                if points.get(&p.order()).is_none_or(|old|p.known_index<pool.view(*old,bars).known_index){points.insert(p.order(),id);}
+            }
+            if let Some(candidate)=strict.candidate{
+                if frame.candidate.is_none_or(|old|pool.view(old,bars).order()<=pool.view(candidate,bars).order()){
+                    frame.candidate=Some(candidate);frame.direction=strict.direction;frame.preceding_start=strict.preceding_start.or(frame.preceding_start);
+                    // 六态及其时钟属于选中的发展端，不能沿用被替换端点的观察。
+                    frame.candidate_trend_state=strict.candidate_trend_state;frame.candidate_state_known=strict.candidate_state_known;
+                }
+            }
+            frame.promotions.extend(strict.promotions);frame.events.extend(strict.events);
+            frame.observed_events.extend(strict.observed_events);frame.observations.extend(strict.observations);
+        }
+        frame.points=points.into_values().collect();
+        frame.observed_events.sort_by_key(|event|event.known_index);frame.observations.sort_by_key(|o|o.known_index);
+        let annotated=super::structure::six_state_indices(pool,bars,&frame.points,level)?;
+        frame.segment_states=annotated.segment_states;frame.state=annotated.state;frame.contexts=annotated.contexts;
+        frame.key=annotated.key;frame.anchor=annotated.anchor;frame.structure_direction=annotated.direction;
+        self.formal_cache=Some((closed.to_vec(),formal.to_vec(),asof,level,options.clone(),frame.clone()));
+        Ok(frame)
+    }
     pub fn advance_from(&mut self,points:&[KernelPoint],offset:usize,level:u8,asof:usize,options:&KernelOptions)->Result<KernelFrame,String>{
         if offset>points.len(){return Err("trend array offset exceeds the parent data array".into());}
         self.advance_with_offset(points,offset,level,asof,options)
@@ -337,6 +430,7 @@ impl TrendCursor {
     pub fn statistics(&self)->&TrendScanStatistics{&self.statistics}
     pub fn advance(&mut self,points:&[KernelPoint],level:u8,asof:usize,options:&KernelOptions)->Result<KernelFrame,String>{self.advance_with_offset(points,0,level,asof,options)}
     fn advance_with_offset(&mut self,points:&[KernelPoint],offset:usize,level:u8,asof:usize,options:&KernelOptions)->Result<KernelFrame,String>{
+        self.formal_cache=None;
         if points.len()>250_000{return Err("trend source exceeds 250000 points".into());}
         if self.external{self.paths.clear();self.identity=None;self.external=false;}
         // 兼容输入在边界导入一次；修订时重建，追加只导入新尾部。
@@ -383,7 +477,7 @@ impl TrendCursor {
                 }
             }
             result.segment_states.extend(frame.segment_states);result.candidate_trend_state=frame.candidate_trend_state;result.candidate_state_known=frame.candidate_state_known;
-            result.observations.extend(frame.observations);result.observed_events.extend(frame.observed_events);result.contexts.extend(frame.contexts);result.points.extend(frame.points);result.events.extend(frame.events);result.candidate=frame.candidate;
+            result.promotions.extend(frame.promotions);result.observations.extend(frame.observations);result.observed_events.extend(frame.observed_events);result.contexts.extend(frame.contexts);result.points.extend(frame.points);result.events.extend(frame.events);result.candidate=frame.candidate;
             result.direction=frame.direction;result.structure_direction=frame.structure_direction;result.state=frame.state;
             result.key=frame.key;result.anchor=frame.anchor;result.preceding_start=frame.preceding_start;
         }

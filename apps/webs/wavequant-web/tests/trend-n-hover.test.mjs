@@ -132,10 +132,11 @@ test("上涨与下跌目标使用不同方向色，下跌防守统一称杀多�
 });
 
 import { TrendNHoverOverlay } from "../public/trend-n-hover-overlay.js";
-test("N字母、端点及N线段命中同一来源，不随A/B/C所在K线日期切换", () => {
+test("N端点及线段命中同一来源，移除字母后不保留隐形文字命中区", () => {
     const overlay=new TrendNHoverOverlay();overlay.model={level:1,nIndex:7};
     overlay.projected=[{x:20,y:70,label:"N·A"},{x:50,y:20,label:"N·B"},{x:80,y:60,label:"N·C"}];
-    for(const [x,y]of[[20,70],[60,9],[35,45]])assert.equal(overlay.hitTest(x,y).externalId,"trend-n:1:7");
+    for(const [x,y]of[[20,70],[50,20],[35,45]])assert.equal(overlay.hitTest(x,y).externalId,"trend-n:1:7");
+    assert.equal(overlay.hitTest(60,9),null);
     assert.equal(overlay.hitTest(200,200),null);
 });
 test("正N和倒N在一级整段内回看，目标固定攻击日而不随鼠标日期移动", () => {

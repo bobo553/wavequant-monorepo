@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 pub mod entries;
 pub mod exits;
 pub mod n_shape;
+pub(crate) mod validated_bars;
 pub mod qualification;
 pub mod confirmation;
 pub mod targets;
