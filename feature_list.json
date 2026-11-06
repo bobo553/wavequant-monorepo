@@ -15274,6 +15274,52 @@
                 "首N按同级/路径/关键位周期保存各趋势首个正N轧空或倒N轧多；严格防守破位标记失效保留，仅有效新关键位整批重置；资格复用全部有效正N，不因资格关闭删除。修改后的耗时/数据量/缓存前后统计使用项目quant-performance-compare技能，记录真实结果差异及未验证项。"
             ],
             "verification": [
+                {"command":"cargo test --lib --tests；N悬停/契约Node定向；contracts构建；产品tsc；语法及差异检查","status":"passed","summary":"2026-11-07 MONOREPO-362 v46提交准备：整理v44/v45未提交的N识别、目标及显示修改；用户授权修复共享候选C延伸后同日续算缺陷，Tracker::acquire四级正倒N共用，版本46隔离旧结果。cargo +stable test --locked --offline -p wavequant-quant-rs --lib --tests通过96项；node --test tests/trend-n-hover.test.mjs通过25项；使用已有contracts-register.mjs隔离当前工作树契约的trend-state.test.mjs通过7项；pnpm --filter @repo/contracts build、pnpm exec tsc --noEmit -p .codex-runtime/rust-startup/submit/tsconfig.json、两个变更JS的node --check及git diff --check通过。首轮失败分别为共享包指向main旧产物、本级测试残留跨级引用、替代N测试缺少接管推进、质量测试ABC行情不一致，以及实际C延伸同日续算遗漏；修正测试输入/调用顺序，保留断言，业务缺陷经用户明确授权修复。未运行全量Web lint/Next构建、浏览器、新股票回测或性能对照；既有MemoryPoint::read告警保留。旧Python、依赖锁、凭据与运行产物未纳入。main同步无文件变化，全部本轮功能检查基于相同树；整体362保持in-progress，不宣称Rust迁移全部验收。启动编译6m32s完成，API52572/8010已启动，原配置及禁用自动回测保持；随后按用户要求提交推送并合并main。"},
+                {
+                    "command": "v45 N目标及收盘防守修复；必要启动编译，后续仅上证指数复算和页面核对",
+                    "status": "passed",
+                    "summary": "2026-11-01 MONOREPO-362 v45：正倒N成立后统一按收盘严格反破冻结防守失效，影线越界/等值不失效；未成立C延伸仍按极值。共享N发布一饱二吐，五顶十满保持确认后投射；首次迟接管只重放ABC可知日起短后缀，正式来源/资格不回填。结束投射仍消费日期防止断钟。前端同方向有效N跨小段复用并显示目标，契约区分基础/远端目标时钟。冻结2140根上证指数四级结构相同，N229→205、默认离线资格6→5（2021-08-04一段取消），不能称资格等价；07-01截断确认06-26原倒N仍有效。仅当前指数页面已实显05-21目标3889.571/3704.925、06-26及07-02沿用目标3840.370/3672.881。cargo启动编译4m42s完成（原MemoryPoint::read告警），API10064/8010、前端24940/3003，禁用自动回测及原数据/Redis路径保持；实际合并入口及12块和暂存契约已更新。页面取数3.153秒、分析0.136秒、总计4.685秒，非性能基准。证据主目录.codex-runtime/index-n-june/v45-*；详情docs/diagnostics/n-targets-and-close-defense-2026-11-01.md。新增回归源码待提交验证，无旧Python业务改动、其他股票、账户或提交推送；整体362保持in-progress。 此passed仅代表授权单指数复算、页面联调和必要启动编译；自动化测试仍待提交时验证。"
+                },
+                {
+                    "command": "仅上证指数页面实际响应及05-21悬停；prepare-runtime-assets.mjs及前端重启",
+                    "status": "passed",
+                    "summary": "2026-11-01 用户授权上证指数联调。实际v44响应包含05-21倒N207，普通日期区却选一级上涨入段。共享N按已发生突破腿归属，转折日出段当日突破时选出段，待攻击仍要求ABC同段；正倒对称，保留方向/path/有效期/回放边界。N成立与轧空杀多确认分开提示。实际app.js/12分块生成，前端PID3004/3003重启，API8010保持；刷新后05-21普通区可见绿色倒N、突破成立和杀多高4199.527，杀多未确认故目标待确认。截图和响应摘要为主目录.codex-runtime/index-n-june/may21-visible-proof.png及may21-browser-v44.json。页面17段资格与离线默认6段参数不同。自动回测暂停，无其他股票操作；新增回归源码待提交，无通用测试/lint/类型检查或提交推送，整体362保持in-progress。"
+                },
+                {
+                    "command": "cargo +stable build --locked --offline -p wavequant-api-rs -p wavequant-quant-rs --bins；start-backend.ps1 -ApiPort 8010",
+                    "status": "passed",
+                    "summary": "2026-11-01 v44必要启动编译完成4m26s，仅既有MemoryPoint::read告警；API17548/8010，保留会话73572，日志starting HTTP service。保留原数据目录、Redis6380、SDK和--no-watchlist-refresh；前端3003保持，本轮前端源码未改。无HTTP探针、浏览器、在线回测、新行情、账户或其他股票。离线同输入结构/资格相同，N219到229，索引JSON271333到277878B（非HTTP体积）；新增回归源码待提交验证。无提交推送，整体362仍in-progress。"
+                },
+                {
+                    "command": "qualification_parity request.json v44-final；仅上证指数四个截断前缀",
+                    "status": "passed",
+                    "summary": "2026-11-01 MONOREPO-362 v44：按本轮授权仅用上证指数2140根保存行情离线复算。修复未攻击旧N挡住先突破局部N、六态标签提前结束结构搜索、翻向起点遗漏以及同类B挤掉A。结构和资格订阅共用N表/算法但分离搜索起点和六态门禁，避免改动原资格。最终05-21倒N（05-14/05-19/05-21，杀多高4199.527）与08-05正N（07-30/07-31/08-03，轧空08-07）已识别；06-12正N和09-04倒N保留。四级完整结构及六段资格对象与v43一致，N记录219到229。前一交易日及攻击日各自截断复算确认不提前、不依赖未来。中间v44四段资格输出已弃用，最终目录v44-final；诊断docs/diagnostics/index-n-missing-may-aug-2026-11-01.md。无Python修改、新行情、账户、其他股票、浏览器或提交推送；新增回归源码待提交，必要启动编译重启另记，362保持in-progress。"
+                },
+                {
+                    "command": "node prepare-runtime-assets.mjs <运行暂存public>；重启已有3003前端",
+                    "status": "passed",
+                    "summary": "2026-11-01 本地生效：从当前工作树重新生成app.js与12个运行分块，重启前端PID9616/3003，保留WAVEQUANT_API_PORT=8010；后端未修改、未重启。仅启动所需资源编译及进程操作，无测试套件、浏览器、在线计算或新行情；本轮行为回归仍待实际提交验证，未提交推送。"
+                },
+                {
+                    "command": "同方向有效N跨小段复用：代码及既有结果阅读；回归待提交",
+                    "status": "not-run",
+                    "summary": "2026-11-01 MONOREPO-362：用户要求09-09至09-14沿用09-04倒N，杀多高未突破不重新找。读取此前冻结结果显示N214杀多高3980.202，一级二级使用区间未结束、无失效；后台已有current分支不会重搜，实际阻断为inspectStage要求ABC位于当前小段。改为优先使用同级/path/方向且当日已经攻击、后端有效使用中的N，不因小段改变过滤；正倒N与四级共用。待攻击和跨级回看保持原同段限制，失效/使用结束/回放截止仍约束。补续用、方向/路径隔离、失效/结束与未来攻击回归源码未执行；Rust/Python/资格/缓存未改，无新回测、浏览器或提交。前端实际合并资源生成及重启另记，整体in-progress。"
+                },
+                {
+                    "command": "用户授权上证指数页面联调：现有画布09-04与09-07悬停及截图",
+                    "status": "passed",
+                    "summary": "2026-10-31 实际页面09-04显示一级下跌段倒N、09-11杀多确认、ABC09-01/02/04，杀多高3980.202；绿色N形态及一饱3835.267/二吐3755.313/五顶3468.336目标线与详情可见，十满待确认，注明回看截至10-30。09-07上涨段不沿用倒N。仅现有上证指数画布交互，无刷新/主动回测/新行情/其他股票；截图主目录.codex-runtime/index-n-june/sep04-visible-proof.png。解决本例可见图表缺失，非全市场验收。无业务源码新变更、提交或推送，单元检查待实际提交，整体362保持in-progress。"
+                },
+                {
+                    "command": "生成前端实际合并资源并重启；上证指数已完成结果适配链路只读定位；悬停回归待提交",
+                    "status": "not-run",
+                    "summary": "2026-10-31 MONOREPO-362 倒N展示继续定位：真实2140根已完成结果通过trendStateView/selectPublishedTrendSegments/trendStageAt/inspectStage链路，09-02/03/04一级段返回N214，09-07上涨段不借倒N。修复趋势线几何命中仍使用逐日inspect、跨绘制组转折误归及同根端点边界。发现运行暂存目录加载合并app.js，前轮只复制独立hover模块未更新合并资源；本轮prepare-runtime-assets.mjs成功生成12个chunk，前端重启PID4876/3003，8010不变。页面只读resource列表确认已加载新chunk-ENOPARB5.js，显示上证指数完整2140根结果；具体日期悬停尚待联调授权，不能宣称视觉验收。补充回归源码未运行，Python/Rust/缓存结构未改，无主动在线计算/新行情/提交。诊断docs/diagnostics/index-inverted-n-display-2026-09-04.md，主流程同步，整体in-progress。"
+                },
+                {
+                    "command": "上证指数已完成结果只读核对及显示读取器离线定位",
+                    "status": "not-run",
+                    "summary": "2026-10-31 MONOREPO-362 N图层补修：只读线上已完成v43结果确认N214于09-04攻击、09-11杀多。前端转折日误归后续上涨段，以及整段回看先选失效未攻击候选N213导致隐藏。trendStageAt将转折日归入段；inspectStage优先读取截止前已攻击的同段替代N。使用既有上证指数结果离线调用显示读取器，09-02/03/04均选N214并返回3835.267/3755.313；普通逐日读取不变。3003运行目录已同步并重启PID7972，API8010未改。内置页面仍停留此前初始化500状态，接口现已恢复200；未刷新页面触发在线取数，不能宣称视觉验证完成。新增回归源码待提交时执行，无新回测、Python或Rust业务改动。本轮未提交。"
+                },
                 {
                     "command": "cargo test --locked --offline -p wavequant-quant-rs --lib --tests; node --test apps/webs/wavequant-web/tests/trend-n-hover.test.mjs; qualification_parity request.json v43",
                     "status": "passed",

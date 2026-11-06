@@ -52,29 +52,32 @@ pub(crate) struct NFact{pub known:usize,pub path:usize,pub change:NChange}
 #[derive(Debug,Clone,Copy)]
 pub(crate) enum NChange{Put(NIndex,NConfirmationSnapshot),Remove(NIndex)}
 type Owner=(usize,usize);
+// 0..4 为图形结构订阅，4..8 为资格订阅；两者共享同一 N 身份和每日推进。
+fn qualification_level(owner:Owner)->Option<usize>{owner.0.checked_sub(4)}
 type Identity=(u8,usize,[(usize,usize,usize);3]);
 fn identity(n:&SingleNData)->Identity{(u8::from(n.direction==Direction::Down),n.a.path,[&n.a,&n.b,&n.c].map(|p|(p.bar_index,p.ordinal,p.known_index)))}
 struct Lease{count:usize,since:usize}
-struct Entry{state:SingleNState,squeeze:SqueezeState,processed:Option<usize>,invalidated:Option<usize>,reason:Option<String>,owners:BTreeMap<Owner,Lease>,target_history:Vec<NTargetSnapshot>,usages:Vec<NUsage>}
+struct Entry{state:SingleNState,squeeze:SqueezeState,processed:Option<usize>,invalidated:Option<usize>,reason:Option<String>,owners:BTreeMap<Owner,Lease>,target_history:Vec<NTargetSnapshot>,usages:Vec<NUsage>,pending_search:Option<SingleNState>,replacement:Option<NIndex>}
 impl Entry{fn data(&self)->&SingleNData{match self.state.candidate.as_ref().or(self.state.retired.as_ref()){Some(data)=>data,None=>unreachable!("registered N lost both live and retired data")}}}
 #[derive(Default)]
 struct NStore{entries:Vec<Entry>,indices:BTreeMap<Identity,NIndex>,watched:BTreeSet<NIndex>,pending:Vec<(usize,NFact)>}
 impl NStore{
     fn valid(&self,id:NIndex)->bool{self.entries[id.0].invalidated.is_none()}
     fn data(&self,id:NIndex)->&SingleNData{self.entries[id.0].data()}
-    fn send(&mut self,id:NIndex,now:usize,change:NChange){if self.data(id).direction!=Direction::Up{return;}for (&(level,path),lease) in &self.entries[id.0].owners{self.pending.push((level,NFact{known:now.max(lease.since),path,change}));}}
+    fn send(&mut self,id:NIndex,now:usize,change:NChange){if self.data(id).direction!=Direction::Up{return;}for (&owner,lease) in &self.entries[id.0].owners{if let Some(level)=qualification_level(owner){self.pending.push((level,NFact{known:now.max(lease.since),path:owner.1,change}));}}}
     fn link(&mut self,id:NIndex,owner:Owner,now:usize){
         let valid=self.valid(id);let positive=self.data(id).direction==Direction::Up;let snapshot=NConfirmationSnapshot::of(self.data(id));let lease=self.entries[id.0].owners.entry(owner).or_insert(Lease{count:0,since:now});lease.count+=1;
-        if lease.count==1&&valid&&positive{self.pending.push((owner.0,NFact{known:now,path:owner.1,change:NChange::Put(id,snapshot)}));}
+        if lease.count==1&&valid&&positive{if let Some(level)=qualification_level(owner){self.pending.push((level,NFact{known:now,path:owner.1,change:NChange::Put(id,snapshot)}));}}
         if valid{self.watched.insert(id);}
     }
     fn note_usage(&mut self,id:NIndex,owner:Owner,origin:usize,now:usize){
+        if qualification_level(owner).is_some(){return;}
         self.entries[id.0].usages.push(NUsage{level:owner.0 as u8,path:owner.1,origin_index:origin,start_index:now,end_index:None});
     }
     fn unlink(&mut self,id:NIndex,owner:Owner,now:usize){
         let positive=self.data(id).direction==Direction::Up;let entry=&mut self.entries[id.0];if let Some(lease)=entry.owners.get_mut(&owner){lease.count-=1;if lease.count==0{entry.owners.remove(&owner);
             if let Some(usage)=entry.usages.iter_mut().rev().find(|u|usize::from(u.level)==owner.0&&u.path==owner.1&&u.end_index.is_none()){usage.end_index=Some(now);}
-            if entry.invalidated.is_none()&&positive{self.pending.push((owner.0,NFact{known:now,path:owner.1,change:NChange::Remove(id)}));}}}
+            if entry.invalidated.is_none()&&positive{if let Some(level)=qualification_level(owner){self.pending.push((level,NFact{known:now,path:owner.1,change:NChange::Remove(id)}));}}}}
         if entry.owners.is_empty(){self.watched.remove(&id);}
     }
     fn invalidate(&mut self,id:NIndex,now:usize,reason:&str){
@@ -86,22 +89,40 @@ impl NStore{
         for id in active{let path=self.data(id).a.path;let source=sources.get(&path).ok_or("shared N source path missing")?;self.advance(id,source,bars,now,config)?;}
         Ok(())
     }
-    fn intern(&mut self,state:SingleNState)->Result<NIndex,String>{
+    fn intern(&mut self,mut state:SingleNState)->Result<NIndex,String>{
+        state.rewind_new_candidate();
         let n=state.candidate.as_ref().ok_or("shared N requires a formed ABC")?;let key=identity(n);
         if let Some(id)=self.indices.get(&key){return Ok(*id);}
         if self.entries.len()>=250_000{return Err("shared N array exceeds 250000 entries".into());}
-        let id=NIndex(self.entries.len());self.entries.push(Entry{state,squeeze:Default::default(),processed:None,invalidated:None,reason:None,owners:BTreeMap::new(),target_history:Vec::new(),usages:Vec::new()});self.indices.insert(key,id);Ok(id)
+        let id=NIndex(self.entries.len());self.entries.push(Entry{state,squeeze:Default::default(),processed:None,invalidated:None,reason:None,owners:BTreeMap::new(),target_history:Vec::new(),usages:Vec::new(),pending_search:None,replacement:None});self.indices.insert(key,id);Ok(id)
+    }
+    /// 未攻击的候选不垄断后续结构；副游标从 C 开始，只消费新增点。
+    /// 已攻击 N 则一直锁定，直到来源或防守失效。
+    fn pending_replacement(&mut self,id:NIndex,source:&Source,bars:&[RuleCandle],now:usize)->Result<bool,String>{
+        let entry=&mut self.entries[id.0];let n=entry.data();
+        if n.attack_index.is_some(){entry.pending_search=None;return Ok(false);}
+        let (start,ordinal,direction)=(n.c.bar_index,n.c.ordinal,n.direction);
+        let search=entry.pending_search.get_or_insert_with(||SingleNState::from_origin(start,ordinal,direction));
+        advance_search(search,source,bars,now)?;
+        if !search.candidate.as_ref().is_some_and(|n|n.attack_index.is_some()){return Ok(false);}
+        let candidate=entry.pending_search.take().ok_or("pending N search missing")?;
+        let replacement=self.intern(candidate)?;
+        if replacement==id||!self.valid(replacement){return Ok(false);}
+        self.entries[id.0].replacement=Some(replacement);self.invalidate(id,now,"pending_candidate_superseded");Ok(true)
     }
     fn advance(&mut self,id:NIndex,source:&Source,bars:&[RuleCandle],now:usize,config:&TradingDayConfig)->Result<(),String>{
         if !self.valid(id)||self.entries[id.0].processed==Some(now){return Ok(());}
-        let start=self.entries[id.0].processed.map_or(now,|day|day+1);
+        let start=self.entries[id.0].processed.map_or_else(||self.entries[id.0].state.last_day()
+            .map_or(self.data(id).known_index,|day|day.saturating_add(1)).min(now),|day|day+1);
         for day in start..=now{
             let before=NConfirmationSnapshot::of(self.data(id));let entry=&mut self.entries[id.0];
             if entry.state.last_day()!=Some(day){let step=single_n::advance_n_indexed(&mut entry.state,&source.points,&source.prices,bars,day)?;
                 if step.invalidated{self.invalidate(id,day,"candidate_defense_or_source_invalidated");return Ok(());}}
+            if self.pending_replacement(id,source,bars,day)?{return Ok(());}
             // 交易攻击质量由资格/买点消费者判断；实体或量能不足不撤销已成立的 N 结构。
             let entry=&mut self.entries[id.0];let n=entry.state.candidate.as_mut().ok_or("active N lost its data")?;
             if day>0{single_n::advance_squeeze_indexed(&mut entry.squeeze,n,bars,day,config.shadow_fraction)?;}
+            single_n::advance_structure_targets(n,&bars[day],day)?;
             entry.processed=Some(day);let after=NConfirmationSnapshot::of(n);
             if let Some(targets)=&n.targets{
                 let snapshot=NTargetSnapshot{known_index:day,prices:[Some(targets.one_p),Some(targets.two_t),targets.five_top,targets.ten_full],reached_at:[targets.one_p_reached_at,targets.two_t_reached_at]};
@@ -113,7 +134,39 @@ impl NStore{
     fn finish(self)->Result<Vec<SharedNRecord>,String>{self.entries.into_iter().map(|entry|Ok(SharedNRecord{data:entry.state.candidate.or(entry.state.retired).ok_or("shared N lost historical data")?,observed_through:entry.processed,invalidated_index:entry.invalidated,invalidation_reason:entry.reason,target_history:entry.target_history,usages:entry.usages})).collect()}
 }
 struct Source{points:Vec<KernelPoint>,prices:Vec<Decimal>}
+#[cfg(test)]
+#[path = "n_memory_replacement_tests.rs"]
+mod replacement_tests;
+fn advance_search(search:&mut SingleNState,source:&Source,bars:&[RuleCandle],now:usize)->Result<(),String>{
+    if search.last_day()==Some(now){return Ok(());}
+    let step=single_n::advance_n_indexed(search,&source.points,&source.prices,bars,now)?;
+    if step.invalidated{
+        if let Some(retired)=search.retired.as_ref(){
+            *search=SingleNState::after_invalidation(retired,&source.points,&source.prices,&bars[now],now);
+            single_n::advance_n_indexed(search,&source.points,&source.prices,bars,now)?;
+        }
+    }
+    Ok(())
+}
 struct Tracker{origin:MemoryPoint,direction:Direction,search:Option<SingleNState>,current:Option<NIndex>,retained:Option<NIndex>}
+impl Tracker{
+    fn acquire(&mut self,source:&Source,bars:&[RuleCandle],now:usize,owner:Owner,store:&mut NStore)->Result<Option<NIndex>,String>{
+        if self.current.is_some(){return Ok(self.current);}
+        let Some(search)=self.search.as_mut()else{return Ok(None);};
+        advance_search(search,source,bars,now)?;
+        if search.candidate.is_none(){return Ok(None);}
+        let id=store.intern(self.search.take().ok_or("N search cursor missing")?)?;
+        if !store.valid(id){self.search=Some(SingleNState::from_origin(now,0,self.direction));return Ok(None);}
+        self.current=Some(id);store.link(id,owner,now);store.note_usage(id,owner,self.origin.bar_index,now);Ok(Some(id))
+    }
+    fn release_invalid(&mut self,source:&Source,bars:&[RuleCandle],now:usize,owner:Owner,store:&mut NStore){
+        let Some(id)=self.current.filter(|id|!store.valid(*id))else{return;};
+        store.unlink(id,owner,now);self.current=None;self.retained=None;
+        if let Some(next)=store.entries[id.0].replacement.filter(|next|store.valid(*next)){
+            self.current=Some(next);self.search=None;store.link(next,owner,now);store.note_usage(next,owner,self.origin.bar_index,now);
+        }else{self.search=Some(SingleNState::after_invalidation(store.data(id),&source.points,&source.prices,&bars[now],now));}
+    }
+}
 #[derive(Default)]
 struct PathState{memory:PathNMemory,tracker:Option<Tracker>,six_state:Option<super::TrendState>}
 impl PathState{
@@ -135,30 +188,21 @@ impl PathState{
         // 新关键位清掉本级周期引用；共享表里其他级别的引用不受影响。
         if self.memory.boundary.as_ref().is_none_or(|key|!key.same(&boundary)){self.memory.first_ns.clear();}
         self.memory.generation+=1;self.memory.boundary=Some(boundary);self.memory.boundary_known_index=Some(now);self.memory.current_n=[None,None];
-        self.tracker=Some(Tracker{origin,search:Some(SingleNState::from_origin(attack.bar_index,attack.ordinal,direction)),direction,current:None,retained:None});
+        // 翻向本身也可完成结构 N；资格订阅仍从攻击点之后找 N，不能被此前 N 占位。
+        let start=if qualification_level(owner).is_some(){attack}else{origin};
+        self.tracker=Some(Tracker{origin,search:Some(SingleNState::from_origin(start.bar_index,start.ordinal,direction)),direction,current:None,retained:None});
     }
     fn advance(&mut self,source:&Source,bars:&[RuleCandle],now:usize,level:usize,store:&mut NStore,config:&TradingDayConfig)->Result<(),String>{
         let owner=(level,self.memory.path);let Some(tracker)=&mut self.tracker else{return Ok(());};let direction=tracker.direction;let slot=usize::from(direction==Direction::Down);
-        if let Some(id)=tracker.current{
-            if !store.valid(id){
-                store.unlink(id,owner,now);tracker.current=None;self.memory.current_n[slot]=None;
-                // 本趋势只保留第一条仍有效的N；破位后归档，后续新结构再提供替代。
-                tracker.retained=None;tracker.search=Some(SingleNState::after_invalidation(store.data(id),&source.points,&source.prices,&bars[now],now));
-            }
-        }
-        if tracker.current.is_none(){
-            let Some(search)=tracker.search.as_mut()else{return Ok(());};
-            single_n::advance_n_indexed(search,&source.points,&source.prices,bars,now)?;
-            let Some(n)=search.candidate.as_ref()else{return Ok(());};
-            if bars[n.c.bar_index.saturating_add(1).min(now)..now].iter().any(|bar|n.direction.sign()*(n.direction.adverse(bar)-n.pullback)<Decimal::ZERO){search.retire(now);return Ok(());}
-            let id=store.intern(tracker.search.take().ok_or("N search cursor missing")?)?;
-            if !store.valid(id){tracker.search=Some(SingleNState::from_origin(now,0,direction));return Ok(());}
-            tracker.current=Some(id);self.memory.current_n[slot]=Some(id);store.link(id,owner,now);store.note_usage(id,owner,tracker.origin.bar_index,now);
-        }
-        let id=tracker.current.ok_or("N candidate index missing")?;store.advance(id,source,bars,now,config)?;
+        tracker.release_invalid(source,bars,now,owner,store);self.memory.current_n[slot]=tracker.current;
+        let Some(mut id)=tracker.acquire(source,bars,now,owner,store)?else{return Ok(());};
+        self.memory.current_n[slot]=Some(id);store.advance(id,source,bars,now,config)?;
         if !store.valid(id){
-            store.unlink(id,owner,now);tracker.current=None;self.memory.current_n[slot]=None;
-            tracker.retained=None;tracker.search=Some(SingleNState::after_invalidation(store.data(id),&source.points,&source.prices,&bars[now],now));return Ok(());
+            tracker.release_invalid(source,bars,now,owner,store);self.memory.current_n[slot]=tracker.current;
+            // 共享候选的C延伸也必须在当日续算；只重接一次，避免同日递归搜索。
+            let Some(next)=tracker.acquire(source,bars,now,owner,store)?else{return Ok(());};
+            id=next;self.memory.current_n[slot]=Some(id);store.advance(id,source,bars,now,config)?;
+            if !store.valid(id){tracker.release_invalid(source,bars,now,owner,store);self.memory.current_n[slot]=tracker.current;return Ok(());}
         }
         if store.data(id).squeeze_index.is_some()&&tracker.retained.is_none(){
             self.memory.first_ns.push(FirstNRecord{trend_origin:tracker.origin.clone(),direction,confirmed_index:now,n_index:id});
@@ -170,7 +214,12 @@ impl PathState{
 }
 #[derive(Clone,Copy)]
 struct FlipSeed{known:usize,path:usize,origin:MemoryPoint,key:MemoryPoint,attack:MemoryPoint,direction:Direction}
-struct LevelState{flips:Vec<FlipSeed>,flip_cursor:usize,observations:Vec<super::observations::TrendObservation>,cursor:usize,paths:BTreeMap<usize,PathState>,active_path:Option<usize>}
+struct LevelState{flips:Vec<FlipSeed>,flip_cursor:usize,observations:Vec<super::observations::TrendObservation>,cursor:usize,paths:BTreeMap<usize,PathState>,qualification_paths:BTreeMap<usize,PathState>,active_path:Option<usize>}
+fn qualification_scope_ended(path:&PathState)->bool{
+    path.tracker.as_ref().is_some_and(|tracker|match tracker.direction{
+        Direction::Up=>matches!(path.six_state,Some(super::TrendState::Bear|super::TrendState::BullToBear|super::TrendState::BullBearAlternation)),
+        Direction::Down=>matches!(path.six_state,Some(super::TrendState::Bull|super::TrendState::BearToBull|super::TrendState::BearBullAlternation))})
+}
 pub(crate) struct NMemoryAllResult{pub memory:[LevelNMemory;4],pub records:Vec<SharedNRecord>,pub facts:[Vec<NFact>;4],pub seconds:[f64;4],pub shared_seconds:f64}
 pub(crate) fn calculate_all(pool:&PointArena,market:&[KernelBar],frames:&[RefFrame;4],scalars:&[super::KernelFrame;4],source_paths:&[BTreeMap<(usize,usize),(usize,usize)>;4],bars:&[RuleCandle],config:&TradingDayConfig,cancel:Option<&AtomicBool>)->Result<NMemoryAllResult,String>{
     let shared=Instant::now();let polyline=&scalars[0];let mut sources:BTreeMap<usize,Source>=BTreeMap::new();
@@ -183,7 +232,7 @@ pub(crate) fn calculate_all(pool:&PointArena,market:&[KernelBar],frames:&[RefFra
             let direction=match event.title.as_str(){"翻空为多"=>Direction::Up,"翻多为空"=>Direction::Down,_=>return None};
             Some(FlipSeed{known:event.known_index,path:event.point.path,origin:MemoryPoint::from_point(event.origin.as_ref()?),key:MemoryPoint::from_point(event.key.as_ref()?),attack:MemoryPoint::from_point(&event.point),direction})
         }).collect();flips.sort_by_key(|seed|seed.known);
-        LevelState{flips,flip_cursor:0,observations:frames[level].observations.clone(),cursor:0,paths:BTreeMap::new(),active_path:None}
+        LevelState{flips,flip_cursor:0,observations:frames[level].observations.clone(),cursor:0,paths:BTreeMap::new(),qualification_paths:BTreeMap::new(),active_path:None}
     });
     for pair in frames[0].points.windows(2){let origin=pool.view(pair[0],market);let extreme=pool.view(pair[1],market);if origin.path!=extreme.path{continue;}
         let context=frames[0].contexts.iter().rev().find(|c|c.path==origin.path&&c.known_index<=extreme.known_index);
@@ -197,28 +246,34 @@ pub(crate) fn calculate_all(pool:&PointArena,market:&[KernelBar],frames:&[RefFra
         for level in 0..4{let clock=Instant::now();let state=&mut levels[level];
             while state.cursor<state.observations.len()&&state.observations[state.cursor].known_index<=now{
                 let observation=state.observations[state.cursor];state.cursor+=1;if state.active_path!=Some(observation.path){
-                    for path in state.paths.values_mut(){path.end_trend(now,level,&mut store);}state.active_path=Some(observation.path);
+                    for path in state.paths.values_mut(){path.end_trend(now,level,&mut store);}
+                    for path in state.qualification_paths.values_mut(){path.end_trend(now,level+4,&mut store);}state.active_path=Some(observation.path);
                 }
                 let path=state.paths.entry(observation.path).or_default();path.memory.path=observation.path;path.six_state=observation.state;
-                let ended=path.tracker.as_ref().is_some_and(|tracker|match tracker.direction{
-                    Direction::Up=>matches!(observation.state,Some(super::TrendState::Bear|super::TrendState::BullToBear|super::TrendState::BullBearAlternation)),
-                    Direction::Down=>matches!(observation.state,Some(super::TrendState::Bull|super::TrendState::BearToBull|super::TrendState::BearBullAlternation))});
-                if ended{path.end_trend(now,level,&mut store);}
+                // 六态是资格上下文，不代替 N 的来源、防守和正式翻向生命周期。
+                let qualification=state.qualification_paths.entry(observation.path).or_default();qualification.memory.path=observation.path;qualification.six_state=observation.state;
+                if qualification_scope_ended(qualification){qualification.end_trend(now,level+4,&mut store);}
             }
             while state.flip_cursor<state.flips.len()&&state.flips[state.flip_cursor].known<=now{
                 let seed=state.flips[state.flip_cursor];state.flip_cursor+=1;
                 if state.active_path.is_some_and(|path|path!=seed.path){continue;}
                 state.active_path=Some(seed.path);let path=state.paths.entry(seed.path).or_default();path.memory.path=seed.path;
                 path.observe_flip(seed.origin,seed.key,seed.attack,seed.direction,now,level,&mut store);
+                let qualification=state.qualification_paths.entry(seed.path).or_default();qualification.memory.path=seed.path;
+                qualification.observe_flip(seed.origin,seed.key,seed.attack,seed.direction,now,level+4,&mut store);
             }
             if let Some(path)=state.active_path{if let Some(state)=state.paths.get_mut(&path){
-                let ended=state.tracker.as_ref().is_some_and(|tracker|match tracker.direction{
-                    Direction::Up=>matches!(state.six_state,Some(super::TrendState::Bear|super::TrendState::BullToBear|super::TrendState::BullBearAlternation)),
-                    Direction::Down=>matches!(state.six_state,Some(super::TrendState::Bull|super::TrendState::BearToBull|super::TrendState::BearBullAlternation))});
-                if ended{state.end_trend(now,level,&mut store);}if state.tracker.is_some(){
+                if state.tracker.is_some(){
                 let base=source_paths[level].range((path,0)..=(path,now)).next_back().map_or(path,|(_,p)|p.1);
                 if let Some(source)=sources.get(&base){state.advance(source,bars,now,level,&mut store,config)?;}
             }}}
+            if let Some(path)=state.active_path{if let Some(qualification)=state.qualification_paths.get_mut(&path){
+                if qualification_scope_ended(qualification){qualification.end_trend(now,level+4,&mut store);}
+                if qualification.tracker.is_some(){
+                    let base=source_paths[level].range((path,0)..=(path,now)).next_back().map_or(path,|(_,p)|p.1);
+                    if let Some(source)=sources.get(&base){qualification.advance(source,bars,now,level+4,&mut store,config)?;}
+                }
+            }}
             seconds[level]+=clock.elapsed().as_secs_f64();
         }
         for (level,fact) in store.pending.drain(..){facts[level].push(fact);}
@@ -235,7 +290,11 @@ mod tests{
     fn trade_quality_rejection_does_not_erase_shared_n_structure(){
         let points=[(1,PointKind::L,10.0),(2,PointKind::H,15.0),(3,PointKind::L,12.0)].into_iter().map(|(index,kind,value)|KernelPoint::new(super::super::KernelPointData{
             index,kind,value,ordinal:0,known_index:index,level:0,path:0,state:super::super::PointState::Confirmed,time:format!("2026-01-{index:02}"),evidence:crate::indexed_json::Value::Null})).collect::<Vec<_>>();
-        let bars=(0..=4).map(|day|RuleCandle{symbol:"fixture".into(),timestamp:format!("2026-01-{:02}",day+1),open:15.into(),high:16.into(),low:14.into(),close:Decimal::new(151,1),volume:100.into(),adjustment_factor:Decimal::ONE,raw_is_st:None,raw_trading_active:None}).collect::<Vec<_>>();
+        let mut bars=(0..=4).map(|day|RuleCandle{symbol:"fixture".into(),timestamp:format!("2026-01-{:02}",day+1),open:15.into(),high:16.into(),low:14.into(),close:Decimal::new(151,1),volume:100.into(),adjustment_factor:Decimal::ONE,raw_is_st:None,raw_trading_active:None}).collect::<Vec<_>>();
+        // ABC行情必须与冻结点一致，且攻击前一日尚未突破颈线。
+        for (day,open,high,low,close) in [(1,11,12,10,11),(2,14,15,13,14),(3,13,14,12,14)]{
+            bars[day].open=open.into();bars[day].high=high.into();bars[day].low=low.into();bars[day].close=close.into();
+        }
         assert!(crate::analysis::trading::entries::v3_positive_n_attack_rejection(&bars[4],Some(false)).is_some());
         let mut n=state().candidate.unwrap();n.squeeze_index=None;
         let mut store=NStore::default();let id=store.intern(SingleNState::from_candidate(n,&points,4)).unwrap();

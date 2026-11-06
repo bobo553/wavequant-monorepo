@@ -504,6 +504,15 @@ export class PriceChart {
         const asof = this.theory?.asof && this.theory.asof < this.data?.asof ? this.theory.asof : this.data?.asof;
         const stage = trendStageAt(this.trendNStageGroups(), time, selected);
         if (!stage?.direction) return { level: selected, direction: null, state: null, n: null };
+        // 同日先到C再反向突破时，突破腿属于出段；仅新N确在当日攻击时覆盖默认入段归属。
+        if (stage.to === time) {
+            const outgoing = trendStageAt(this.trendNStageGroups(), time, selected, true);
+            if (outgoing?.from === time && outgoing.direction !== stage.direction) {
+                const n = this.trendNReader.inspectStage(outgoing, time, asof);
+                if (n?.attack === time) return { level: selected, path: outgoing.path, direction: outgoing.direction,
+                    state: null, sourceReference: true, n };
+            }
+        }
         return { level: selected, path: stage.path, direction: stage.direction, state: null, sourceReference: true,
             n: this.trendNReader.inspectStage(stage, time, asof) };
     }
@@ -534,10 +543,10 @@ export class PriceChart {
             this.trendNHovered = primary; this.refreshTrendNDisplay(); return;
         }
         if (segment) {
-            const n = segment.direction ? this.trendNReader.inspect(segment.level, segment.path, time, asof, segment.direction) : null;
+            const n = segment.direction ? this.trendNReader.inspectStage(segment, time, asof) : null;
             const day = Math.min(this.trendNReader.indexAt(time) ?? -1, this.trendNReader.indexAt(asof) ?? -1);
             const state = segment.endpoint.trend_state_known_index <= day ? segment.endpoint.trend_state : null;
-            this.trendNHovered = { level: segment.level, direction: segment.direction, state, n };
+            this.trendNHovered = { level: segment.level, direction: segment.direction, state, sourceReference: true, n };
         } else this.trendNHovered = this.trendNContextAt(time);
         this.refreshTrendNDisplay();
     }

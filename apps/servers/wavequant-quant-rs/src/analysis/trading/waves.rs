@@ -243,7 +243,8 @@ impl ProjectionState {
         }
     }
     fn advance_bar(&mut self,bar:&RuleCandle,previous:&RuleCandle,i:usize) {
-        if self.ended{return;}let sign=if self.direction==Direction::Up{Decimal::ONE}else{-Decimal::ONE};
+        // 结构N可在影线越界后继续存活；已结束的远端投射仍消费日期，不能产生时钟断档。
+        if self.ended{self.through=Some(i);return;}let sign=if self.direction==Direction::Up{Decimal::ONE}else{-Decimal::ONE};
         let high=if self.direction==Direction::Up{bar.high}else{bar.low};let low=if self.direction==Direction::Up{bar.low}else{bar.high};
         let previous_high=if self.direction==Direction::Up{previous.high}else{previous.low};let previous_low=if self.direction==Direction::Up{previous.low}else{previous.high};
         let first=self.setup.attack_index.max(self.start);
@@ -644,6 +645,16 @@ mod inverse_projection_price_tests {
     fn candle(day:usize,open:&str,high:&str,low:&str,close:&str)->RuleCandle{
         RuleCandle{symbol:"inverse".into(),timestamp:format!("2026-01-{day:02}"),open:open.parse().unwrap(),high:high.parse().unwrap(),low:low.parse().unwrap(),close:close.parse().unwrap(),
             volume:100.into(),adjustment_factor:Decimal::ONE,raw_is_st:None,raw_trading_active:None}
+    }
+    #[test]
+    fn ended_projection_still_consumes_consecutive_dates(){
+        let previous=candle(2,"4","5","3","4");let squeeze=candle(3,"3","4","1","2");
+        let mut stream=IncrementalProjection::directional(WaveProjectionSetup{origin_index:0,attack_index:1,squeeze_index:3,
+            origin:20.into(),box_anchor:14.into(),two_t:2.into(),defense:17.into()},&squeeze,3,1.into(),3,Direction::Down).unwrap();
+        stream.advance(&squeeze,&previous,3).unwrap();
+        let wick=candle(4,"3","21","2","3");stream.advance(&wick,&squeeze,4).unwrap();
+        assert!(stream.0.ended);
+        for now in 5..=7{stream.advance(&wick,&wick,now).unwrap();assert_eq!(stream.0.through,Some(now));assert!(stream.0.ended);}
     }
     #[test]
     fn nonpositive_downward_price_target_is_unavailable(){

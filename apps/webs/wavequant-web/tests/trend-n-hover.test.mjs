@@ -9,6 +9,22 @@ function fixture() {
     const span = {nIndex:0,path:0,originIndex:0,startIndex:2,endIndex:null};
     return {bars,trendState:{n:{records:[record],spans:[[],[span],[{...span}],[]]}}};
 }
+test("整段回看跳过未攻击旧候选，转折当天仍归属入段", () => {
+    const data=fixture();
+    const confirmed=data.trendState.n.records[0];
+    data.trendState.n.records=[{...confirmed,attackIndex:null,squeezeIndex:null,targets:[],observedThrough:2,invalidatedIndex:3},{...confirmed,knownIndex:3}];
+    data.trendState.n.spans=[[],[{nIndex:0,path:0,originIndex:0,startIndex:2,endIndex:3},{nIndex:1,path:0,originIndex:0,startIndex:3,endIndex:null}],[],[]];
+    const stage={level:1,path:0,direction:"up",from:data.bars[0].time,to:data.bars[3].time};
+    const reader=createTrendNReader(data);
+    for(const time of data.bars.slice(0,4).map(bar=>bar.time)){
+        assert.equal(reader.inspectStage(stage,time,data.bars[8].time)?.nIndex,1);
+    }
+    assert.equal(reader.inspectStage(stage,data.bars[1].time,data.bars[2].time)?.attack,null);
+    const points=[{time:data.bars[0].time,value:10},{time:data.bars[3].time,value:20},{time:data.bars[6].time,value:12}];
+    const groups=[{stroke:{trend_level:1,kind:"trend"},segments:[[points[0],points[1]],[points[1],points[2]]].map(pair=>pair.map(point=>({point})))}];
+    assert.equal(trendStageAt(groups,data.bars[3].time,1).direction,"up");
+    assert.equal(trendStageAt(groups,data.bars[4].time,1).direction,"down");
+});
 test("历史悬停只读取当日快照，远端目标和未来达标日不回填", () => {
     const data = fixture(), reader = createTrendNReader(data);
     assert.equal(reader.read(2,0,"2020-01-02","2020-01-09"),null);
@@ -18,6 +34,34 @@ test("历史悬停只读取当日快照，远端目标和未来达标日不回�
     assert.deepEqual(early.targets.map(target=>target.price),[20,25,null,null]);assert.equal(early.targets[0].reached,null);
     assert.deepEqual(reader.read(2,0,"2020-01-08","2020-01-09").targets.map(target=>target.price),[20,25,30,40]);
     assert.equal(reader.read(2,0,"2020-01-08","2020-01-06"),null);
+});
+
+test("不同绘制组共享转折日时仍归入段，同日高低点不丢段", () => {
+    const point=(time,value)=>({point:{time,value,path:0}});
+    const a=point("2020-01-01",20),b=point("2020-01-04",10),c=point("2020-01-09",18);
+    const stroke={trend_level:1,kind:"reversal"};
+    const groups=[{stroke,segments:[[a,b]]},{stroke,segments:[[b,c]]}];
+    assert.equal(trendStageAt(groups,"2020-01-04",1).direction,"down");
+    assert.equal(trendStageAt(groups,"2020-01-01",1).direction,"down");
+    assert.equal(trendStageAt(groups,"2020-01-05",1).direction,"up");
+    const sameDay={stroke,segments:[[point("2020-01-04",18),b]]};
+    assert.equal(trendStageAt([sameDay],"2020-01-04",1).direction,"down");
+});
+
+test("倒N所在二级线段命中与整段回看选择相同替代N", () => {
+    const data=fixture(),record=data.trendState.n.records[0];
+    record.direction="down";
+    data.trendState.n.records=[{...record,attackIndex:null,squeezeIndex:null,targets:[],observedThrough:2,invalidatedIndex:3},{...record,knownIndex:3}];
+    data.trendState.n.spans=[[],[],[{nIndex:0,path:0,originIndex:0,startIndex:2,endIndex:3},{nIndex:1,path:0,originIndex:0,startIndex:3,endIndex:null}],[]];
+    const a={x:0,y:0,point:{time:data.bars[0].time,value:30,path:0}};
+    const b={x:80,y:80,point:{time:data.bars[8].time,value:10,path:0}};
+    const groups=[{stroke:{trend_level:2,kind:"secondary"},segments:[[a,b]]}];
+    const reader=createTrendNReader(data),time=data.bars[2].time,asof=data.bars[8].time;
+    const line=reader.inspectStage(trendSegmentAt(groups,20,20),time,asof);
+    const range=reader.inspectStage(trendStageAt(groups,time,2),time,asof);
+    assert.equal(line.nIndex,1);
+    assert.deepEqual(line,range);
+    assert.equal(line.attack,data.bars[3].time);
 });
 test("N标识和趋势段回看同一N已发布目标，光标早于轧空日也能查看", () => {
     const reader=createTrendNReader(fixture());
@@ -53,7 +97,31 @@ test("一级趋势整个日期范围回看本段N，形成前不要求贴近N或
     assert.equal(reader.inspectStage(stage,"2020-01-01","2020-01-02"),null);
     assert.equal(reader.inspectStage({...stage,path:1},"2020-01-04","2020-01-09"),null);
     assert.equal(reader.inspectStage({...stage,direction:"down"},"2020-01-04","2020-01-09"),null);
-    assert.equal(reader.inspectStage({...stage,from:"2020-01-02"},"2020-01-04","2020-01-09"),null);
+    assert.equal(reader.inspectStage({...stage,from:"2020-01-02"},"2020-01-04","2020-01-09").nIndex,0);
+});
+
+test("同向新小段优先沿用后端有效N，破防守或使用结束后不再借用", () => {
+    for (const direction of ["up", "down"]) for (const level of [0, 1, 2, 3]) {
+        const data=fixture(), n=data.trendState.n;
+        n.records[0].direction=direction;
+        // 本用例隔离本级使用期；其他级别的共享展示由专用用例覆盖。
+        n.spans=[[],[],[],[]];
+        n.spans[level]=[{nIndex:0,path:0,originIndex:0,startIndex:2,endIndex:null}];
+        const stage={level,path:0,direction,from:data.bars[5].time,to:data.bars[8].time};
+        const reader=createTrendNReader(data);
+        const old=reader.inspectStage({...stage,from:data.bars[0].time},data.bars[4].time,data.bars[8].time);
+        const continued=reader.inspectStage(stage,data.bars[6].time,data.bars[8].time);
+        assert.equal(continued.nIndex,old.nIndex);
+        assert.deepEqual(trendNTargetGuides(continued),trendNTargetGuides(old));
+        assert.equal(reader.inspectStage({...stage,direction:direction==="up"?"down":"up"},data.bars[6].time,data.bars[8].time),null);
+        assert.equal(reader.inspectStage({...stage,path:1},data.bars[6].time,data.bars[8].time),null);
+        n.records[0].invalidatedIndex=7;
+        assert.equal(createTrendNReader(data).inspectStage(stage,data.bars[7].time,data.bars[8].time),null);
+        n.records[0].invalidatedIndex=null;n.spans[level][0].endIndex=7;
+        assert.equal(createTrendNReader(data).inspectStage(stage,data.bars[7].time,data.bars[8].time),null);
+        n.spans[level][0].endIndex=null;n.records[0].attackIndex=7;
+        assert.equal(createTrendNReader(data).inspectStage(stage,data.bars[6].time,data.bars[8].time),null);
+    }
 });
 test("跨级读同一N，失效日与本级趋势结束日均不沿用旧N", () => {
     const data = fixture();
@@ -102,6 +170,24 @@ test("目标复用既有标签图层，仅传已确认价位且保留图外提�
     const guides=trendNTargetGuides(model);
     assert.deepEqual(guides.map(guide=>guide.stage),["one_p","two_t","n_defense"]);
     assert.ok(guides.every(guide=>guide.display_at==="2020-01-04"&&guide.hideWhenPriceOffscreen!==true));
+});
+
+test("杀多未确认仍绘制后端已发布的一饱二吐，不前端补算远端目标", () => {
+    const data=fixture(),record=data.trendState.n.records[0];record.direction="down";record.squeezeIndex=null;
+    record.targets=[{knownIndex:3,prices:[8,5,null,null],reachedAt:[null,null]}];
+    const n=createTrendNReader(data).read(1,0,"2020-01-04","2020-01-09");
+    assert.equal(n.squeeze,null);
+    assert.deepEqual(trendNTargetGuides(n).map(row=>[row.stage,row.price]),[["one_p",8],["two_t",5],["n_defense",12]]);
+    assert.ok(createTrendNReader(data).read(1,0,"2020-01-03","2020-01-09").targets.every(row=>row.price===null));
+});
+
+test("一级段结束后才发布的共享N保留真实突破腿，回放截止前不提前读取", () => {
+    const data=fixture();data.trendState.n.spans=[[{nIndex:0,path:0,originIndex:0,startIndex:5,endIndex:null}],[],[],[]];
+    const stage={level:1,path:0,direction:"up",from:data.bars[2].time,to:data.bars[4].time};
+    const reader=createTrendNReader(data);
+    const n=reader.inspectStage(stage,data.bars[3].time,data.bars[8].time);
+    assert.equal(n.nIndex,0);assert.equal(n.attack,data.bars[3].time);
+    assert.equal(reader.inspectStage(stage,data.bars[3].time,data.bars[4].time),null);
 });
 
 test("上涨段不借用同级倒N，下跌段不借用同级正N", () => {
@@ -190,8 +276,9 @@ test("一级段展示仅由二级订阅的同段共享N，保留来源及已发�
 test("共享N展示不跨方向、路径或一级段，失效后不沿用，二三级入口不借其他级别", () => {
     const data=sharedStageFixture(), reader=createTrendNReader(data);
     const stage={level:1,path:0,direction:"up",from:"2019-12-02",to:"2020-01-06"};
-    for(const changed of [{direction:"down"},{path:1},{from:"2019-12-03"},{to:"2019-12-04"}])
+    for(const changed of [{direction:"down"},{path:1},{to:"2019-12-04"}])
         assert.equal(reader.inspectStage({...stage,...changed},"2019-12-05","2020-02-04"),null);
+    assert.equal(reader.inspectStage({...stage,from:"2019-12-06"},"2019-12-06","2020-02-04").nIndex,0);
     assert.equal(reader.inspectStage({...stage,to:"2020-02-04"},"2020-02-04","2020-02-04"),null);
     data.trendState.n.spans[3]=data.trendState.n.spans[2];data.trendState.n.spans[2]=[];
     assert.equal(createTrendNReader(data).inspectStage({...stage,level:2},"2019-12-05","2020-02-04"),null);
@@ -207,4 +294,27 @@ test("倒N共享参考及N字母命中保留一级展示归属，不改变实际
     assert.equal(n.up,false);assert.equal(n.level,2);assert.deepEqual(n.displayStage,stage);
     const overlay=new TrendNHoverOverlay();overlay.setModel(n);assert.deepEqual(overlay.model.displayStage,stage);
     overlay.setModel({...n,displayStage:undefined});assert.equal(overlay.model.displayStage,undefined);
+});
+
+test("跨一级转折的N按突破腿归属，正倒N同日C和突破对称", () => {
+    for (const direction of ["up", "down"]) {
+        const data=fixture(), record=data.trendState.n.records[0];
+        record.direction=direction;record.points[2].barIndex=3;record.knownIndex=3;
+        record.squeezeIndex=null;record.targets=[];record.observedThrough=5;
+        data.trendState.n.spans=[[{nIndex:0,path:0,originIndex:0,startIndex:3,endIndex:6}],[],[],[]];
+        const value=direction==="up"?[20,10,30]:[10,20,5];
+        const point=(index,p)=>({point:{time:data.bars[index].time,value:p,path:0}});
+        const a=point(1,value[0]),c=point(3,value[1]),d=point(8,value[2]);
+        const groups=[{stroke:{trend_level:1,kind:"trend"},segments:[[a,c],[c,d]]}];
+        const time=data.bars[3].time,asof=data.bars[8].time,reader=createTrendNReader(data);
+        const incoming=trendStageAt(groups,time,1),outgoing=trendStageAt(groups,time,1,true);
+        assert.notEqual(incoming.direction,direction);assert.equal(outgoing.direction,direction);
+        assert.equal(reader.inspectStage(incoming,time,asof),null);
+        const n=reader.inspectStage(outgoing,time,asof);
+        assert.equal(n.nIndex,0);assert.equal(n.attack,time);assert.equal(n.level,0);
+        assert.deepEqual(n.displayStage,{level:1,path:0,direction,from:time,to:data.bars[8].time});
+        assert.equal(n.squeeze,null);assert.ok(n.targets.every(target=>target.price===null));
+        assert.equal(reader.inspectStage(outgoing,data.bars[6].time,asof),null);
+        assert.equal(reader.inspectStage(outgoing,time,data.bars[2].time),null);
+    }
 });
