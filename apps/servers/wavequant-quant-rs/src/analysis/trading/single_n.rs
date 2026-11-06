@@ -43,6 +43,13 @@ impl SingleNState {
             last:Some(now),previous_index:Some(now),source_versions:Some(versions),candidate:Some(data),..Self::default()}
     }
     pub(crate) fn last_day(&self)->Option<usize>{self.last}
+    /// 延迟订阅只补齐当前ABC可知后的短后缀，恢复首次突破，不能把接管日当作攻击日。
+    pub(crate) fn rewind_new_candidate(&mut self){
+        let Some(n)=self.candidate.as_mut()else{return;};
+        if self.last.is_none_or(|last|last<=n.known_index)||n.squeeze_index.is_some(){return;}
+        n.attack_index=None;n.defense=None;n.box_anchor=None;n.targets=None;
+        self.last=n.known_index.checked_sub(1);self.previous_index=self.last;self.stage_defense=None;
+    }
     /// 未突破的回撤延伸只撤销 C；冻结 A/B 后等待新的已确认 C，不重扫历史。
     /// 已攻击、起点破位或来源修订则开始全新的搜索，不能复活旧 N。
     pub(crate) fn after_invalidation(n:&SingleNData,points:&[KernelPoint],prices:&[Decimal],bar:&RuleCandle,now:usize)->Self{
@@ -113,12 +120,18 @@ fn advance_n_core(state:&mut SingleNState,points:&[KernelPoint],bar:&RuleCandle,
     }
     if state.cursor>points.len(){state.cursor=0;state.tail.clear();state.floor=now;}
     if let Some(n)=&state.candidate {
-        if ahead(n.defense.unwrap_or(n.pullback),adverse(bar,direction),direction){state.retire(now);invalidated=true;}
+        let observed=if n.attack_index.is_some(){bar.close}else{adverse(bar,direction)};
+        if ahead(n.defense.unwrap_or(n.pullback),observed,direction){state.retire(now);invalidated=true;}
     }
     if !invalidated&&state.candidate.is_none(){
         while state.cursor<points.len(){
             let p=&points[state.cursor];if p.known_index>now{break;}state.cursor+=1;
             if state.start_order.map_or(p.index<=state.start,|order|p.order()<order)||p.index<state.floor||!p.is_closed(){continue;}
+            // 冻结 A/B 等待 C 时，B 可继续创极值；同类点不能把 A 挤出三点窗口。
+            if let Some((_,last))=state.tail.back().filter(|(_,last)|last.kind==p.kind){
+                if p.kind.sign()*(p.value-last.value)<=0.0{continue;}
+                state.tail.pop_back();
+            }
             state.tail.push_back((state.cursor-1,PointStamp::of(p)));while state.tail.len()>3{state.tail.pop_front();}
             if state.tail.len()!=3{continue;}
             let (a,b,c)=(&points[state.tail[0].0],&points[state.tail[1].0],&points[state.tail[2].0]);
@@ -161,7 +174,7 @@ pub struct SqueezeState {
     last:Option<usize>,record:Option<Decimal>,record_index:usize,first_resistance:Option<usize>,unknown:bool,
     uninterrupted:bool,rolling_all:bool,prior_resistance:bool,prior_index:Option<usize>,projection:Option<super::waves::IncrementalProjection>,
 }
-/// 使用冻结 N 和当日行情推进轧空；严格跌破轧空低时调用方撤销候选，不能放量挽回旧 N。
+/// 使用冻结 N 和当日行情推进轧空；成立后的N须收盘严格反破防守才失效。
 pub(crate) fn advance_squeeze_indexed(state:&mut SqueezeState,n:&mut SingleNData,bars:&[RuleCandle],now:usize,shadow_fraction:Decimal)->Result<bool,String>{
     let Some(attack)=n.attack_index else{return Ok(false);};let previous_index=now.checked_sub(1).ok_or("squeeze lacks preceding market bar")?;
     let bar=bars.get(now).ok_or("squeeze outside market array")?;let previous_bar=&bars[previous_index];
@@ -188,7 +201,7 @@ fn advance_squeeze_core(state:&mut SqueezeState,n:&mut SingleNData,bar:&RuleCand
         return Ok(false);
     }
     if state.last.is_some_and(|last|now<=last){return Err("squeeze requires increasing market dates".into());}
-    if ahead(defense,adverse(bar,direction),direction){return Ok(false);}
+    if ahead(defense,bar.close,direction){return Ok(false);}
     let resistance=observe_resistance(previous,bar,direction,Some(ShadowPolicy{minimum_range_fraction:shadow_fraction}))?;
     let eligible=now==attack+1;
     if eligible{if resistance.detected==Some(true)&&state.first_resistance.is_none(){state.first_resistance=Some(now);}state.unknown|=resistance.detected.is_none();}
@@ -214,7 +227,7 @@ fn advance_squeeze_core(state:&mut SqueezeState,n:&mut SingleNData,bar:&RuleCand
             let box_anchor=n.box_anchor.ok_or("N box anchor missing")?;
             let targets=project_n_targets(n.origin,n.neckline,n.pullback,box_anchor,direction,ValueDomain::Price,false)?;
             if let (Some(one_p),Some(two_t))=(targets.one_p,targets.two_t){
-            n.targets=Some(SingleNTargets{one_p,two_t,five_top:None,ten_full:None,stage:"await_one_p".into(),next_target:Some(one_p),one_p_reached_at:None,two_t_reached_at:None});
+            n.targets.get_or_insert(SingleNTargets{one_p,two_t,five_top:None,ten_full:None,stage:"await_one_p".into(),next_target:Some(one_p),one_p_reached_at:None,two_t_reached_at:None});
             state.projection=Some(super::waves::IncrementalProjection::directional(super::waves::WaveProjectionSetup{
                 origin_index:n.a.bar_index,attack_index:attack,squeeze_index:now,origin:n.origin,box_anchor,two_t,defense},bar,now,farther(record,extreme(bar,direction),direction),if ahead(extreme(bar,direction),record,direction){now}else{state.record_index},direction)?);
             }
@@ -233,6 +246,29 @@ fn advance_squeeze_core(state:&mut SqueezeState,n:&mut SingleNData,bar:&RuleCand
     if ahead(extreme(bar,direction),record,direction){state.record_index=now;}state.record=Some(farther(record,extreme(bar,direction),direction));state.prior_resistance=resistance.detected==Some(true);state.prior_index=Some(now);
     state.before_index=state.previous_index;state.previous_index=Some(now);state.last=Some(now);Ok(newly_confirmed)
 }
+/// 一饱/二吐由已完成N的冻结攻击箱体决定，不以轧空/杀多确认作为发布门槛。
+/// 只维护结构显示事实；资格仍读取 squeeze_index，五顶/十满仍由后续投射生成。
+pub(crate) fn advance_structure_targets(n:&mut SingleNData,bar:&RuleCandle,now:usize)->Result<(),String>{
+    let Some(attack)=n.attack_index else{return Ok(());};
+    if now<attack||now<n.known_index{return Ok(());}
+    if now>attack&&n.defense.is_some_and(|defense|ahead(defense,bar.close,n.direction)){return Ok(());}
+    if n.targets.is_none(){
+        let box_anchor=n.box_anchor.ok_or("completed N box anchor missing")?;
+        let projected=project_n_targets(n.origin,n.neckline,n.pullback,box_anchor,n.direction,ValueDomain::Price,false)?;
+        let (Some(one_p),Some(two_t))=(projected.one_p,projected.two_t)else{return Ok(());};
+        n.targets=Some(SingleNTargets{one_p,two_t,five_top:None,ten_full:None,stage:"await_one_p".into(),next_target:Some(one_p),one_p_reached_at:None,two_t_reached_at:None});
+    }
+    let targets=n.targets.as_mut().ok_or("completed N targets missing")?;
+    // 成立当日不推断突破前的盘中先后；以后才可使用当日有利极值。
+    let observed=if now==attack{bar.close}else{extreme(bar,n.direction)};
+    if targets.one_p_reached_at.is_none()&&!ahead(targets.one_p,observed,n.direction){targets.one_p_reached_at=Some(now);}
+    if targets.two_t_reached_at.is_none()&&!ahead(targets.two_t,observed,n.direction){targets.two_t_reached_at=Some(now);}
+    if targets.one_p_reached_at.is_none(){targets.stage="await_one_p".into();targets.next_target=Some(targets.one_p);}
+    else if targets.two_t_reached_at.is_none(){targets.stage="await_two_t".into();targets.next_target=Some(targets.two_t);}
+    else if n.squeeze_index.is_none(){targets.stage="await_squeeze".into();targets.next_target=None;}
+    Ok(())
+}
+
 // 单独构造初始状态，避免向外暴露历史行情容器。
 struct SelfSqueeze;
 impl SelfSqueeze {fn initial(attack:usize,now:usize,bar:&RuleCandle,detected:Option<bool>,direction:Direction)->SqueezeState{
@@ -294,13 +330,41 @@ mod tests {
         }
     }
     #[test]
+    fn completed_n_publishes_basic_targets_before_squeeze_in_both_directions(){
+        for direction in [Direction::Up,Direction::Down]{
+            let (state,_)=formed();let mut n=state.candidate.unwrap();n.direction=direction;
+            let mirror=|v:Decimal|if direction==Direction::Up{v}else{Decimal::from(30)-v};
+            if direction==Direction::Down{
+                n.origin=mirror(n.origin);n.neckline=mirror(n.neckline);n.pullback=mirror(n.pullback);
+                n.defense=n.defense.map(mirror);n.box_anchor=n.box_anchor.map(mirror);
+            }
+            let reflect=|mut b:RuleCandle|{let high=b.high;b.open=mirror(b.open);b.close=mirror(b.close);
+                if direction==Direction::Down{b.high=mirror(b.low);b.low=mirror(high);}b};
+            let attack=reflect(bar(4,"14","23","13.5","15.5"));
+            advance_structure_targets(&mut n,&attack,3).unwrap();assert!(n.targets.is_none());
+            advance_structure_targets(&mut n,&attack,4).unwrap();
+            let targets=n.targets.as_ref().unwrap();
+            assert_eq!(targets.one_p,mirror(22.into()));assert_eq!(targets.two_t,mirror(28.into()));
+            assert_eq!(targets.one_p_reached_at,None);assert_eq!(n.squeeze_index,None);
+            assert_eq!((targets.five_top,targets.ten_full),(None,None));
+            advance_structure_targets(&mut n,&reflect(bar(5,"16","23","14","17")),5).unwrap();
+            assert_eq!(n.targets.as_ref().unwrap().one_p_reached_at,Some(5));
+            assert_eq!(n.targets.as_ref().unwrap().two_t_reached_at,None);
+            let before=n.targets.clone();
+            advance_structure_targets(&mut n,&reflect(bar(6,"17","29","12","12")),6).unwrap();
+            assert_eq!(n.targets,before); // 防守先失效，不认当日新达标。
+        }
+    }
+    #[test]
     fn frozen_defense_touch_survives_strict_break_retires(){
         let(mut state,points)=formed();let defense=state.candidate.as_ref().unwrap().defense.unwrap();
         assert_eq!(defense,Decimal::from(13));
         let touch=bar(5,"15","16","13","15");
         assert!(!advance_n(&mut state,&points,&touch,5,None,|_|None).unwrap().invalidated);
-        let broken=bar(6,"14","15","12.9","14");
-        assert!(advance_n(&mut state,&points,&broken,6,None,|_|None).unwrap().invalidated);
+        let wick=bar(6,"14","15","12.9","14");
+        assert!(!advance_n(&mut state,&points,&wick,6,None,|_|None).unwrap().invalidated);
+        let broken=bar(7,"14","15","12.9","12.9");
+        assert!(advance_n(&mut state,&points,&broken,7,None,|_|None).unwrap().invalidated);
         assert!(state.candidate.is_none());
     }
     #[test]
@@ -346,6 +410,7 @@ mod symmetric_n_tests {
         assert!(advance_n(&mut state,&points,&attack,4,Some(&current),|_|Some(Decimal::new(155,1))).unwrap().formed);
         assert_eq!(state.candidate.as_ref().unwrap().defense,Some(17.into()));
         assert!(!advance_n(&mut state,&points,&bar(5,"15","17","14","15"),5,None,|_|None).unwrap().invalidated);
-        assert!(advance_n(&mut state,&points,&bar(6,"16","17.1","15","16"),6,None,|_|None).unwrap().invalidated);
+        assert!(!advance_n(&mut state,&points,&bar(6,"16","17.1","15","16"),6,None,|_|None).unwrap().invalidated);
+        assert!(advance_n(&mut state,&points,&bar(7,"16","17.1","15","17.1"),7,None,|_|None).unwrap().invalidated);
     }
 }

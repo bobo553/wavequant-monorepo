@@ -16,6 +16,8 @@ export function createTrendNReader(data) {
     const indices = new Map(bars.map((bar, index) => [bar.time, index]));
     const byPath = new Map();
     const sharedByShape = new Map(), stageReferences = new Map();
+    // 已攻击N归属其突破腿；A/B可以位于前一段，不能要求整个ABC都落在当前一级段。
+    const associationIndex = record => record.attackIndex ?? record.points[0].barIndex;
     const observations = [[], [], [], []];
     display?.spans.forEach((spans, level) => {
         for (const span of spans) {
@@ -32,11 +34,19 @@ export function createTrendNReader(data) {
         }
     });
     for (const rows of observations) rows.sort((left, right) => right.from.localeCompare(left.from));
-    for (const rows of sharedByShape.values()) rows.sort((left, right) => {
+    for (const rows of sharedByShape.values()) { rows.sort((left, right) => {
         const a = display.records[left.span.nIndex], b = display.records[right.span.nIndex];
-        return a.points[0].barIndex - b.points[0].barIndex || a.knownIndex - b.knownIndex
+        return associationIndex(a) - associationIndex(b) || a.knownIndex - b.knownIndex
             || left.span.nIndex - right.span.nIndex || left.level - right.level || left.span.startIndex - right.span.startIndex;
     });
+        let prefixThrough = -1;
+        for (const item of rows) {
+            const record = display.records[item.span.nIndex];
+            item.through = Math.min(item.span.endIndex === null ? bars.length - 1 : item.span.endIndex - 1,
+                record.observedThrough ?? -1, record.invalidatedIndex === null ? bars.length - 1 : record.invalidatedIndex - 1);
+            prefixThrough = Math.max(prefixThrough, item.through); item.prefixThrough = prefixThrough;
+        }
+    }
     const sharedReferences = (stage, from, to) => {
         const key = `${stage.path}/${stage.direction}/${from}/${to}`;
         if (stageReferences.has(key)) return stageReferences.get(key);
@@ -44,14 +54,16 @@ export function createTrendNReader(data) {
         let left = 0, right = rows.length;
         while (left < right) {
             const middle = (left + right) >>> 1;
-            if (display.records[rows[middle].span.nIndex].points[0].barIndex < from) left = middle + 1; else right = middle;
+            if (rows[middle].prefixThrough < from) left = middle + 1; else right = middle;
         }
         const selected = [];
         for (let index = left; index < rows.length; index++) {
             const item = rows[index], record = display.records[item.span.nIndex];
-            if (record.points[0].barIndex > to) break;
-            if (record.points[2].barIndex <= to && item.span.startIndex <= to
-                && (record.attackIndex === null || record.attackIndex <= to)) selected.push(item);
+            if (associationIndex(record) > to) break;
+            const belongs = record.attackIndex === null
+                ? record.points[0].barIndex >= from && record.points[2].barIndex <= to && item.span.startIndex <= to
+                : record.attackIndex <= to && (record.attackIndex >= from || item.span.startIndex <= from && item.through >= from);
+            if (belongs) selected.push(item);
         }
         stageReferences.set(key, selected); return selected;
     };
@@ -75,17 +87,22 @@ export function createTrendNReader(data) {
                 return record.direction === stage.direction && record.points[0].barIndex >= from && record.points[2].barIndex <= to;
             };
             const current = latest(rows, day, row => row.startIndex);
-            if (current && belongs(current)) {
+            let pending = null;
+            if (current) {
                 const active = this.inspect(stage.level, stage.path, time, asof, stage.direction);
-                if (active) return active;
+                // N使用期由后端维护；同向小段变化不要求ABC重新落入本段，也不替换仍守住防守的N。
+                if (active?.attack && (belongs(current) || display.records[current.nIndex].attackIndex <= day)) return active;
+                if (belongs(current)) pending = active;
             }
             // 只允许形成前查看本段内后续已知N；失效后不能沿用旧N，不能跨段或跨路径借用。
-            const upcoming = rows.find(span => span.startIndex > day && span.startIndex <= cutoff && belongs(span));
+            const upcomingInStage = span => span.startIndex > day && span.startIndex <= cutoff && belongs(span);
+            const upcoming = rows.find(span => upcomingInStage(span) && display.records[span.nIndex].attackIndex !== null
+                && display.records[span.nIndex].attackIndex <= cutoff) ?? rows.find(upcomingInStage);
             if (upcoming) {
                 const model = this.inspect(stage.level, stage.path, bars[upcoming.startIndex].time, asof, stage.direction);
                 if (model) return { ...model, time };
             }
-            if (stage.level !== 1) return null;
+            if (stage.level !== 1) return pending;
             // 算法订阅级别与图形所在一级段不同；只引用后端已发布的同段共享N，不增加本级资格或维护订阅。
             const references = sharedReferences(stage, from, to);
             for (const future of [false, true]) for (const { level, span } of references) {
@@ -95,7 +112,7 @@ export function createTrendNReader(data) {
                 if (model?.nIndex !== span.nIndex) continue;
                 return { ...model, time, displayStage: { level: 1, path: stage.path, direction: stage.direction, from: stage.from, to: stage.to } };
             }
-            return null;
+            return pending;
         },
         /** 回看选中N在本级使用期内已发布的目标；光标日期不充当回放截止日。 */
         inspect(level, path, time, asof, direction = null) {
@@ -158,15 +175,25 @@ function trendStageContext(stroke, a, b) {
         direction: rising ? "up" : falling ? "down" : null, from: a.point.time, to: b.point.time };
 }
 /** 读取已绘制线段的上下行方向，仅用于显示归属，不重新识别趋势六态。 */
-export function trendStageAt(groups, time, level) {
+export function trendStageAt(groups, time, level, preferStarting = false) {
+    if (preferStarting) for (const { stroke, segments } of [...groups].reverse()) {
+        if (stroke.trend_level !== level || stroke.kind.endsWith("-connection")) continue;
+        for (const [a, b] of segments) if (a.point.time === time && time < b.point.time)
+            return trendStageContext(stroke, a, b);
+    }
+    let starting = null;
     for (const { stroke, segments } of [...groups].reverse()) {
         if (stroke.trend_level !== level || stroke.kind.endsWith("-connection")) continue;
         for (let index = segments.length - 1; index >= 0; index--) {
             const [a, b] = segments[index];
-            if (a.point.time <= time && time <= b.point.time) return trendStageContext(stroke, a, b);
+            // 转折日归属到达该端点的入段；否则当日的倒N会被下一上涨段过滤。
+            if ((a.point.time < time || a.point.time === b.point.time) && time <= b.point.time)
+                return trendStageContext(stroke, a, b);
+            if (!starting && a.point.time === time && time < b.point.time)
+                starting = trendStageContext(stroke, a, b);
         }
     }
-    return null;
+    return starting;
 }
 /** N与目标使用行情涨跌语义色，不能沿用趋势级别的蓝/紫色。 */
 export function trendNColor(up, palette = { up: "#ef7180", down: "#3fba97" }) {
@@ -187,7 +214,9 @@ export function appendTrendNTooltip(host, context) {
     const n = context.n;
     if (!n) { add(context.direction === "up" ? "本上涨段此时尚无有效正 N" : context.direction === "down" ? "本下跌段此时尚无有效倒 N" : "本趋势此时尚无有效 N"); return; }
     if (n.displayStage && n.level !== context.level) add(`N 来源：${levelNames[n.level]}；在所属一级趋势段展示。`);
-    add(`${n.up ? "正 N · 轧空" : "倒 N · 杀多"}：${n.squeeze ? `${n.squeeze} 已确认` : "等待确认"}`, true, true);
+    add(`${n.up ? "正 N" : "倒 N"}：${n.attack ? `${n.attack} 突破成立` : "等待突破"}`, true, true);
+    add(`${n.up ? "轧空" : "杀多"}：${n.squeeze ? `${n.squeeze} 已确认` : "尚未确认"}`, false, true);
+    if (!n.squeeze && n.targets.some(target => target.price !== null)) add("一饱、二吐为 N 突破测算目标；不代表交易资格确认。");
     add(n.shape.slice(0, 3).map(point => `${point.label} ${point.time} ${priceText.format(point.value)}`).join(" · "));
     if (n.defense !== null) add(`${n.up ? "轧空低" : "杀多高"} ${priceText.format(n.defense)} ${n.priceUnit ?? "元"}`, false, true);
     for (const target of n.targets) add(`${target.name}：${target.price === null ? "待确认" : `${priceText.format(target.price)} ${n.priceUnit ?? "元"}`}${target.reached ? ` · ${target.reached} 已达` : ""}`, false, true);

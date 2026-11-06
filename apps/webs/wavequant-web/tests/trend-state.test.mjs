@@ -6,6 +6,21 @@ const version="a".repeat(64);
 const make=()=>({schemaVersion:1,symbol:"sz.000001",timeframe:"1d",dataVersion:version,complete:true,unavailableRules:[],state:{version:14,currentIndex:2,dynamicDataIndex:[0,0,0,0],enabled:[true,true,false,false],trendState:[null,"多头",null,null],data:{polyline:[{barIndex:0,kind:"L",ordinal:0,knownIndex:1,confirmed:true},{barIndex:1,kind:"H",ordinal:0,knownIndex:1,confirmed:false}],level1:[{sourceIndex:0,knownIndex:1,confirmed:true},{sourceIndex:1,knownIndex:1,confirmed:false}],level2:[],level3:[]}},timing:{dataRequestMs:10,analysisMs:2,totalMs:15}});
 const bars=()=>({schemaVersion:1,symbol:"sz.000001",timeframe:"1d",dataVersion:version,source:"akshare",asof:"2020-01-03",priceBasis:"causal_adjusted_equivalent",bars:[{time:"2020-01-02",open:10,high:12,low:9,close:11,volume:1000,factor:1,raw_close:11},{time:"2020-01-03",open:11,high:14,low:10,close:13,volume:1000,factor:1,raw_close:13}]});
 const parsers={parseState:v=>TrendAnalysisSchema.parse(v),parseBars:v=>TrendBarsSchema.parse(v)};
+
+test("N突破即可发布一饱二吐，远端目标仍要求轧空杀多确认",()=>{
+    const dto=make();dto.state.currentIndex=6;
+    const record={direction:"down",points:[{barIndex:0,ordinal:0},{barIndex:1,ordinal:0},{barIndex:2,ordinal:0}],
+        knownIndex:2,attackIndex:3,squeezeIndex:null,defense:18,observedThrough:5,invalidatedIndex:null,
+        targets:[{knownIndex:3,prices:[10,5,null,null],reachedAt:[null,null]}]};
+    dto.state.n={records:[record],spans:[[{nIndex:0,path:0,originIndex:0,startIndex:3,endIndex:null}],[],[],[]]};
+    assert.equal(TrendAnalysisSchema.safeParse(dto).success,true);
+    record.targets[0].knownIndex=2;assert.equal(TrendAnalysisSchema.safeParse(dto).success,false);
+    record.targets[0].knownIndex=3;record.targets[0].prices[2]=2;
+    assert.equal(TrendAnalysisSchema.safeParse(dto).success,false);
+    record.squeezeIndex=4;assert.equal(TrendAnalysisSchema.safeParse(dto).success,false);
+    record.targets[0].knownIndex=4;assert.equal(TrendAnalysisSchema.safeParse(dto).success,true);
+    record.targets[0].reachedAt[0]=2;assert.equal(TrendAnalysisSchema.safeParse(dto).success,false);
+});
 test("直接来源引用、确认时钟与动态尾点不因DTO适配改变",()=>{
     const dto=make(),view=trendStateView(dto,bars(),parsers),fixed=view.theory.reversal_trends.strokes[0].points,tail=view.theory.reversal_trends.developing_strokes[0].points;
     assert.equal(fixed.length,1);assert.equal(fixed[0].label,"L");assert.equal(fixed[0].value,9);assert.equal(fixed[0].available_at,"2020-01-03");

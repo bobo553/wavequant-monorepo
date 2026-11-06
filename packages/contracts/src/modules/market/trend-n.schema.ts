@@ -28,9 +28,12 @@ export function validateTrendNDisplay(value: TTrendNDisplay, count: number, ctx:
         if (!before(a, b) || !before(b, c)) issue("N点顺序无效");
         let previous = -1;
         for (const target of record.targets) {
-            if (target.knownIndex <= previous || target.knownIndex >= count || record.squeezeIndex === null || target.knownIndex < record.squeezeIndex
+            const hasExtendedTarget = target.prices[2] !== null || target.prices[3] !== null;
+            if (target.knownIndex <= previous || target.knownIndex >= count || record.attackIndex === null || target.knownIndex < record.attackIndex
+                || target.knownIndex < record.knownIndex
+                || hasExtendedTarget && (record.squeezeIndex === null || target.knownIndex < record.squeezeIndex)
                 || record.observedThrough === null || target.knownIndex > record.observedThrough
-                || target.reachedAt.some(clock => clock !== null && clock > target.knownIndex)) issue("N目标快照时钟无效");
+                || target.reachedAt.some(clock => clock !== null && (clock > target.knownIndex || record.attackIndex === null || clock < record.attackIndex))) issue("N目标快照时钟无效");
             previous = target.knownIndex;
         }
     }
