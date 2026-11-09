@@ -46,6 +46,9 @@ pub struct RiskState {
     pub staged: StagedExitState, pub volume: VolumeRiskState,
     last: Option<usize>, pressure: PressureState, breakout: BreakoutState,
 }
+impl RiskState {
+    pub(crate) fn starting_at(start:usize)->Self{Self{last:start.checked_sub(1),..Self::default()}}
+}
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct RiskEvaluation { pub decisions: Vec<RuleDecision>, pub unavailable_rules: Vec<String> }
 

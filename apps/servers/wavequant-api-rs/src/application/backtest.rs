@@ -134,7 +134,7 @@ impl BacktestService {
         scenario["initial_capital"]=json!(request.initial_capital);scenario["max_position_weight"]=json!(request.max_position_weight);scenario["net_reward_risk_filter"]=json!(request.net_reward_risk_filter);
         let original=execution_parameters(&profile,&request.scenario).map_err(ApiError::invalid)?;
         let index=wavequant_quant_rs::data::indices::is_index(&request.symbol);
-        if index&&!wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{return Err(ApiError::invalid("指数不支持直接买卖，仅可查看行情与趋势"));}
+        let trading=request.executes_trades();
         let security=if index{None}else{Some(security_spec(&request.symbol,&request.asof).map_err(data_error)?)};
         let step=security.as_ref().map_or(1,|security|security.buy_share_step as usize);
         let lot=original.lot_size.checked_div(gcd(original.lot_size,step)).and_then(|v|v.checked_mul(step)).ok_or_else(||ApiError::invalid("lot size exceeds supported range"))?;
@@ -146,11 +146,11 @@ impl BacktestService {
         reporter.progress(15,if index{"读取指数日线（无需复权）"}else{"读取同源行情及因果复权"})?;
         let market_request=MarketRequest{source:request.source.clone(),symbol:request.symbol.clone(),start:request.start.clone(),asof:request.asof.clone()};
         reporter.data_started()?;
-        let loaded_result=self.load_market(&market_request,!wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY&&(parameters.staged_exit_intraday||parameters.consolidation_entry_intraday),parameters.missing_minute_daily_fallback,Some(&reporter.cancellation_flag()));
+        let loaded_result=self.load_market(&market_request,trading&&(parameters.staged_exit_intraday||parameters.consolidation_entry_intraday),parameters.missing_minute_daily_fallback,Some(&reporter.cancellation_flag()));
         let data_request_seconds=reporter.data_finished()?;
         let mut loaded=loaded_result?;let trace_cache_started=std::time::Instant::now();
         let artifacts=wavequant_quant_rs::persistence::ArtifactCache::new(&self.repository.root().join(".rust-computation-cache"),4*1024*1024*1024).map_err(|error|ApiError::invalid(error.to_string()))?;
-        let cache_identity=json!({"schema":"native-api-stock-result-v5-trend-state","trend_offset_enabled":request.trend_offset_enabled,"timeframe":"1d","engine":self.engine_version,"run":request.run,"profile":profile,"source":request.source,"symbol":request.symbol,"start":request.start,"asof":request.asof,"scenario":request.scenario,"source_version":loaded.version,"missing_minutes":loaded.missing});
+        let cache_identity=json!({"schema":"native-api-stock-result-v6-trading","mode":if trading{"trading"}else{"structure"},"enable_secondary_reversal":request.qualification_levels(),"trend_offset_enabled":request.trend_offset_enabled,"timeframe":"1d","engine":self.engine_version,"run":request.run,"profile":profile,"source":request.source,"symbol":request.symbol,"start":request.start,"asof":request.asof,"scenario":request.scenario,"source_version":loaded.version,"missing_minutes":loaded.missing});
         if !self.record_details{if let Some(mut cached)=artifacts.get("backtest",&cache_identity){if super::trend_state::is_response(&cached["view"])&&cached["view"]["complete"]==true {
             let value=&cached["view"];let version=value["dataVersion"].as_str().ok_or_else(ApiError::internal)?;
             if super::trend_state::snapshot(&artifacts,version).is_ok(){
@@ -167,14 +167,15 @@ impl BacktestService {
             let mut view=cached.as_object_mut().and_then(|row|row.remove("view")).ok_or_else(ApiError::internal)?;view["backtest"]["source"]=loaded.provenance.clone();view["performance"]=json!({"cache":"disk","elapsed_seconds":0.0,"analysis_elapsed_seconds":0.0,"data_request_seconds":data_request_seconds,"total_elapsed_seconds":started.elapsed().as_secs_f64(),"timing_scope":"analysis"});view["performance"]["data_cache"]=view["backtest"]["source"]["adjusted_cache"].clone();reporter.progress(99,"读取同源同版本账户与趋势缓存")?;return Ok(view);
         }}}
         let artifact_lookup_ms=trace_cache_started.elapsed().as_secs_f64()*1000.0;let trace_input_started=std::time::Instant::now();
-        let mut analyzer=AnalyzerConfig::default();analyzer.trading=profile.strategy.clone();analyzer.enable_secondary_reversal=std::array::from_fn(|level|level==usize::from(request.buy_interval_level));analyzer.kernel.trend_offset_enabled=request.trend_offset_enabled;analyzer.kernel.ordinary_trend_completion_enabled=request.ordinary_trend_completion_enabled;analyzer.n_target_trend_confirmation_enabled=request.n_target_trend_confirmation_enabled;
+        let mut analyzer=AnalyzerConfig::default();analyzer.trading=profile.strategy.clone();analyzer.enable_secondary_reversal=request.qualification_levels();analyzer.kernel.trend_offset_enabled=request.trend_offset_enabled;analyzer.kernel.ordinary_trend_completion_enabled=request.ordinary_trend_completion_enabled;analyzer.n_target_trend_confirmation_enabled=request.n_target_trend_confirmation_enabled;
+        if trading{analyzer=analyzer.for_trading();}
         let minute_inputs=BTreeMap::from([(request.symbol.clone(),loaded.minutes.clone())]);
         let sessions=loaded.bars.iter().cloned().map(|daily|{let minutes=loaded.minutes.remove(&daily.timestamp);let has_minutes=minutes.is_some();BacktestSession{daily,source:request.source.clone(),data_version:loaded.version.clone(),minutes,minute_source:has_minutes.then(||request.source.clone()),minute_data_version:has_minutes.then(||loaded.version.clone())}}).collect::<Vec<_>>();
         let chart_bars=loaded.bars.iter().map(|bar|{
             let decimal=|value:f64|value.to_string().parse::<Decimal>().map_err(|_|ApiError::invalid("price exceeds decimal range"));
             Ok(wavequant_quant_rs::analysis::trading::RuleCandle{symbol:bar.symbol.clone(),timestamp:bar.timestamp.clone(),open:decimal(bar.open)?,high:decimal(bar.high)?,low:decimal(bar.low)?,close:decimal(bar.close)?,volume:decimal(bar.volume)?,adjustment_factor:decimal(bar.adjustment_factor)?,raw_trading_active:bar.raw_trading_active,raw_is_st:bar.raw_is_st})
         }).collect::<Result<Vec<_>>>()?;
-        reporter.progress(30,if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{"计算四级趋势及已开启级别的资格区间"}else{"逐日结构、买卖判断与账户同步"})?;
+        reporter.progress(30,if trading{"逐日结构、买卖判断与账户同步"}else{"计算四级趋势及已开启级别的资格区间"})?;
         let recorder=std::cell::RefCell::new(super::calculation::Recorder::new(self.diagnostics_root.as_deref(),json!({"timeframe":"1d","engine":self.engine_version,"run":request.run,"variant":request.variant,"scenario":request.scenario,"source":request.source,"source_version":loaded.version,"profile":profile}),&sessions,self.record_details)?);
         if let Some(pipeline)=recorder.borrow_mut().pipeline_due(true){reporter.pipeline(pipeline)?;}
         let mut progress_error=None;
@@ -202,7 +203,7 @@ impl BacktestService {
         let (result,computation)=match computation{Ok(value)=>value,Err(error)=>{let pipeline=recorder.borrow_mut().finish(None,Some(&error.2));let _=reporter.pipeline(pipeline);return Err(error);}};
         let worker_roundtrip_seconds=worker_started.elapsed().as_secs_f64();
         let preparation_started=std::time::Instant::now();
-        if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY {
+        if !trading {
             reporter.progress(91,"整理趋势索引与独立行情快照")?;
             reporter.analysis_timing(result.analysis_elapsed_seconds)?;reporter.check_cancelled()?;
             for(path,version)in &loaded.files{if fingerprint(path).map_err(data_error)?!=*version{return Err(ApiError(axum::http::StatusCode::CONFLICT,"MARKET_DATA_VERSION_CHANGED","行情文件在计算期间已更新".into()));}}
@@ -236,7 +237,7 @@ impl BacktestService {
         let(orders,_,_)=wavequant_quant_rs::analytics::trade_evidence::ledger(&result.account,&result.bars,&result.signals,&result.audit).map_err(ApiError::invalid)?;
         let episodes=wavequant_quant_rs::analytics::holding_drawdown::holding_drawdowns(&result.bars,&orders,Some(&request.asof),Some(&minute_inputs),None).map_err(ApiError::invalid)?;
         let mut view=stock_view(&result.account,bars,&result.signals,&result.audit,&context,Some(&episodes)).map_err(ApiError::invalid)?;
-        // 保持现有前端的股票视图契约；未执行的交易部分仍保留空容器。
+        // 信号、委托、成交与持仓均来自本次 Rust 账户执行结果。
         view["backtest"]["strategy"]=wavequant_quant_rs::indexed_json::to_value(&profile.strategy)?;
         view["backtest"]["counts"]=view.get("counts").cloned().unwrap_or_else(||json!({}));
         view["backtest"]["open_positions"]=view.get("open_positions").cloned().unwrap_or_else(||json!([]));
@@ -246,9 +247,9 @@ impl BacktestService {
         view["timeframe"]=json!("1d");view["timeframe_label"]=json!("日线");view["is_partial_last_bar"]=json!(false);
         view["data_source"]=json!(request.source);view["resolved_source"]=json!(request.source);
         view["providers"]=json!([request.source]);view["source_fallback"]=json!(false);view["supplemented_bars"]=json!(0);
-        view["complete"]=json!(result.unavailable_rules.is_empty());view["unavailable_rules"]=json!(result.unavailable_rules);view["analysis"]=if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{wavequant_quant_rs::indexed_json::to_value(&result.indexed_analysis)?}else{wavequant_quant_rs::indexed_json::to_value(&result.analysis)?};
+        view["complete"]=json!(result.unavailable_rules.is_empty());view["unavailable_rules"]=json!(result.unavailable_rules);view["analysis"]=wavequant_quant_rs::indexed_json::to_value(&result.analysis)?;
         view["backtest"]["status"]=json!(if view["complete"]==true{"completed"}else{"incomplete_rules"});view["backtest"]["source"]=loaded.provenance;
-        if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{view["calculation_mode"]=json!("third_level_only");view["backtest"]["status"]=json!("not_run_structure_only");}
+        view["calculation_mode"]=json!("trading");
         view["backtest"]["requested_start"]=json!(request.start);view["backtest"]["minute_fallbacks"]=json!(result.minute_fallbacks);view["backtest"]["missing_minute_days"]=json!(loaded.missing);
         view["backtest"]["security_spec"]=wavequant_quant_rs::indexed_json::to_value(security)?;
         let indexed_chart=result.indexed_analysis.get(&request.symbol).map(|indexed|indexed.chart_response(bars)).transpose().map_err(ApiError::invalid)?;

@@ -34,6 +34,20 @@ fn elapsed(job:&Job)->f64 {job.analysis_seconds}
 fn data_elapsed(job:&Job)->f64 {job.data_seconds+job.data_started.map(|at|(job.completed.unwrap_or_else(Instant::now)-at).as_secs_f64()).unwrap_or(0.0)}
 fn progress(job:&Job)->Value {json!({"elapsed_seconds":elapsed(job),"analysis_elapsed_seconds":elapsed(job),"data_request_seconds":data_elapsed(job),"total_elapsed_seconds":total_elapsed(job),"timing_scope":"analysis","progress_percent":job.percent,"progress_stage":job.stage,"pipeline":job.pipeline,"preview_revision":job.preview_revision,"processed_sessions":job.preview.as_ref().map(|p|&p["processed"]),"total_sessions":job.preview.as_ref().map(|p|&p["total"]),"processed_asof":job.preview.as_ref().map(|p|&p["asof"])})}
 
+fn result_matches_request(result:&Value,details:&Value)->bool {
+    let params=&details["params"];
+    let Some(symbol)=params["symbol"].as_str().filter(|value|!value.is_empty())else{return false;};
+    let Some(asof)=params["asof"].as_str().filter(|value|!value.is_empty())else{return false;};
+    if result["symbol"]!=symbol||details["symbol"]!=symbol{return false;}
+    if super::trend_state::is_response(result) {
+        // 结构 DTO 的截止点由已绑定任务参数保证，不向严格响应契约补造账户或日期字段。
+        return result["complete"]==true&&(params["trading_enabled"]=="false"||wavequant_quant_rs::data::indices::is_index(symbol));
+    }
+    result["calculation_mode"]!="polyline_only"&&result["calculation_mode"]!="third_level_only"
+        &&result["complete"]!=false&&result["result_scope"]=="stock"&&result["backtest"].is_object()
+        &&result["backtest"]["status"]!="data_unavailable"&&result["asof"]==asof
+}
+
 impl BacktestJobs {
     pub fn new(history_path:Option<PathBuf>,engine_version:String)->Result<Self> {
         let service=Self{inner:Arc::new(Mutex::new(Registry{jobs:BTreeMap::new(),history:BTreeMap::new(),accepting:true})),history_path,engine_version};
@@ -93,7 +107,7 @@ impl BacktestJobs {
         job.completed=Some(Instant::now());job.preview=None;
         let mut item=job.details.clone();item["job"]=json!(id);item["status"]=json!(if outcome.is_ok(){"completed"}else{"failed"});item["elapsed_seconds"]=json!(elapsed(job));item["pipeline"]=json!(job.pipeline);item["analysis_elapsed_seconds"]=json!(elapsed(job));item["data_request_seconds"]=json!(data_elapsed(job));item["total_elapsed_seconds"]=json!(total_elapsed(job));item["timing_scope"]=json!("analysis");
         if let Ok(result)=&outcome {
-            let valid=result["calculation_mode"]!="polyline_only"&&result["calculation_mode"]!="third_level_only"&&result["complete"]!=false&&result["result_scope"]=="stock"&&result["backtest"].is_object()&&result["backtest"]["status"]!="data_unavailable";
+            let valid=result_matches_request(result,&job.details);
             item["result_valid"]=json!(valid);
             if valid {
                 if let Some(orders)=result["orders"].as_array(){item["fill_count"]=json!(orders.iter().filter(|row|row["status"]=="filled").count());}
@@ -130,6 +144,12 @@ impl BacktestJobs {
             Some(Err(error))=>{value["status"]=json!("failed");value["error"]=json!(error.message);value["http_status"]=json!(error.http_status);if let Some(code)=&error.code{value["code"]=json!(code);}Ok((true,value))},
         }
     }
+    pub(super) fn completed_for(&self,id:&str,details:&Value)->Result<bool> {
+        validate_id(id)?;
+        let registry=self.lock()?;
+        let Some(job)=registry.jobs.get(id)else{return Ok(false);};
+        Ok(job.details==*details&&matches!(&job.outcome,Some(Ok(result)) if result_matches_request(result,&job.details)))
+    }
     pub fn preview(&self,id:&str,after:u64)->Result<Value> {
         validate_id(id)?;let mut registry=self.lock()?;Self::prune(&mut registry);let job=registry.jobs.get(id).ok_or_else(||ApiError(axum::http::StatusCode::NOT_FOUND,"BACKTEST_NOT_FOUND","backtest job not found".into()))?;
         Ok(json!({"job":id,"revision":job.preview_revision,"preview":if job.preview_revision>after&&job.outcome.is_none(){job.preview.as_ref()}else{None}}))
@@ -140,6 +160,61 @@ impl BacktestJobs {
         let mut history=registry.history.values().collect::<Vec<_>>();history.sort_by(|a,b|b.0.total_cmp(&a.0));
         let recent=history.into_iter().map(|(_,value)|{let mut item=value.clone();item["result_available"]=json!(item["job"].as_str().is_some_and(|id|registry.jobs.contains_key(id)));item}).collect::<Vec<_>>();
         Ok(json!({"active":jobs.len(),"max_active":MAX_ACTIVE,"jobs":jobs,"recent":recent,"watchlist_refresh":null}))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn details()->Value {json!({"path":"/api/tdx-backtest","version":"test-version","symbol":"sz.000001","params":{"symbol":"sz.000001","asof":"2026-11-06","trading_enabled":"false","enable_secondary_reversal":"[false,false,true,false]"}})}
+    fn structure()->Value {json!({"schemaVersion":1,"symbol":"sz.000001","dataVersion":"market-version","complete":true,"state":{"data":{}}})}
+
+    #[test]
+    fn structure_completion_requires_complete_matching_symbol_and_structure_request() {
+        let expected=details();let result=structure();
+        assert!(result_matches_request(&result,&expected));
+        let mut incomplete=result.clone();incomplete["complete"]=json!(false);
+        assert!(!result_matches_request(&incomplete,&expected));
+        incomplete["complete"]=Value::Null;
+        assert!(!result_matches_request(&incomplete,&expected));
+        let mut other=result.clone();other["symbol"]=json!("sz.000002");
+        assert!(!result_matches_request(&other,&expected));
+        let mut trading=expected.clone();trading["params"]["trading_enabled"]=json!("true");
+        assert!(!result_matches_request(&result,&trading));
+    }
+
+    #[test]
+    fn account_completion_keeps_cutoff_and_unavailable_checks() {
+        let expected=details();
+        let mut result=json!({"symbol":"sz.000001","asof":"2026-11-06","result_scope":"stock","complete":true,"backtest":{"status":"completed"}});
+        assert!(result_matches_request(&result,&expected));
+        result["asof"]=json!("2026-11-05");
+        assert!(!result_matches_request(&result,&expected));
+        result["asof"]=json!("2026-11-06");result["backtest"]["status"]=json!("data_unavailable");
+        assert!(!result_matches_request(&result,&expected));
+        result["backtest"]["status"]=json!("completed");result["calculation_mode"]=json!("polyline_only");
+        assert!(!result_matches_request(&result,&expected));
+    }
+
+    #[tokio::test]
+    async fn completed_structure_history_and_refresh_keep_the_bound_request_identity() {
+        let jobs=BacktestJobs::new(None,"test-engine".into()).unwrap();let expected=details();
+        jobs.start("structure-job".into(),"structure-signature".into(),"sz.000001".into(),expected.clone(),|_|Ok(structure())).unwrap();
+        jobs.wait("structure-job").await.unwrap();
+        assert!(jobs.completed_for("structure-job",&expected).unwrap());
+        let snapshot=jobs.snapshot().unwrap();let recent=&snapshot["recent"][0];
+        assert_eq!(recent["result_valid"],json!(true));
+        assert_eq!(recent["params"],expected["params"]);
+        assert!(recent["fill_count"].is_null());assert!(recent["total_return"].is_null());
+        for key in ["asof","enable_secondary_reversal"] {
+            let mut changed=expected.clone();changed["params"][key]=json!("different");
+            assert!(!jobs.completed_for("structure-job",&changed).unwrap());
+        }
+        for key in ["path","version"] {
+            let mut changed=expected.clone();changed[key]=json!("different");
+            assert!(!jobs.completed_for("structure-job",&changed).unwrap());
+        }
     }
 }
 impl JobReporter {
@@ -171,6 +246,6 @@ impl JobReporter {
         let curve=preview["curve"].as_array().ok_or_else(||ApiError::invalid("preview requires an equity curve"))?;
         if curve.len() as u64!=processed||curve.last().and_then(|row|row["timestamp"].as_str()).and_then(|time|time.get(..10))!=Some(asof){return Err(ApiError::invalid("preview account must finish the same market day"));}
         let mut registry=self.jobs.lock()?;
-        if let Some(job)=registry.jobs.get_mut(&self.id){if job.outcome.is_none()&&revision>job.preview_revision{job.preview_revision=revision;let flow=if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{"折线 → 一级 → 二级 → 三级趋势计算"}else{"同日联动：折线 → 一级 → 二级 → 三级 → B/S及账户"};job.stage=format!("{flow} · 已处理{processed}/{total}个交易日 · 截至{asof}{}",job.timing);job.preview=Some(preview);}}Ok(())
+        if let Some(job)=registry.jobs.get_mut(&self.id){if job.outcome.is_none()&&revision>job.preview_revision{job.preview_revision=revision;let flow="同日联动：折线 → 一级 → 二级 → 三级 → B/S及账户";job.stage=format!("{flow} · 已处理{processed}/{total}个交易日 · 截至{asof}{}",job.timing);job.preview=Some(preview);}}Ok(())
     }
 }

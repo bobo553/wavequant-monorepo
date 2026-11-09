@@ -34,7 +34,7 @@ fn scope(event:&Value)->String{event["n_id"].as_str().or_else(||event["target_so
 fn structural_key(event:&Value,exclusive:bool)->String{let mut fields=vec![event["origin"].clone(),event["neckline"].clone(),event["pullback"].clone(),event["bar_index"].clone()];if !exclusive{fields.extend([event["qualification_window_start"].clone(),event["source_path"].clone()]);}json!(fields).to_string()}
 pub fn project(response:&AnalysisResponse,bars:&[Value],audit:&[Value],engine:&str)->Result<Value>{
     if bars.is_empty()||response.state.current_index!=bars.len(){return Err(ApiError::invalid("analysis and chart prefixes differ"));}
-    if wavequant_quant_rs::analysis::analyzer::STRUCTURE_ONLY{return project_polyline(response,bars,engine);}
+    if !response.state.config.trading_enabled(){return project_polyline(response,bars,engine);}
     let cutoff=bars.len()-1;let config=&response.state.config.trading;let exclusive=config.buy_point_definition=="whole_flip_wave_v3";
     let mut chart=Vec::new();let mut counts=BTreeMap::<String,u64>::new();
     for row in audit {let Some(kind)=row["event"].as_str()else{continue;};let Some(i)=index(row,"bar_index")else{continue;};let known=index(row,"known_at").unwrap_or(i).max(i);if known>cutoff{continue;}

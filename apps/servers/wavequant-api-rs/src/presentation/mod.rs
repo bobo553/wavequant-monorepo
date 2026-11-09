@@ -309,7 +309,12 @@ async fn submit_backtest(state:AppState,raw:Option<String>,source:&str)->Result<
             return Ok((error.0,Json(payload)).into_response());
         },Err(error)=>return Err(error),
     };
-    let result=state.jobs.wait(&id).await?;Ok(backtest_response(true,result))
+    // 留出外层 HTTP 截止时间的余量；等待超时只结束请求，不取消已登记任务。
+    match tokio::time::timeout(std::time::Duration::from_secs(15),state.jobs.wait(&id)).await {
+        Ok(result)=>Ok(backtest_response(true,result?)),
+        Err(_)=>Ok((StatusCode::REQUEST_TIMEOUT,Json(json!({"code":"BACKTEST_TIMEOUT",
+            "error":"回测计算仍在后台进行","job":id}))).into_response()),
+    }
 }
 async fn tdx_backtest(State(state):State<AppState>,RawQuery(raw):RawQuery)->Result<Response,ApiError>{submit_backtest(state,raw,"tdx").await}
 async fn akshare_backtest(State(state):State<AppState>,RawQuery(raw):RawQuery)->Result<Response,ApiError>{submit_backtest(state,raw,"akshare").await}

@@ -20,7 +20,12 @@ impl WatchlistRefresh {
     pub fn start(self:&Arc<Self>) {if self.started.swap(true,Ordering::AcqRel){return;}let service=self.clone();tokio::spawn(async move{
         while !service.stopped.load(Ordering::Acquire){
             let worker=service.clone();let outcome=tokio::task::spawn_blocking(move||worker.tick()).await;
-            if !matches!(outcome,Ok(Ok(()))){tracing::error!("saved watchlist refresh failed");if let Ok(mut state)=service.inner.lock(){state.status=json!({"status":"error","error":"自动刷新暂不可用，稍后重试"});}}
+            let failed=match outcome {
+                Ok(Ok(()))=>false,
+                Ok(Err(error))=>{tracing::error!(code=error.1,"saved watchlist refresh failed");true},
+                Err(_)=>{tracing::error!(code="WATCHLIST_REFRESH_JOIN_FAILED","saved watchlist refresh worker failed");true},
+            };
+            if failed {if let Ok(mut state)=service.inner.lock(){state.status=json!({"status":"error","error":"自动刷新暂不可用，稍后重试"});}}
             tokio::select!{_=service.wake.notified()=>{},_=tokio::time::sleep(Duration::from_secs(5))=>{}}
         }
     });}
@@ -32,10 +37,8 @@ impl WatchlistRefresh {
         let mut state=self.inner.lock().map_err(|_|ApiError::internal())?;let now=epoch();
         if let Some(active)=&state.active {
             let(done,outcome)=self.jobs.outcome(&active.id)?;if !done{return Ok(());}
-            let result=&outcome["result"];let expected=&active.details["params"];
-            let completed=outcome["status"]=="completed"&&result["complete"]!=false&&result["backtest"].is_object()
-                &&result["backtest"]["status"]!="data_unavailable"&&result["result_scope"]=="stock"
-                &&result["symbol"]==expected["symbol"]&&result["asof"]==expected["asof"];
+            let result=&outcome["result"];
+            let completed=outcome["status"]=="completed"&&self.jobs.completed_for(&active.id,&active.details)?;
             let mut summary=active.details.clone();summary["status"]=json!(if completed{"completed"}else{"failed"});summary["result_valid"]=json!(completed);summary["persisted_current"]=json!(true);summary["result_available"]=json!(false);
             for key in ["total_return","total_pnl","max_drawdown","holding_max_drawdown","holding_current_max_drawdown"]{if result["metrics"][key].as_f64().is_some_and(f64::is_finite){summary[key]=result["metrics"][key].clone();}}
             for key in ["holding_drawdown_version","holding_drawdown_status","holding_current_drawdown_status"]{if result["metrics"][key].is_string(){summary[key]=result["metrics"][key].clone();}}

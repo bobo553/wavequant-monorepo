@@ -122,6 +122,8 @@ pub struct GapEntryGate {
     pub index: Option<usize>, gaps: Vec<Gap>, pub restrictions: BTreeMap<usize, RuleDecision>,
 }
 impl GapEntryGate {
+    /// 新交易区间从起点开始观察，不重放区间之前的缺口状态。
+    pub fn starting_at(start:usize)->Self{Self{index:start.checked_sub(1),..Self::default()}}
     pub fn advance(&mut self, bars: &[RuleCandle], index: usize) -> Result<Option<RuleDecision>, String> {
         if index >= bars.len() { return Err("gap entry index unavailable".into()); }
         if self.index.is_some_and(|last| index <= last) { return Ok(self.restrictions.get(&index).cloned()); }
@@ -225,6 +227,8 @@ pub struct PolylineBuyGate {
     pub restrictions:BTreeMap<usize,RuleDecision>,pub breakouts:BTreeMap<usize,RuleDecision>,pub source_epochs:BTreeMap<usize,usize>,
 }
 impl PolylineBuyGate {
+    /// 来源结构可引用历史节点，买点观察时钟只从本次区间起点推进。
+    pub fn starting_at(start:usize)->Self{Self{index:start.checked_sub(1),..Self::default()}}
     pub fn advance(&mut self,bars:&[RuleCandle],index:usize,frame:&super::super::kernel::KernelFrame)->Result<(),String> {
         use super::super::kernel::Direction;
         if self.index==Some(index){return Ok(());}

@@ -102,6 +102,11 @@ pub struct BacktestObservation {
 }
 /// 当前部分K线及之前已完成K线。未知的分钟后缀和当天最终高低量不向策略公开。
 pub trait DecisionStrategy {
+    /// 只由此前已确认的状态决定是否观察日内行情；日收仍必须推进结构。
+    fn needs_observation(&self,_symbol:&str,_at:DateTime<Utc>,_phase:ObservationPhase)->bool {true}
+    fn needs_history(&self)->bool {true}
+    /// 撮合前复核资格身份，不读取尚未完成的当天结构。
+    fn entry_permission(&self,_observation:&BacktestObservation,_entry:&EntryDecision)->Option<String> {None}
     /// 同时点匹配完成后发布实际账户，策略据此保留未成交的全清/剩余量请求。
     fn observe_account(&mut self,_account:&StrategyBacktest) {}
     fn after_observation(&mut self,_account:&StrategyBacktest,_observations:&[BacktestObservation])->ExecutionResult<()> {Ok(())}
@@ -187,6 +192,7 @@ impl StrategyBacktest {
         let price=if !observation.buyable&&nonflat {observation.execution_price}else{observation.execution_price*(Decimal::ONE+self.config.slippage_bps/Decimal::from(10_000))};
         let rejected=signal.rejection.clone().or_else(||{
             let reason=if existing.is_some()&&!self.config.allow_add_on{Some("already_held")}
+            else if existing.is_some_and(|position|signal.evidence.get("execution_window").is_some_and(|window|position.entry_evidence.get("execution_window")!=Some(window))){Some("qualification_window_changed")}
             else if existing.is_some()&&self.pending_exits.contains_key(symbol){Some("exit_pending")}
             else if existing.is_some()&&self.sold_today.contains(symbol){Some("same_day_exit_priority")}
             else if existing.is_none()&&self.positions.len()>=self.config.max_positions{Some("position_limit")}
@@ -273,7 +279,9 @@ impl StrategyBacktest {
         let matching=|mode:ExecutionMode|matches!((first.phase,mode),(ObservationPhase::DailyOpen,ExecutionMode::NextOpen)|(ObservationPhase::MinuteOpen,ExecutionMode::Intraday5mNextOpen));
         if first.phase==ObservationPhase::DailyOpen {
             for o in observations {
-                let mut visible=histories.get(&o.candle.symbol).cloned().unwrap_or_default();visible.push(o.candle.clone());
+                if !strategy.needs_observation(&o.candle.symbol,o.at,o.phase){continue;}
+                let mut visible=if strategy.needs_history(){histories.get(&o.candle.symbol).cloned().unwrap_or_default()}else{Vec::new()};
+                if strategy.needs_history(){visible.push(o.candle.clone());}
                 let exits=strategy.open_risks(&visible,o,&self.positions)?;
                 require(exits.len()<=1,"strategy_must_resolve_open_exit_precedence")?;
                 for exit in exits {
@@ -310,7 +318,9 @@ impl StrategyBacktest {
             if let Some(mut signal)=self.pending_entries.get(&o.candle.symbol).filter(|d|matching(d.mode)).cloned(){
                 require(signal.known_at<=o.at,"future_entry_decision")?;
                 self.pending_entries.remove(&o.candle.symbol);
-                let mut visible=histories.get(&o.candle.symbol).cloned().unwrap_or_default();visible.push(o.candle.clone());
+                if let Some(reason)=strategy.entry_permission(o,&signal){signal.rejection=Some(reason);}
+                let mut visible=if signal.rejection.is_none()&&strategy.needs_history(){histories.get(&o.candle.symbol).cloned().unwrap_or_default()}else{Vec::new()};
+                if signal.rejection.is_none()&&strategy.needs_history(){visible.push(o.candle.clone());}
                 if signal.rejection.is_none(){signal.rejection=strategy.entry_rejection(&visible,o,&signal)?;}
                 if o.bar_index.saturating_sub(signal.bar_index)>self.config.entry_ttl_bars {self.log(o,Side::Buy,"cancelled","expired",signal.mode,signal.evidence);}
                 else {self.entry(signal,o)?;}
@@ -320,7 +330,9 @@ impl StrategyBacktest {
         let mut immediate_exits=Vec::new();let mut immediate_entries=Vec::new();let mut trailing_stops=Vec::new();
         for o in observations {
             if o.phase==ObservationPhase::MinuteOpen{continue;}
-            let mut visible=histories.get(&o.candle.symbol).cloned().unwrap_or_default();visible.push(o.candle.clone());
+            if !strategy.needs_observation(&o.candle.symbol,o.at,o.phase){continue;}
+            let mut visible=if strategy.needs_history(){histories.get(&o.candle.symbol).cloned().unwrap_or_default()}else{Vec::new()};
+            if strategy.needs_history(){visible.push(o.candle.clone());}
             let decisions=strategy.decide(&visible,o,&self.positions)?;
             let mut exit_count=0;
             for decision in decisions {
@@ -335,7 +347,9 @@ impl StrategyBacktest {
                     }
                     StrategyDecision::Enter(mut signal)=>{
                         require(signal.bar_index<=o.bar_index,"future_signal_bar")?;
+                        if let Some(reason)=strategy.entry_permission(o,&signal){signal.rejection=Some(reason);}
                         if o.phase==ObservationPhase::DailyClose {
+                            if visible.is_empty(){visible=histories.get(&o.candle.symbol).cloned().unwrap_or_default();visible.push(o.candle.clone());}
                             let rejection=crate::analysis::trading::entries::volume_upper_shadow_rejection(&o.candle,visible.iter().rev().nth(1))
                                 .or_else(||crate::analysis::trading::entries::volume_bearish_entry_rejection(&visible,o.bar_index));
                             if signal.rejection.is_none(){signal.rejection=rejection.map(str::to_owned);}
@@ -351,6 +365,14 @@ impl StrategyBacktest {
                         if exit.mode==ExecutionMode::SameDayClose{immediate_exits.push((exit,o));}
                         else {self.pending_exits.insert(exit.symbol.clone(),exit);}
                     }
+                }
+            }
+        }
+        for o in observations {
+            if let Some(signal)=self.pending_entries.get(&o.candle.symbol) {
+                if let Some(reason)=strategy.entry_permission(o,signal) {
+                    let signal=self.pending_entries.remove(&o.candle.symbol).ok_or_else(||ExecutionError("pending_entry_disappeared".into()))?;
+                    self.log(o,Side::Buy,"cancelled",&reason,signal.mode,signal.evidence);
                 }
             }
         }
@@ -420,7 +442,13 @@ pub fn run_strategy_backtest<S:DecisionStrategy>(sessions:&[BacktestSession],con
         let head=schedule[offset];let end=schedule[offset..].iter().position(|e|e.at!=head.at||e.priority!=head.priority).map_or(schedule.len(),|n|offset+n);
         let mut observations=Vec::new();
         for event in &schedule[offset..end]{
-            let source=&sessions[event.session_index];let daily=&source.daily;let full=candle(daily)?;
+            let source=&sessions[event.session_index];let daily=&source.daily;
+            let pending_entry=account.pending_entries.get(&daily.symbol).is_some_and(|entry|matches!((event.phase,entry.mode),
+                (ObservationPhase::DailyOpen,ExecutionMode::NextOpen)|(ObservationPhase::MinuteOpen,ExecutionMode::Intraday5mNextOpen)));
+            let pending_exit=account.pending_exits.get(&daily.symbol).is_some_and(|exit|matches!((event.phase,exit.mode),
+                (ObservationPhase::DailyOpen,ExecutionMode::NextOpen)|(ObservationPhase::MinuteOpen,ExecutionMode::Intraday5mNextOpen)));
+            if event.phase!=ObservationPhase::DailyClose&&!pending_entry&&!pending_exit&&!strategy.needs_observation(&daily.symbol,event.at,event.phase){continue;}
+            let full=candle(daily)?;
             let history=histories.get(&daily.symbol).map(Vec::as_slice).unwrap_or(&[]);let index=history.len();
             let factor=full.adjustment_factor;
             let recent=&history[history.len().saturating_sub(account.config.liquidity_lookback)..];
@@ -466,4 +494,85 @@ pub fn run_strategy_backtest<S:DecisionStrategy>(sessions:&[BacktestSession],con
         offset=end;
     }
     Ok(account)
+}
+
+#[cfg(test)]
+mod qualification_execution_tests {
+    use super::*;
+    use crate::indexed_json::json;
+
+    fn observation(index:usize,phase:ObservationPhase)->BacktestObservation {
+        let day=format!("2026-01-{:02}",5+index);
+        let clock=if phase==ObservationPhase::DailyClose{"15:00"}else{"09:30"};
+        let at=stamp(&format!("{day}T{clock}:00+08:00")).unwrap();
+        BacktestObservation{at,phase,bar_index:index,candle:RuleCandle{symbol:"sh.600000".into(),timestamp:at.to_rfc3339(),
+            open:Decimal::from(10),high:Decimal::from(11),low:Decimal::from(9),close:Decimal::from(10),volume:Decimal::from(1_000_000),
+            adjustment_factor:Decimal::ONE,raw_trading_active:Some(true),raw_is_st:Some(false)},execution_price:Decimal::from(10),
+            buyable:true,sellable:true,observed_nonflat_buyable:false,observed_nonflat_sellable:false,lower_limit:None,
+            liquidity_capacity:Decimal::from(1_000_000),completed_interval:None}
+    }
+    fn entry(o:&BacktestObservation,window:u64)->EntryDecision {
+        EntryDecision{symbol:o.candle.symbol.clone(),known_at:o.at,bar_index:o.bar_index,mode:ExecutionMode::NextOpen,reason:"qualified_fixture".into(),
+            reference_price:Decimal::from(10),stop_price:Decimal::from(8),target_price:Some(Decimal::from(15)),minimum_reward_risk:None,
+            rvol:None,rejection:None,evidence:BTreeMap::from([("execution_window".into(),json!(window))])}
+    }
+    struct WindowStrategy{window:Option<u64>,close_at:Option<usize>,observed:Vec<ObservationPhase>}
+    impl DecisionStrategy for WindowStrategy {
+        fn needs_observation(&self,_symbol:&str,_at:DateTime<Utc>,phase:ObservationPhase)->bool{phase==ObservationPhase::DailyClose||self.window.is_some()}
+        fn needs_history(&self)->bool{false}
+        fn entry_permission(&self,_o:&BacktestObservation,entry:&EntryDecision)->Option<String>{
+            (self.window!=entry.evidence.get("execution_window").and_then(crate::indexed_json::Value::as_u64)).then(||"qualification_window_expired".into())
+        }
+        fn decide(&mut self,visible:&[RuleCandle],o:&BacktestObservation,positions:&BTreeMap<String,BacktestPosition>)->ExecutionResult<Vec<StrategyDecision>>{
+            assert!(visible.is_empty());self.observed.push(o.phase);
+            if o.phase==ObservationPhase::DailyClose&&self.close_at==Some(o.bar_index){
+                self.window=None;
+                if positions.contains_key(&o.candle.symbol){return Ok(vec![StrategyDecision::Exit(ExitDecision{symbol:o.candle.symbol.clone(),known_at:o.at,
+                    bar_index:o.bar_index,mode:ExecutionMode::SameDayClose,rule:RuleDecision::new("qualification_interval_closed",o.bar_index,Decimal::ONE),remaining_quantity:None})]);}
+            }
+            Ok(Vec::new())
+        }
+    }
+    fn account()->StrategyBacktest{let mut config=BacktestConfig::default();config.net_reward_risk_filter=false;StrategyBacktest::new(config).unwrap()}
+
+    #[test]
+    fn pending_entry_cannot_match_a_different_qualification_window(){
+        let mut account=account();let prior=observation(0,ObservationPhase::DailyClose);
+        account.pending_entries.insert(prior.candle.symbol.clone(),entry(&prior,1));
+        let mut strategy=WindowStrategy{window:Some(2),close_at:None,observed:Vec::new()};
+        account.consume(&[observation(1,ObservationPhase::DailyOpen)],&BTreeMap::new(),&mut strategy).unwrap();
+        assert!(account.positions.is_empty());assert!(account.pending_entries.is_empty());
+        assert!(account.orders.iter().any(|order|order.status=="cancelled"&&order.reason=="qualification_window_expired"));
+    }
+
+    #[test]
+    fn adding_to_a_position_cannot_replace_its_original_window(){
+        let mut account=account();account.config.allow_add_on=true;
+        let first=observation(0,ObservationPhase::DailyOpen);account.entry(entry(&first,1),&first).unwrap();
+        let original=account.positions["sh.600000"].quantity;
+        let later=observation(1,ObservationPhase::DailyOpen);account.entry(entry(&later,2),&later).unwrap();
+        assert_eq!(account.positions["sh.600000"].quantity,original);
+        assert_eq!(account.positions["sh.600000"].entry_evidence["execution_window"],json!(1));
+        assert!(account.orders.iter().any(|order|order.status=="cancelled"&&order.reason=="qualification_window_changed"));
+    }
+
+    #[test]
+    fn morning_entry_is_causal_and_close_exit_retries_outside_the_window(){
+        let mut account=account();let prior=observation(0,ObservationPhase::DailyClose);
+        account.pending_entries.insert(prior.candle.symbol.clone(),entry(&prior,1));
+        let mut strategy=WindowStrategy{window:Some(1),close_at:Some(1),observed:Vec::new()};
+        account.consume(&[observation(1,ObservationPhase::DailyOpen)],&BTreeMap::new(),&mut strategy).unwrap();
+        assert!(account.positions.contains_key("sh.600000"));
+        account.consume(&[observation(1,ObservationPhase::DailyClose)],&BTreeMap::new(),&mut strategy).unwrap();
+        assert!(account.orders.iter().any(|order|order.reason=="T+1"&&order.status=="deferred"));
+        assert_eq!(account.pending_exits["sh.600000"].rule.reason,"qualification_interval_closed");
+        let observed=strategy.observed.len();let mut blocked=observation(2,ObservationPhase::DailyOpen);blocked.sellable=false;
+        account.consume(&[blocked],&BTreeMap::new(),&mut strategy).unwrap();
+        assert_eq!(strategy.observed.len(),observed);assert!(account.pending_exits.contains_key("sh.600000"));
+        account.consume(&[observation(3,ObservationPhase::DailyOpen)],&BTreeMap::new(),&mut strategy).unwrap();
+        assert!(account.positions.is_empty());assert!(account.pending_exits.is_empty());assert_eq!(strategy.observed.len(),observed);
+        assert_eq!(account.trades.len(),1);assert_eq!(account.trades[0].exit_reason,"qualification_interval_closed");
+        account.consume(&[observation(3,ObservationPhase::DailyClose)],&BTreeMap::new(),&mut strategy).unwrap();
+        assert_eq!(account.equity.len(),2);assert_eq!(account.portfolio_days.len(),2);
+    }
 }

@@ -1,5 +1,5 @@
 //! 每个已完成行情前缀推进一次交易上下文，复用四级结构及原始确认时钟。
-use super::{RuleCandle,FrameTradeEvaluation,TradingEligibility,evaluate_frame_with_config,entries,qualification,targets,target_lifecycle,one_p,risk,candidates,arbiter,hierarchy,waves,secondary,entry_risk,shallow};
+use super::{RuleCandle,FrameTradeEvaluation,TradingEligibility,advance_frame_qualification_with_config,entries,qualification,targets,target_lifecycle,one_p,risk,candidates,arbiter,hierarchy,waves,secondary,entry_risk,shallow};
 use super::super::market_state::{regime::{self,MarketRegime,RegimePolicy,WaveBoundary},price_action::ShadowPolicy};
 use super::super::kernel::{KernelFrame,PointKind};
 use rust_decimal::Decimal;
@@ -22,6 +22,8 @@ pub struct TradingDayEvaluation{pub frames:Vec<FrameTradeEvaluation>,pub entry_c
 pub struct TradingDayState{
     last:Option<usize>,config:Option<TradingDayConfig>,pub events:Vec<Value>,
     #[serde(default)] pub diagnostics:super::diagnostics::TradingDiagnostics,
+    #[serde(default)] signal_history:super::dispatch::SignalHistory,
+    #[serde(default)] window_scopes:BTreeSet<String>,
     structural_sources:targets::EligiblePolylineN,trading_sources:targets::EligiblePolylineN,
     structural:targets::StructuralNStream,targets:targets::PolylineTargetStream,target_lifecycle:target_lifecycle::TargetLifecycle,
     one_p:one_p::OnePBreakoutStream,pub risk:risk::RiskState,gap:entries::GapEntryGate,
@@ -40,12 +42,30 @@ pub struct TradingDayState{
 impl Default for TradingDayState{fn default()->Self{
     let mut structural_sources=targets::EligiblePolylineN::default();structural_sources.folded_window=Some(120);structural_sources.structural=true;
     let mut trading_sources=targets::EligiblePolylineN::default();trading_sources.folded_window=Some(120);
-    Self{last:None,config:None,events:vec![],diagnostics:Default::default(),structural_sources,trading_sources,
+    Self{last:None,config:None,events:vec![],diagnostics:Default::default(),signal_history:Default::default(),window_scopes:Default::default(),structural_sources,trading_sources,
     structural:targets::StructuralNStream::new(60,true),targets:Default::default(),target_lifecycle:Default::default(),one_p:Default::default(),risk:Default::default(),gap:Default::default(),
     declines:BTreeMap::new(),seen_declines:BTreeSet::new(),formal_decline_seen:false,seed_decline:None,preparation_events:BTreeSet::new(),prepared:vec![],seen_washouts:BTreeSet::new(),
     waves:Default::default(),wave_output:Default::default(),secondary:Default::default(),arbiter:Default::default(),contexts:BTreeMap::new(),resistance:Default::default(),derived_regimes:BTreeMap::new(),turns:Default::default(),minor_points:vec![],minor_data_supplied:false,
     entry_risk:Default::default(),shallow:Default::default(),permissions:Default::default(),permission_days:BTreeMap::new(),emitted_pullbacks:BTreeSet::new(),emitted_reclaims:BTreeSet::new(),previous_polyline:None}}}
 impl TradingDayState{
+    /// 新区间只使用此刻已知的结构；旧区间交易候选不延续，也不补算空窗日。
+    fn begin_window(&mut self,start:usize,config:&TradingDayConfig,events:Vec<Value>){
+        let diagnostics=std::mem::take(&mut self.diagnostics);
+        let minor_points=std::mem::take(&mut self.minor_points);let minor_data_supplied=self.minor_data_supplied;
+        let risk_config=self.risk.config.clone();
+        *self=Self::default();self.last=start.checked_sub(1);self.config=Some(config.clone());self.events=events;
+        self.diagnostics=diagnostics;self.minor_points=minor_points;self.minor_data_supplied=minor_data_supplied;
+        self.structural_sources=targets::EligiblePolylineN::starting_at(start);self.structural_sources.structural=true;
+        self.structural_sources.folded_window=Some(config.structure_window);
+        self.trading_sources=targets::EligiblePolylineN::starting_at(start);
+        self.trading_sources.folded_window=(config.buy_point_definition=="whole_flip_wave_v3"&&config.pivot_mode=="lecture_causal").then_some(config.structure_window);
+        self.structural=targets::StructuralNStream::starting_at(start,config.pattern_ttl,true);
+        self.targets=targets::PolylineTargetStream::starting_at(start);self.one_p=one_p::OnePBreakoutStream::starting_at(start);
+        self.turns=super::turns::TurnState::starting_at(start);self.shallow=shallow::ShallowBaseState::starting_at(start);
+        self.risk=risk::RiskState::starting_at(start);self.risk.config=risk_config;
+        self.entry_risk=entry_risk::EntryRiskState::new(start);self.gap=entries::GapEntryGate::starting_at(start);
+    }
+    pub(crate) fn record_buy_signal(&mut self){self.signal_history.record_buy_signal();}
     pub fn counts(&self)->&BTreeMap<String,usize>{&self.diagnostics.counts}
     pub fn set_minor_points(&mut self,points:Option<Vec<super::super::market_state::strength::ConfirmedPivot>>){
         self.minor_data_supplied=points.is_some();self.minor_points=points.unwrap_or_default();
@@ -267,10 +287,10 @@ pub fn prepare_trading_day(bars:&[RuleCandle],frames:&[KernelFrame],asof:usize,e
             unavailable_rules:vec![],n_observations:vec![],events:vec![],entry_rejections:vec!["daily_trading_not_applicable".into()],exit_decisions:vec![]}).collect();
         return Ok(TradingDayEvaluation{frames:evaluations,entry_candidates:vec![],events:vec![event],unavailable_rules:vec![],counts:state.counts().clone(),trading_applicable:false});
     }
-    let event_start=state.events.len();let mut evaluations=vec![];
+    let mut event_start=state.events.len();let mut evaluations=vec![];
     for frame in frames{
         let eligibility=eligibilities.get_mut(usize::from(frame.level)).ok_or("eligibility state missing for frame")?;
-        let result=evaluate_frame_with_config(bars,frame,asof,eligibility,timeframe,polyline,config)?;
+        let result=advance_frame_qualification_with_config(bars,frame,asof,eligibility,timeframe,polyline,config)?;
         state.events.extend(result.events.iter().filter(|e|e.get("event").and_then(Value::as_str)!=Some("long_signal")).cloned());evaluations.push(result);
     }
     let eligibility=eligibilities.get(usize::from(config.buy_interval_level)).ok_or("selected eligibility unavailable")?;
@@ -289,14 +309,34 @@ pub fn prepare_trading_day(bars:&[RuleCandle],frames:&[KernelFrame],asof:usize,e
                 "display_end_inclusive":matches!(window.end_reason.as_deref(),Some("reversal_low_broken"|"confirmation_gap_filled"|"source_bear_trend_confirmed"))}));}
         }
     }
-    if config.entry_policy=="transitioned_squeeze"{let permission=state.permissions.advance(bars,polyline,asof,config.structure_window,(config.pivot_mode=="lecture_causal").then_some(config.max_counter_ratio))?;
-        state.events.extend(permission.events.clone());state.permission_days.insert(asof,permission);}
     let windows:Vec<_>=eligibility.active_intervals().into_iter().cloned().collect();
     let mut scopes:BTreeSet<_>=windows.iter().map(|w|format!("{}:{}",w.source_path,w.start_index)).collect();
     let epoch=polyline.candidate.as_ref().or_else(||polyline.points.last()).map_or(0,|p|p.path);
-    let points:Vec<_>=polyline.points.iter().filter(|p|p.path==epoch&&p.is_closed()&&p.known_index<=asof).cloned().collect();
-    let unrestricted=config.buy_interval_level==0;let buy_allowed=unrestricted||eligibility.active();
+    let unrestricted=config.buy_interval_level==0;
+    let decision_scope=super::dispatch::DecisionScope::at(eligibility,asof,unrestricted);
+    let buy_allowed=decision_scope.buy_allowed;
     if unrestricted{scopes.clear();scopes.insert(format!("unrestricted-{epoch}:{epoch}"));}
+    if !buy_allowed {
+        // 结束清仓及未成交退出由账户层负责；这里不再运行普通卖点或历史候选观察。
+        if !state.window_scopes.is_empty(){let today=state.events.split_off(event_start);state.begin_window(asof,config,today);event_start=0;}
+        state.window_scopes.clear();state.last=Some(asof);state.previous_polyline=None;
+        let minor_available=state.minor_data_available();
+        state.diagnostics.consume_day(&state.events[event_start..],asof,polyline.blocked_at==Some(asof),minor_available,false,false,false);
+        state.diagnostics.increment("trading_days_skipped");state.diagnostics.counts.insert("trading_interval_count".into(),eligibility.intervals.len());
+        for evaluation in &mut evaluations{evaluation.trade_point=false;evaluation.n_observations.clear();evaluation.exit_decisions.clear();}
+        return Ok(TradingDayEvaluation{frames:evaluations,entry_candidates:vec![],events:state.events[event_start..].to_vec(),unavailable_rules:vec![],counts:state.counts().clone(),trading_applicable:true});
+    }
+    let reopened=state.window_scopes.is_disjoint(&scopes);
+    if reopened{let today=state.events.split_off(event_start);state.begin_window(asof,config,today);event_start=0;}
+    state.window_scopes=scopes.clone();
+    let selected=eligibilities.get_mut(usize::from(config.buy_interval_level)).ok_or("selected eligibility unavailable")?;
+    if reopened{selected.polyline_gate=entries::PolylineBuyGate::starting_at(asof);}
+    selected.polyline_gate.advance(bars,asof,polyline)?;
+    let eligibility=&eligibilities[usize::from(config.buy_interval_level)];
+    if config.entry_policy=="transitioned_squeeze"{let permission=state.permissions.advance(bars,polyline,asof,config.structure_window,(config.pivot_mode=="lecture_causal").then_some(config.max_counter_ratio))?;
+        state.events.extend(permission.events.clone());state.permission_days.insert(asof,permission);}
+    state.diagnostics.increment("trading_days_evaluated");
+    let points:Vec<_>=polyline.points.iter().filter(|p|p.path==epoch&&p.is_closed()&&p.known_index<=asof).cloned().collect();
     let structural_sources=if unrestricted{state.structural_sources.advance_unrestricted(asof,&points,epoch)?}else{state.structural_sources.advance(asof,&points,&windows)?};
     let trading_sources=if unrestricted{state.trading_sources.advance_unrestricted(asof,&points,epoch)?}else{state.trading_sources.advance(asof,&points,&windows)?};
     let declines=decline_arrivals(state,frames,asof);
@@ -367,7 +407,9 @@ pub fn prepare_trading_day(bars:&[RuleCandle],frames:&[KernelFrame],asof:usize,e
     let risk=risk::evaluate_daily_risks(bars,frames,asof,&mut state.risk)?;
     let mut unavailable=risk.unavailable_rules;if config.entry_policy=="hierarchical_two_buy_points"{unavailable.extend(context.unavailable_rules);}
     let mut candidates=vec![];
-    let hard_exits=strategy_exits(bars,asof,polyline,eligibility,state,&entry_risk,config)?;
+    let hard_exits=if state.signal_history.observes_exits(decision_scope){
+        strategy_exits(bars,asof,polyline,eligibility,state,&entry_risk,config)?
+    }else{vec![]};
     if !hard_exits.is_empty(){state.events.push(json!({"event":"exit_signal","bar_index":asof,"price":bars[asof].close,"stop":bars[asof].high,
         "reason":hard_exits.iter().map(|d|d.reason.as_str()).collect::<Vec<_>>().join("|"),"decisions":hard_exits,"execution_model":"next_open"}));}
     let whole=config.buy_point_definition=="whole_flip_wave_v3";
@@ -381,11 +423,12 @@ pub fn prepare_trading_day(bars:&[RuleCandle],frames:&[KernelFrame],asof:usize,e
         .or_else(||if config.buy_point_definition=="whole_flip_wave_v3"{entries::one_p_breakout_entry_rejection(&state.events,asof,bars[asof].high).map(|d|d.reason)}else{None})
         .or_else(||(!hard_exits.is_empty()).then(||"same_day_strategy_exit".into()));
     let entry_risks=arbiter::EntryRisks{secondary:secondary.pressure.clone(),target:entry_risk.target,five_top:entry_risk.five_top,ten_full:entry_risk.ten_full};
-    let eligible_proofs=if reject.is_none()&&buy_allowed{proofs.as_slice()}else{&[]};
+    let entry_allowed=state.signal_history.permits_entry(decision_scope,!hard_exits.is_empty());
+    let eligible_proofs=if reject.is_none()&&entry_allowed{proofs.as_slice()}else{&[]};
     let result=arbiter::arbitrate_n_entries(bars,asof,&state.prepared,eligible_proofs,&state.events,&scopes,epoch,config,&entry_risks,&mut state.arbiter,unavailable.is_empty())?;
     state.events.extend(result.events);if let Some(candidate)=result.decision{candidates.push(candidate);}
-    if reject.is_none()&&candidates.is_empty(){if let Some(decision)=supplemental_entry(bars,frames,asof,eligibility,state,&secondary,shallow.breakout.as_ref(),&entry_risks,config,unavailable.is_empty())?{candidates.push(decision);}}
-    if reject.is_none()&&candidates.is_empty()&&entry_risks.target.is_none()&&entry_risks.five_top.is_none(){
+    if entry_allowed&&reject.is_none()&&candidates.is_empty(){if let Some(decision)=supplemental_entry(bars,frames,asof,eligibility,state,&secondary,shallow.breakout.as_ref(),&entry_risks,config,unavailable.is_empty())?{candidates.push(decision);}}
+    if entry_allowed&&reject.is_none()&&candidates.is_empty()&&entry_risks.target.is_none()&&entry_risks.five_top.is_none(){
         if let Some(mut decision)=entries::qualified_close_entry(bars,asof,eligibility,&eligibility.polyline_gate,&state.events){
             let proof=crate::indexed_json::to_value(&decision.evidence).map_err(|error|error.to_string())?;
             let price=qualification::price(&proof,"price").ok_or("entry price missing")?;
@@ -396,7 +439,7 @@ pub fn prepare_trading_day(bars:&[RuleCandle],frames:&[KernelFrame],asof:usize,e
             state.events.push(json!({"event":"entry_candidate","bar_index":asof,"candidate":candidate}));candidates.push(candidate);
         }
     }
-    for candidate in &candidates{if candidate.fully_executable{if let Some(wave)=candidate.evidence.get("wave").filter(|v|v.is_object()){
+    for candidate in &candidates{if candidate.fully_executable{state.signal_history.record_buy_signal();if let Some(wave)=candidate.evidence.get("wave").filter(|v|v.is_object()){
         let attack=qualification::index(&candidate.evidence,"attack").ok_or("wave entry attack missing")?;
         state.events.extend(waves::wave_entry_events(asof,attack,candidate.stop,wave)?);
     }}state.events.push(json!({"event":if candidate.fully_executable{"long_signal"}else{"entry_candidate"},"bar_index":asof,"candidate":candidate}));}
@@ -405,7 +448,7 @@ pub fn prepare_trading_day(bars:&[RuleCandle],frames:&[KernelFrame],asof:usize,e
         evaluation.unavailable_rules.retain(|r|!r.starts_with("trading_day:"));
         evaluation.unavailable_rules.extend(unavailable.iter().cloned());}
     state.previous_polyline=Some(polyline.clone());
-    state.diagnostics.consume_day(&state.events[event_start..],asof,polyline.blocked_at==Some(asof),minor_available,!scopes.is_empty(),buy_allowed,points.len()<3);
+    state.diagnostics.consume_day(&state.events[event_start..],asof,polyline.blocked_at==Some(asof),minor_available,decision_scope.scan_allowed,buy_allowed,points.len()<3);
     state.diagnostics.counts.insert("trading_interval_count".into(),if unrestricted{0}else{eligibility.intervals.len()});
     state.diagnostics.counts.insert("completed_up_n".into(),state.events.iter().filter(|e|e.get("event").and_then(Value::as_str)==Some("n_completed")
         &&e.get("direction").and_then(Value::as_str)==Some("up")).count());
@@ -413,4 +456,44 @@ pub fn prepare_trading_day(bars:&[RuleCandle],frames:&[KernelFrame],asof:usize,e
     state.diagnostics.observe_pending(&state.targets.measurements);
     state.last=Some(asof);
     Ok(TradingDayEvaluation{frames:evaluations,entry_candidates:candidates,events:state.events[event_start..].to_vec(),unavailable_rules:unavailable,counts:state.counts().clone(),trading_applicable:true})
+}
+
+#[cfg(test)]
+mod interval_dispatch_tests{
+    use super::*;
+
+    fn open_window(eligibility:&mut TradingEligibility,now:usize){
+        eligibility.observe(&json!({"event":"trend_lifecycle_state","bar_index":now,"available_index":now,
+            "trend_level":2,"source_path":"lecture-0","state":"空多交替","flip_confirmed":true,
+            "flip_index":now-1,"flip_known_index":now-1,"counter_index":now,"counter_price":"9",
+            "alternation_index":now})).unwrap();
+    }
+
+    #[test]
+    fn closed_days_do_not_run_trade_observers_and_reopening_starts_a_new_clock(){
+        let bars:Vec<_>=(0..8).map(|index|RuleCandle{symbol:"sh.601086".into(),timestamp:format!("2026-01-{:02}",5+index),
+            open:Decimal::from(10),high:Decimal::from(11),low:Decimal::from(9),close:Decimal::from(10),
+            volume:Decimal::from(100),adjustment_factor:Decimal::ONE,raw_trading_active:Some(true),raw_is_st:Some(false)}).collect();
+        let frames:Vec<_>=(0..4).map(KernelFrame::empty).collect();
+        let mut eligibility:Vec<_>=(0..4).map(|level|TradingEligibility::new(level).unwrap()).collect();
+        let mut state=TradingDayState::default();let config=TradingDayConfig::lecture();
+        for now in 0..8{
+            if matches!(now,2|6){open_window(&mut eligibility[2],now);}
+            if now==4{eligibility[2].observe(&json!({"event":"trend_lifecycle_invalidated","bar_index":now,
+                "trend_level":2,"source_path":"lecture-0","reason":"source_path_ended"})).unwrap();}
+            let result=prepare_trading_day(&bars[..=now],&frames,now,&mut eligibility,"1d",&mut state,&config).unwrap();
+            if matches!(now,0|1|4|5){
+                assert!(result.entry_candidates.is_empty());
+                assert!(result.frames.iter().all(|frame|frame.n_observations.is_empty()&&frame.exit_decisions.is_empty()));
+                assert!(!result.events.iter().any(|event|matches!(event["event"].as_str(),Some("long_signal"|"exit_signal"))));
+            }
+            if now==6{
+                assert_eq!(state.entry_risk.start_index,6);
+                assert_eq!(state.entry_risk.processed_days,1);
+                assert_eq!(eligibility[2].polyline_gate.source_epochs.keys().copied().collect::<Vec<_>>(),vec![6]);
+            }
+        }
+        assert_eq!(state.counts()["trading_days_skipped"],4);
+        assert_eq!(state.counts()["trading_days_evaluated"],4);
+    }
 }

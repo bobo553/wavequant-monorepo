@@ -29,6 +29,7 @@ fn clock(value:Option<&Value>,dates:&BTreeMap<String,usize>)->Option<usize>{
 }
 fn string<'a>(e:&'a Value,key:&str)->Option<&'a str>{e.get(key)?.as_str()}
 impl OnePBreakoutStream {
+    pub(crate) fn starting_at(start:usize)->Self{Self{index:start.checked_sub(1),..Self::default()}}
     fn publish(&mut self,bars:&[RuleCandle],index:usize,key:&OnePKey,source:&Source,breakout:usize,prior:bool){
         let Some(reached)=source.reached else{return;};
         let date=|i:usize|bars[i].timestamp.get(..10).unwrap_or(&bars[i].timestamp);

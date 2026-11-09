@@ -1,4 +1,5 @@
 //! 原生系统策略装配。每个日线前缀只有一个分析器，账户、分钟观察和输出消费同一结果。
+mod trade_flow;
 use std::{collections::{BTreeMap,BTreeSet},sync::{Arc,atomic::{AtomicBool,Ordering}},str::FromStr};
 use chrono::{DateTime,Duration,Utc};
 use rust_decimal::{Decimal,prelude::ToPrimitive};
@@ -14,7 +15,7 @@ pub struct SystemConfig {
     pub analyzer:AnalyzerConfig,pub execution:BacktestConfig,pub holding:HoldingRiskPolicy,pub parameters:ExecutionParameters,
     #[serde(default)]pub trading_start:Option<String>,#[serde(default)]pub trading_end:Option<String>,
 }
-impl Default for SystemConfig{fn default()->Self{Self{analyzer:Default::default(),execution:Default::default(),holding:Default::default(),parameters:Default::default(),trading_start:None,trading_end:None}}}
+impl Default for SystemConfig{fn default()->Self{Self{analyzer:AnalyzerConfig::default().for_trading(),execution:Default::default(),holding:Default::default(),parameters:Default::default(),trading_start:None,trading_end:None}}}
 impl SystemConfig{fn trading_on(&self,at:DateTime<Utc>)->bool{let date=execution::session(at).to_string();
     self.trading_start.as_ref().is_none_or(|start|date.as_str()>=start.as_str())&&self.trading_end.as_ref().is_none_or(|end|date.as_str()<=end.as_str())}}
 #[derive(Debug,Clone,Serialize,Deserialize)]
@@ -47,6 +48,7 @@ pub fn run_system_signals(bars:&[RuleCandle],config:AnalyzerConfig)->Result<Syst
     run_system_signals_with_cancel(bars,DataIdentity{symbol,source_version:digest,adjustment:"provided_price_basis".into(),timeframe:"1d".into()},config,None)
 }
 pub fn run_system_signals_with_cancel(bars:&[RuleCandle],identity:DataIdentity,config:AnalyzerConfig,cancelled:Option<&AtomicBool>)->Result<SystemSignals,String>{
+    let config=config.for_trading();
     trading::validate_bars(bars)?;
     if bars.iter().any(|b|b.symbol!=identity.symbol){return Err("signal source contains a different symbol".into());}
     let mut analyzer=TrendAnalyzer::new(AnalysisRequest{identity,bars:vec![],config:config.clone(),state:None})?;
@@ -77,7 +79,7 @@ struct SymbolState {
 }
 struct SystemStrategy<F:FnMut(&SystemProgress),G:FnMut(&SystemStep<'_>)> {
     config:SystemConfig,symbols:BTreeMap<String,SymbolState>,minutes:BTreeSet<(String,String)>,
-    pending_full:BTreeSet<String>,audit:Vec<Value>,signals:Vec<Value>,minute_fallbacks:Vec<Value>,
+    pending_full:BTreeSet<String>,interval_exits:BTreeSet<String>,audit:Vec<Value>,signals:Vec<Value>,minute_fallbacks:Vec<Value>,
     unavailable:BTreeSet<String>,cancelled:Option<Arc<AtomicBool>>,processed:usize,total:usize,last_percent:Option<u8>,on_progress:F,on_step:G,analysis_started:std::time::Instant,
     frozen_signals:Option<BTreeMap<(String,String),Vec<Value>>>,
 }
@@ -88,12 +90,41 @@ fn decimal_f64(value:Decimal)->ExecutionResult<f64>{value.to_f64().filter(|v|v.i
 fn as_analysis(bar:&RuleCandle,index:usize)->ExecutionResult<AnalysisBar>{Ok(AnalysisBar{index,time:bar.timestamp.clone(),
     open:decimal_f64(bar.open)?,high:decimal_f64(bar.high)?,low:decimal_f64(bar.low)?,close:decimal_f64(bar.close)?,
     volume:bar.volume,adjustment_factor:bar.adjustment_factor,raw_trading_active:bar.raw_trading_active,raw_is_st:bar.raw_is_st})}
-fn normalise(visible:&[RuleCandle],o:&BacktestObservation)->ExecutionResult<Vec<RuleCandle>>{
-    if visible.len()!=o.bar_index+1||visible.iter().any(|b|b.symbol!=o.candle.symbol){return Err(failure("system_visible_prefix_mismatch"));}
-    let mut bars=visible.to_vec();
-    let last=bars.last_mut().ok_or_else(||failure("system_empty_prefix"))?;
-    last.timestamp=execution::session(o.at).to_string();
+fn normalise(history:&[RuleCandle],o:&BacktestObservation)->ExecutionResult<Vec<RuleCandle>>{
+    if history.len()<o.bar_index||history.len()>o.bar_index+1{return Err(failure("system_visible_prefix_mismatch"));}
+    let mut bars=history[..o.bar_index].to_vec();
+    let mut current=o.candle.clone();current.timestamp=execution::session(o.at).to_string();bars.push(current);
     Ok(bars)
+}
+fn active_windows<'a>(state:&'a SymbolState,level:u8)->Vec<&'a trading::qualification::TradingInterval>{
+    let Some(cutoff)=state.analyzer.get_current_index().checked_sub(1)else{return Vec::new();};
+    state.analyzer.eligibilities().get(usize::from(level)).map(|eligibility|eligibility.active_intervals().into_iter()
+        .filter(|window|window.start_index<=cutoff).collect()).unwrap_or_default()
+}
+fn entry_window_active(state:&SymbolState,level:u8)->bool{level==0||!active_windows(state,level).is_empty()}
+fn window_matches(state:&SymbolState,level:u8,proof:Option<&Value>)->bool {
+    if level==0{return true;}
+    let Some(proof)=proof else{return false;};
+    active_windows(state,level).iter().any(|window|proof["trend_level"]==u64::from(level)&&proof["start_index"]==window.start_index as u64
+        &&proof["source_path"]==window.source_path)
+}
+fn bind_entry_windows(state:&SymbolState,level:u8,decisions:&mut Vec<StrategyDecision>){
+    decisions.retain_mut(|decision|{
+        let StrategyDecision::Enter(entry)=decision else{return true;};
+        if level==0{return true;}
+        let start=entry.evidence.get("qualification_index").and_then(Value::as_u64);
+        let path=entry.evidence.get("source_path").and_then(Value::as_str);
+        let windows=active_windows(state,level);
+        let Some(window)=windows.into_iter().filter(|window|window.start_index<=entry.bar_index
+            &&start.is_none_or(|start|start==window.start_index as u64)&&path.is_none_or(|path|path==window.source_path))
+            .max_by_key(|window|window.start_index)else{return false;};
+        entry.evidence.insert("execution_window".into(),json!({"trend_level":level,"start_index":window.start_index,"source_path":window.source_path}));true
+    });
+}
+fn interval_close(o:&BacktestObservation)->StrategyDecision {
+    StrategyDecision::Exit(ExitDecision{symbol:o.candle.symbol.clone(),known_at:o.at,bar_index:o.bar_index,mode:ExecutionMode::SameDayClose,
+        rule:RuleDecision::new("qualification_interval_closed",o.bar_index,Decimal::ONE)
+            .with("execution_model","same_day_close").with("decision_source","confirmed_qualification_end"),remaining_quantity:None})
 }
 fn mode(name:&str,close_default:bool)->Result<ExecutionMode,String>{match name{
     "same_day_open"=>Ok(ExecutionMode::SameDayOpen),
@@ -216,129 +247,103 @@ impl<F:FnMut(&SystemProgress),G:FnMut(&SystemStep<'_>)> SystemStrategy<F,G> {
     }
 }
 impl<F:FnMut(&SystemProgress),G:FnMut(&SystemStep<'_>)> DecisionStrategy for SystemStrategy<F,G>{
-    fn entry_rejection(&mut self,visible:&[RuleCandle],o:&BacktestObservation,entry:&EntryDecision)->ExecutionResult<Option<String>>{
+    fn needs_observation(&self,symbol:&str,at:DateTime<Utc>,phase:ObservationPhase)->bool{
+        phase==ObservationPhase::DailyClose||(self.config.trading_on(at)&&!self.interval_exits.contains(symbol)
+            &&self.symbols.get(symbol).is_some_and(|state|entry_window_active(state,self.config.analyzer.trading.buy_interval_level)))
+    }
+    fn needs_history(&self)->bool{false}
+    fn entry_permission(&self,o:&BacktestObservation,entry:&EntryDecision)->Option<String>{
+        if !self.config.trading_on(o.at){return Some("outside_trading_range".into());}
+        if self.interval_exits.contains(&entry.symbol){return Some("qualification_exit_pending".into());}
+        let Some(state)=self.symbols.get(&entry.symbol)else{return Some("unknown_qualification_symbol".into());};
+        (!window_matches(state,self.config.analyzer.trading.buy_interval_level,entry.evidence.get("execution_window")))
+            .then(||"qualification_window_expired".into())
+    }
+    fn entry_rejection(&mut self,_visible:&[RuleCandle],o:&BacktestObservation,entry:&EntryDecision)->ExecutionResult<Option<String>>{
         self.check_cancelled()?;
         let Some(events)=entry.evidence.get("target_guard_events").and_then(Value::as_array)else{return Ok(None);};
-        let bars=normalise(visible,o)?;
+        let state=self.symbols.get(&o.candle.symbol).ok_or_else(||failure("unknown system symbol"))?;
+        let bars=normalise(&state.bars,o)?;
         Ok(intraday::execution_entry_rejection(&bars,o.bar_index,events,o.candle.high,o.execution_price).map(|rule|rule.reason))
     }
     fn observe_account(&mut self,account:&StrategyBacktest){
         self.pending_full=account.pending_exits.iter().filter(|(_,exit)|exit.rule.fraction==Decimal::ONE||exit.remaining_quantity.is_some()).map(|(symbol,_)|symbol.clone()).collect();
+        self.interval_exits=account.pending_exits.iter().filter(|(_,exit)|exit.rule.reason=="qualification_interval_closed").map(|(symbol,_)|symbol.clone()).collect();
     }
     fn open_risks(&mut self,_visible:&[RuleCandle],o:&BacktestObservation,positions:&BTreeMap<String,BacktestPosition>)->ExecutionResult<Vec<ExitDecision>>{
         self.check_cancelled()?;
         let Some(position)=positions.get(&o.candle.symbol)else{return Ok(vec![]);};
         let state=self.symbols.get(&o.candle.symbol).ok_or_else(||failure("unknown system symbol"))?;
+        if !self.config.trading_on(o.at)||self.interval_exits.contains(&o.candle.symbol)
+            ||!entry_window_active(state,self.config.analyzer.trading.buy_interval_level){return Ok(vec![]);}
         let rule=if self.config.holding.trend_flip_adverse_exit{risk::observe_open_breakout_risk(&state.analyzer.trading_state().risk,o.bar_index,o.candle.open,position.entry_index)}else{None};
         Ok(rule.into_iter().map(|rule|ExitDecision{symbol:o.candle.symbol.clone(),known_at:o.at,bar_index:o.bar_index,mode:ExecutionMode::NextOpen,rule,remaining_quantity:None}).collect())
     }
-    fn decide(&mut self,visible:&[RuleCandle],o:&BacktestObservation,positions:&BTreeMap<String,BacktestPosition>)->ExecutionResult<Vec<StrategyDecision>>{
+    fn decide(&mut self,_visible:&[RuleCandle],o:&BacktestObservation,positions:&BTreeMap<String,BacktestPosition>)->ExecutionResult<Vec<StrategyDecision>>{
         self.check_cancelled()?;
-        let bars=normalise(visible,o)?;let symbol=&o.candle.symbol;let now=o.bar_index;
+        let symbol=&o.candle.symbol;let now=o.bar_index;let trading_on=self.config.trading_on(o.at);
+        let level=self.config.analyzer.trading.buy_interval_level;
         let frozen=self.frozen_signals.as_ref().map(|signals|signals.get(&(symbol.clone(),execution::session(o.at).to_string())).cloned().unwrap_or_default());
         let has_minutes=self.minutes.contains(&(symbol.clone(),execution::session(o.at).to_string()));
         let state=self.symbols.get_mut(symbol).ok_or_else(||failure("unknown system symbol"))?;
-        if let Some(position)=positions.get(symbol){state.extrema.observe(position,o,has_minutes)?;}
-        if super::analyzer::STRUCTURE_ONLY&&o.phase!=ObservationPhase::DailyClose{return Ok(Vec::new());}
         if o.phase!=ObservationPhase::DailyClose{
+            if !trading_on||self.interval_exits.contains(symbol)||!entry_window_active(state,level){return Ok(Vec::new());}
+            let bars=normalise(&state.bars,o)?;
+            if let Some(position)=positions.get(symbol){state.extrema.observe(position,o,has_minutes)?;}
             let(mut decisions,audit)=observe_minutes(state,&bars,o,positions.get(symbol),&self.config,has_minutes)?;
             if frozen.is_some()&&!self.config.parameters.consolidation_entry_intraday{decisions.retain(|decision|!matches!(decision,StrategyDecision::Enter(_)));}
+            trade_flow::prioritize_exits(&mut decisions);
+            bind_entry_windows(state,level,&mut decisions);
             for mut event in audit{event["symbol"]=json!(symbol);self.audit.push(event);}
-            for decision in &decisions{self.record_decision(o,decision);}if !self.config.trading_on(o.at){decisions.clear();}return Ok(decisions);
+            for decision in &decisions{self.record_decision(o,decision);}return Ok(decisions);
         }
         if state.analyzer.get_current_index()!=now{return Err(failure("system day must advance exactly once"));}
+        let previous_windows=active_windows(state,level).into_iter().map(|window|(window.start_index,window.source_path.clone())).collect::<BTreeSet<_>>();
         if !state.intraday.audit.is_empty(){state.analyzer.accept_intraday(now,&state.intraday.arbiter,&state.intraday.audit).map_err(failure)?;}
-        state.analyzer.append(vec![as_analysis(&bars[now],now)?]).map_err(failure)?;
-        state.analyzer.process_next().map_err(failure)?;state.bars.push(bars[now].clone());
+        let mut current=o.candle.clone();current.timestamp=execution::session(o.at).to_string();
+        state.analyzer.append(vec![as_analysis(&current,now)?]).map_err(failure)?;
+        state.analyzer.process_next().map_err(failure)?;state.bars.push(current);
         let mut daily=state.analyzer.daily_trading().cloned().ok_or_else(||failure("shared trading day missing"))?;
-        (self.on_step)(&SystemStep{symbol,index:now,bar:&bars[now],frames:state.analyzer.levels(),trading:&daily});
-        if super::analyzer::STRUCTURE_ONLY{self.processed+=1;return Ok(Vec::new());}
-        let frozen_exit=if let Some(rows)=frozen.as_ref(){let(entries,exit)=frozen_daily(rows,&bars[now],now,&self.config)?;daily.entry_candidates=entries;exit}else{None};
+        (self.on_step)(&SystemStep{symbol,index:now,bar:&state.bars[now],frames:state.analyzer.levels(),trading:&daily});
+        self.processed+=1;
         for issue in &daily.unavailable_rules{self.unavailable.insert(issue.clone());}
         for event in &daily.events{
-            let mut event=event.clone();if let Some(fields)=event.as_object_mut(){fields.insert("symbol".into(),json!(symbol));fields.insert("timestamp".into(),json!(bars[now].timestamp));}
+            let mut event=event.clone();if let Some(fields)=event.as_object_mut(){fields.insert("symbol".into(),json!(symbol));fields.insert("timestamp".into(),json!(state.bars[now].timestamp));}
             self.audit.push(event);
         }
-        let(mut decisions,minute_audit)=observe_minutes(state,&bars,o,positions.get(symbol),&self.config,has_minutes)?;
-        for mut event in minute_audit{event["symbol"]=json!(symbol);self.audit.push(event);}
-        let eligible=self.config.analyzer.trading.buy_interval_level==0||daily.frames.get(usize::from(self.config.analyzer.trading.buy_interval_level)).is_some_and(|g|g.in_qualification_range);
-        let global=daily.frames.first().map(|frame|frame.exit_decisions.as_slice()).unwrap_or(&[]);
-        let strategy_exit=if frozen.is_some(){frozen_exit}else{current_strategy_exit(&daily.events,now)};
-        if let Some(position)=positions.get(symbol){
-            let mut context=HoldingRiskContext::from_position(position);
-            context.positive_n_index=state.analyzer.trading_state().risk.positive_n_index;
-            context.trading_eligible=eligible;context.pending_full_exit=self.pending_full.contains(symbol);
-            context.wave_events=owned_wave_events(&state.analyzer.trading_state().events,position,now);
-            context.c_equal_events=context.wave_events.iter().filter(|e|e.get("event").and_then(Value::as_str)==Some("wave_c_equal_target")).cloned().collect();
-            context.target_risk=state.analyzer.trading_state().entry_risk_state().history.get(&now).and_then(|r|r.target.clone()).map(|mut decision|{
-                if decision.fraction<Decimal::ONE{decision.fraction=self.config.holding.risk.wave_exhaustion_reduction;
-                    decision.evidence.insert("exit_fraction".into(),json!(decision.fraction));
-                    if decision.cumulative{decision.evidence.insert("exit_target_fraction".into(),json!(decision.fraction));}}
-                decision
-            });
-            context.daily_fallback=self.config.parameters.staged_exit_intraday&&!has_minutes&&self.config.parameters.missing_minute_daily_fallback;
-            if context.daily_fallback{
-                let fallback=json!({"symbol":symbol,"date":bars[now].timestamp,"reason":"minute_history_missing","execution_model":"same_day_close","purpose":"staged_exit"});
-                self.minute_fallbacks.push(fallback.clone());self.audit.push(json!({"event":"minute_daily_fallback","bar_index":now,"evidence":fallback}));
-            }
-            let (low,high)=state.extrema.observe(position,o,has_minutes)?;
-            let mut hard_config=self.config.execution.clone();hard_config.exit_on_target=hard_config.exit_on_target&&eligible;
-            context.hard_exit=execution::hard_exit_decision(position,o,&hard_config,low,high)?;
-            if strategy_exit.as_ref().is_some_and(|d|d.reason.split('|').any(|r|r=="mother_child_inverse_n_low_break")){
-                context.mother_child_inverse=intraday::mother_child_inverse_n_break(&bars,now);
-            }
-            if self.config.parameters.volume_inverse_n_clear&&now>0&&strategy_exit.as_ref().is_some_and(|d|d.reason.split('|').any(|r|r=="inverse_n_risk_exit")){
-                let reference=bars[..now].iter().rev().find(|b|b.close<b.open);
-                let volume_bearish=trading::entries::is_volume_bearish(&bars[now],bars.get(now-1),reference);
-                if bars[now].volume>bars[now-1].volume||volume_bearish{context.volume_inverse=Some(RuleDecision::new("volume_inverse_n_clear",now,Decimal::ONE)
-                    .with("execution_model","same_day_close").with("observed_volume",bars[now].volume).with("previous_volume",bars[now-1].volume));}
-            }
-            let evaluation=risk::evaluate_holding_risks(&bars,now,global,&context,&mut state.holding,&self.config.holding).map_err(failure)?;
-            self.unavailable.extend(evaluation.unavailable_rules);
-            let mut chosen=risk::resolve_exit_precedence(&evaluation.decisions,&context).map_err(failure)?;
-            if chosen.is_none()&&!context.pending_full_exit{chosen=strategy_exit.map(strategy_execution);}
-            if let Some(mut rule)=chosen{
-                if rule.reason=="inverse_n_risk_exit"&&(self.config.parameters.inverse_n_close_reduce
-                    ||self.config.parameters.inverse_n_after_reduction&&state.holding.staged.breakdown_index.is_some()&&position.quantity<position.initial_quantity){
-                    rule.reason=if self.config.parameters.inverse_n_close_reduce{"inverse_n_close_reduce_90"}else{"inverse_n_after_reduction_90"}.into();
-                    rule.fraction=Decimal::new(9,1);rule.cumulative=true;rule.evidence.insert("inverse_observed_index".into(),json!(now));
-                    if self.config.parameters.inverse_n_close_reduce{rule.evidence.insert("execution_model".into(),json!("same_day_close"));}
-                }
-                let execution_model=mode(rule.evidence.get("execution_model").and_then(Value::as_str).unwrap_or("next_open"),false).map_err(failure)?;
-                decisions.push(StrategyDecision::Exit(ExitDecision{symbol:symbol.clone(),known_at:o.at,bar_index:now,mode:execution_model,rule,remaining_quantity:None}));
-            }
+        let eligible=entry_window_active(state,level);
+        if level>0&&active_windows(state,level).iter().all(|window|!previous_windows.contains(&(window.start_index,window.source_path.clone()))){
+            state.intraday=Default::default();state.intraday_audit=0;
+            if !positions.contains_key(symbol){state.holding=Default::default();state.extrema=Default::default();}
         }
-        if !decisions.iter().any(|d|matches!(d,StrategyDecision::Exit(_)|StrategyDecision::Enter(_))){
-            for candidate in &daily.entry_candidates{
-                if !candidate.fully_executable{self.audit.push(json!({"event":"entry_not_executable","symbol":symbol,"bar_index":now,"candidate":candidate,"unavailable_rules":daily.unavailable_rules}));continue;}
-                let mut proof=evidence(&candidate.evidence);proof.insert("signal_index".into(),json!(now));
-                proof.insert("qualification_index".into(),json!(candidate.qualification_index));proof.insert("trend_level".into(),json!(candidate.trend_level));proof.insert("source_path".into(),json!(candidate.source_path));
-                if let Some(position)=positions.get(symbol){if candidate.stop>position.stop&&candidate.stop<bars[now].close{
-                    decisions.push(StrategyDecision::RaiseStop(StopDecision{symbol:symbol.clone(),known_at:o.at,stop:candidate.stop}));}
-                    if !self.config.parameters.allow_add_on{continue;}
-                }
-                let execution_model=mode(&candidate.execution_model,self.config.parameters.entry_at_close).map_err(failure)?;
-                if execution_model==ExecutionMode::Intraday5mNextOpen{return Err(failure("close candidate cannot authorize an earlier minute entry"));}
-                let required=proof.get("minimum_reward_risk").and_then(price).unwrap_or(self.config.analyzer.trading.minimum_reward_risk);
-                decisions.push(StrategyDecision::Enter(EntryDecision{symbol:symbol.clone(),known_at:o.at,bar_index:now,mode:execution_model,
-                    reason:candidate.reason.clone(),reference_price:candidate.price,stop_price:candidate.stop,target_price:candidate.target,
-                    minimum_reward_risk:Some(required),rvol:proof.get("rvol").and_then(price),rejection:None,evidence:proof}));
-                break;
-            }
+        let held_window_closed=positions.get(symbol).is_some_and(|position|!window_matches(state,level,position.entry_evidence.get("execution_window")));
+        let route=trade_flow::route(trading_on&&eligible,positions.contains_key(symbol),held_window_closed,self.interval_exits.contains(symbol));
+        if route!=trade_flow::Route::Active{
+            state.intraday=Default::default();state.intraday_audit=0;
+            if !positions.contains_key(symbol){state.holding=Default::default();state.extrema=Default::default();}
+            let decisions=if route==trade_flow::Route::Liquidate{vec![interval_close(o)]}else{Vec::new()};
+            for decision in &decisions{self.record_decision(o,decision);}return Ok(decisions);
         }
-        self.processed+=1;
+        let output=trade_flow::execute_daily(state,o,positions.get(symbol),&self.config,&mut daily,
+            frozen.as_deref(),has_minutes,self.pending_full.contains(symbol))?;
+        self.audit.extend(output.audit);self.minute_fallbacks.extend(output.minute_fallbacks);self.unavailable.extend(output.unavailable);
+        let decisions=output.decisions;
         for decision in &decisions{self.record_decision(o,decision);}
-        if !self.config.trading_on(o.at){decisions.clear();}
         Ok(decisions)
     }
     fn after_observation(&mut self,account:&StrategyBacktest,observations:&[BacktestObservation])->ExecutionResult<()>{
         self.check_cancelled()?;
+        self.observe_account(account);
         let Some(observation)=observations.first().filter(|o|o.phase==ObservationPhase::DailyClose)else{return Ok(());};
         let percent=if self.total==0{100}else{(self.processed.saturating_mul(100)/self.total).min(100) as u8};
         if self.last_percent==Some(percent){return Ok(());}self.last_percent=Some(percent);
+        let active=self.config.trading_on(observation.at)&&self.symbols.get(&observation.candle.symbol)
+            .is_some_and(|state|entry_window_active(state,self.config.analyzer.trading.buy_interval_level));
+        let detail=percent==100||active||!account.positions.is_empty()||account.orders.last().is_some_and(|order|execution::session(order.timestamp)==execution::session(observation.at));
         let progress=SystemProgress{analysis_elapsed_seconds:self.analysis_started.elapsed().as_secs_f64(),percent,processed:self.processed,total:self.total,symbol:observation.candle.symbol.clone(),
             asof:execution::session(observation.at).to_string(),stage:"strategy_execution".into(),
-            analysis:self.symbols.get(&observation.candle.symbol).map(|s|s.analyzer.response()),account:Some(account.clone()),audit:self.audit.clone(),signals:self.signals.clone()};
+            analysis:if detail{self.symbols.get(&observation.candle.symbol).map(|s|s.analyzer.response())}else{None},
+            account:detail.then(||account.clone()),audit:if detail{self.audit.clone()}else{Vec::new()},signals:if detail{self.signals.clone()}else{Vec::new()}};
         (self.on_progress)(&progress);Ok(())
     }
 }
@@ -393,7 +398,8 @@ fn run_system_inputs<F:FnMut(&SystemProgress),G:FnMut(&SystemStep<'_>)>(sessions
         else{identities.insert(symbol.clone(),identity);}
         if session.minutes.is_some(){minutes.insert((symbol.clone(),session.daily.timestamp.clone()));}
     }
-    if super::analyzer::STRUCTURE_ONLY{
+    if !config.analyzer.trading_enabled(){
+        if frozen_signals.is_some(){return Err("frozen trading signals require trading analysis mode".into());}
         return run_polyline_arrays(sessions,config,identities,cancellation,on_progress);
     }
     let mut symbols=BTreeMap::new();
@@ -403,7 +409,7 @@ fn run_system_inputs<F:FnMut(&SystemProgress),G:FnMut(&SystemStep<'_>)>(sessions
         if let Some(cache)=&structure_cache{analyzer.set_structure_cache(Arc::clone(cache))?;}
         symbols.insert(symbol,SymbolState{analyzer,holding:Default::default(),extrema:Default::default(),bars:vec![],intraday:Default::default(),intraday_audit:0});
     }
-    let mut strategy=SystemStrategy{config:config.clone(),symbols,minutes,pending_full:BTreeSet::new(),audit:vec![],signals:vec![],minute_fallbacks:vec![],
+    let mut strategy=SystemStrategy{config:config.clone(),symbols,minutes,pending_full:BTreeSet::new(),interval_exits:BTreeSet::new(),audit:vec![],signals:vec![],minute_fallbacks:vec![],
         unavailable:BTreeSet::new(),cancelled:cancellation,processed:0,total:sessions.len(),last_percent:None,on_progress,on_step,frozen_signals,analysis_started};
     let mut account=execution::run_strategy_backtest(sessions,config.execution.clone(),&mut strategy).map_err(|e|e.to_string())?;
     account.equity.retain(|(at,_)|config.trading_on(*at));account.portfolio_days.retain(|day|config.trading_on(day.at));

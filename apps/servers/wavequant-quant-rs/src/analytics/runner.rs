@@ -74,7 +74,7 @@ pub fn run_notion(csv:&Path,notes:&Path,output:&Path,protocol_path:&Path,config:
 
 fn system_configuration(parameters:&ExecutionParameters,trading:TradingDayConfig,begin:&str,end:&str)->AnalyticsResult<SystemConfig>{
     let profile=StrategyProfile{strategy:trading.clone(),parameters:json!(trading),scenarios:BTreeMap::from([("research".into(),json!({"execution":parameters}))]),profile_version:"frozen_system_research".into(),definition:json!({}),extra:BTreeMap::new()};let(execution,holding)=profiles::execution_configuration(&profile,"research")?;
-    let analyzer=AnalyzerConfig{n_target_trend_confirmation_enabled:trading.n_target_trend_confirmation_enabled,trading,..AnalyzerConfig::default()};Ok(SystemConfig{analyzer,execution,holding,parameters:parameters.clone(),trading_start:Some(begin.into()),trading_end:Some(end.into())})
+    let analyzer=AnalyzerConfig{n_target_trend_confirmation_enabled:trading.n_target_trend_confirmation_enabled,trading,..AnalyzerConfig::default()}.for_trading();Ok(SystemConfig{analyzer,execution,holding,parameters:parameters.clone(),trading_start:Some(begin.into()),trading_end:Some(end.into())})
 }
 pub(crate) fn system_result(input:&Inputs,parameters:&ExecutionParameters,trading:&TradingDayConfig,begin:&str,end:&str)->AnalyticsResult<(Value,system::SystemBacktest)>{
     let config=system_configuration(parameters,trading.clone(),begin,end)?;let sessions:Vec<_>=input.sessions.iter().filter(|s|s.daily.timestamp.as_str()<=end).cloned().collect();let generated=system::run_system_backtest(&sessions,config,None,|_|{})?;let output=result(&generated.account,&input.grouped,&generated.signals,&generated.audit,end)?;Ok((output,generated))

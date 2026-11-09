@@ -120,6 +120,7 @@ pub fn folded_n_candidates(points:&[KernelPoint],earliest:usize,direction:Direct
 #[derive(Debug,Default,Clone,Serialize,Deserialize)]
 pub struct EligiblePolylineN{pub folded_window:Option<usize>,pub structural:bool,previous:BTreeMap<String,Vec<KernelPoint>>,seen:BTreeMap<String,BTreeSet<String>>,last:Option<usize>}
 impl EligiblePolylineN{
+    pub(crate) fn starting_at(start:usize)->Self{Self{last:start.checked_sub(1),..Self::default()}}
     /// 兼容策略的 level=0 表示不限制交易区间；它不建立任何正式趋势资格。
     pub fn advance_unrestricted(&mut self,now:usize,points:&[KernelPoint],epoch:usize)->Result<Vec<EligibleNSource>,String>{
         if now!=self.last.map_or(0,|i|i+1)||epoch>now||points.iter().any(|p|p.known_index>now){return Err("unrestricted N source requires consecutive known epochs".into());}
@@ -173,6 +174,7 @@ struct PendingStructure{setup:NSetup,expires:usize,identity:String,source:Eligib
 #[derive(Debug,Clone,Serialize,Deserialize)]
 pub struct StructuralNStream{pub ttl:usize,pub exclusive_targets:bool,pub events:Vec<Value>,seen:BTreeMap<String,EligibleNSource>,pending:Vec<PendingStructure>,last:Option<usize>,owners:StructuralNOwnership}
 impl StructuralNStream{
+    pub(crate) fn starting_at(start:usize,ttl:usize,exclusive_targets:bool)->Self{let mut state=Self::new(ttl,exclusive_targets);state.last=start.checked_sub(1);state}
     pub fn new(ttl:usize,exclusive_targets:bool)->Self{Self{ttl,exclusive_targets,events:vec![],seen:BTreeMap::new(),pending:vec![],last:None,owners:Default::default()}}
     fn event(bars:&[RuleCandle],index:usize,kind:&str,pending:&PendingStructure,fields:Value)->Value{
         let mut event=json!({"event":kind,"bar_index":index,"known_at":index,"timestamp":bars[index].timestamp,"symbol":bars[index].symbol,
@@ -248,6 +250,7 @@ pub struct PolylineTargetStream{
     pub measurements:BTreeMap<String,TradingNMeasurement>,pub events:Vec<Value>,
 }
 impl PolylineTargetStream{
+    pub(crate) fn starting_at(start:usize)->Self{Self{last:start.checked_sub(1),..Self::default()}}
     pub fn advance(&mut self,bars:&[RuleCandle],index:usize,sources:&[EligibleNSource],scopes:&BTreeSet<String>,interrupted:bool,
         structure_window:usize,pattern_ttl:usize)->Result<Vec<Value>,String>{
         self.advance_with_policy(bars,index,sources,scopes,interrupted,structure_window,pattern_ttl,"lecture_causal",true)

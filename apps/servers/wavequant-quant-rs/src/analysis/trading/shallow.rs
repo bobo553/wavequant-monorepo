@@ -95,6 +95,7 @@ pub struct ShallowBaseState{last:Option<usize>,previous:Option<ShallowAlternatio
 #[derive(Debug,Default,Clone,Serialize,Deserialize)]
 pub struct ShallowBaseEvaluation{pub events:Vec<Value>,pub breakout:Option<Value>}
 impl ShallowBaseState{
+    pub(crate) fn starting_at(start:usize)->Self{Self{last:start.checked_sub(1),..Self::default()}}
     pub fn advance(&mut self,bars:&[RuleCandle],now:usize,current:Option<ShallowAlternationCandidate>,minimum_reward_risk:Decimal,entry_allowed:bool)->Result<ShallowBaseEvaluation,String>{
         if now>=bars.len()||self.last.map_or(0,|i|i+1)!=now||minimum_reward_risk<Decimal::ZERO||current.as_ref().is_some_and(|c|c.known_index>now){return Err("shallow candidate requires consecutive known bars and valid reward/risk".into());}
         let mut output=ShallowBaseEvaluation::default();if now>0{if let Some(c)=&current{if self.seen.insert(c.identity()){

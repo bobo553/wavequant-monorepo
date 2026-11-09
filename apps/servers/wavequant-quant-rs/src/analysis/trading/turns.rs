@@ -54,6 +54,7 @@ pub fn washout_reentry_events(bars:&[RuleCandle],now:usize,prepared:&[PreparedN]
     }Ok(events)
 }
 impl TurnState{
+    pub(crate) fn starting_at(start:usize)->Self{Self{last:start.checked_sub(1),..Self::default()}}
     pub fn advance(&mut self,bars:&[RuleCandle],now:usize,polyline:&KernelFrame,prepared:&[PreparedN],config:&TradingDayConfig,
         minor_points:Option<&[ConfirmedPivot]>)->Result<Vec<Value>,String>{
         if now>=bars.len()||self.last.map_or(0,|v|v+1)!=now{return Err("turn candidates require consecutive closed prefixes".into());}

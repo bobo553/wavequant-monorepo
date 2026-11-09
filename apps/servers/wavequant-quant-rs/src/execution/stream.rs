@@ -91,7 +91,7 @@ struct SymbolAnalyzer{prefix:Vec<StreamBar>,analyzer:TrendAnalyzer,last_signals:
 pub struct TrendStreamStrategy{config:AnalyzerConfig,source_version:String,symbols:BTreeMap<String,SymbolAnalyzer>}
 impl TrendStreamStrategy{pub fn new(config:AnalyzerConfig,source_version:String)->ExecutionResult<Self>{
     require(!source_version.is_empty()&&source_version.len()<=256,"bounded_stream_source_version_required")?;
-    config.trading.validate().map_err(ExecutionError)?;Ok(Self{config,source_version,symbols:BTreeMap::new()})}
+    config.trading.validate().map_err(ExecutionError)?;Ok(Self{config:config.for_trading(),source_version,symbols:BTreeMap::new()})}
     pub fn audit(&self,symbol:&str)->Vec<Value>{self.symbols.get(symbol).map(|s|s.analyzer.trading_state().events.clone()).unwrap_or_default()}
 }
 impl StreamSignalStrategy for TrendStreamStrategy{
@@ -106,7 +106,7 @@ impl StreamSignalStrategy for TrendStreamStrategy{
             let more=known_prefix.iter().enumerate().skip(cache.prefix.len()).map(|(i,b)|b.analysis(i)).collect::<ExecutionResult<Vec<_>>>()?;
             cache.analyzer.append(more).map_err(ExecutionError)?;
         }else{let bars=known_prefix.iter().enumerate().map(|(i,b)|b.analysis(i)).collect::<ExecutionResult<_>>()?;
-            let analyzer=TrendAnalyzer::new(AnalysisRequest{identity:DataIdentity{symbol:last.symbol.clone(),source_version:self.source_version.clone(),adjustment:"explicit_stream_factor".into(),timeframe:"daily".into()},bars,config:self.config.clone(),state:None}).map_err(ExecutionError)?;
+            let analyzer=TrendAnalyzer::new(AnalysisRequest{identity:DataIdentity{symbol:last.symbol.clone(),source_version:self.source_version.clone(),adjustment:"explicit_stream_factor".into(),timeframe:"1d".into()},bars,config:self.config.clone(),state:None}).map_err(ExecutionError)?;
             self.symbols.insert(last.symbol.clone(),SymbolAnalyzer{prefix:vec![],analyzer,last_signals:vec![]});}
         let cache=self.symbols.get_mut(&last.symbol).ok_or_else(||ExecutionError("stream_cache_missing".into()))?;let mut signals=vec![];
         while cache.analyzer.process_next().map_err(ExecutionError)?{let now=cache.analyzer.get_current_index()-1;if now+1!=known_prefix.len(){continue;}

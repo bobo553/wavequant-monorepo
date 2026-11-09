@@ -7,11 +7,13 @@ use wavequant_quant_rs::analysis::profiles::ProfileOptions;
 use crate::presentation::error::ApiError;
 type Result<T>=std::result::Result<T,ApiError>;
 pub const REQUIRED:[&str;6]=["run","variant","symbol","asof","scenario","start"];
-pub const OPTIONAL:[&str;11]=["volume_filter","net_reward_risk_filter","shallow_base_breakout_enabled","n_target_trend_confirmation_enabled","ordinary_trend_completion_enabled","buy_interval_level","initial_capital","max_position_weight","backtest_job","strategy_version","trend_offset_enabled"];
+pub const OPTIONAL:[&str;13]=["volume_filter","net_reward_risk_filter","shallow_base_breakout_enabled","n_target_trend_confirmation_enabled","ordinary_trend_completion_enabled","buy_interval_level","initial_capital","max_position_weight","backtest_job","strategy_version","trend_offset_enabled","trading_enabled","enable_secondary_reversal"];
 #[derive(Debug,Clone,Serialize,Deserialize)]
 pub struct BacktestRequest {
     pub source:String,pub run:String,pub variant:String,pub symbol:String,pub asof:String,pub scenario:String,pub start:String,
     #[serde(default="offset_default")] pub trend_offset_enabled:bool,
+    #[serde(default="trading_default")] pub trading_enabled:bool,
+    #[serde(default)] pub enable_secondary_reversal:Option<[bool;4]>,
     pub volume_filter:bool,pub net_reward_risk_filter:bool,pub shallow_base_breakout_enabled:bool,
     pub n_target_trend_confirmation_enabled:bool,pub ordinary_trend_completion_enabled:bool,pub buy_interval_level:u8,
     pub initial_capital:Decimal,pub max_position_weight:Decimal,pub job_id:String,pub strategy_version:Option<String>,
@@ -42,8 +44,34 @@ mod symbol_tests {
             assert!(BacktestRequest::parse("akshare",&query(symbol)).is_err(),"{symbol}");
         }
     }
+
+    #[test]
+    fn saved_watchlist_options_disable_accounts_and_preserve_qualification_levels(){
+        let mut params=query("sh.601086");
+        params.insert("trading_enabled".into(),"false".into());
+        params.insert("enable_secondary_reversal".into(),"[false,true,false,true]".into());
+        let request=BacktestRequest::parse("akshare",&params).unwrap();
+        assert!(!request.executes_trades());
+        assert_eq!(request.qualification_levels(),[false,true,false,true]);
+        let restored=BacktestRequest::parse("akshare",&request.params()).unwrap();
+        assert!(!restored.executes_trades());
+        assert_eq!(restored.qualification_levels(),request.qualification_levels());
+        let manual=BacktestRequest::parse("akshare",&query("sh.601086")).unwrap();
+        assert!(manual.executes_trades());
+        assert_ne!(manual.bind_version("v47").unwrap().0,request.bind_version("v47").unwrap().0);
+        assert!(!BacktestRequest::parse("akshare",&query("sh.000001")).unwrap().executes_trades());
+    }
+
+    #[test]
+    fn invalid_qualification_levels_are_rejected(){
+        for raw in ["[false,true]","[false,false,true,false,true]","[false,false,1,false]","invalid"]{
+            let mut params=query("sh.601086");params.insert("enable_secondary_reversal".into(),raw.into());
+            assert!(BacktestRequest::parse("akshare",&params).is_err());
+        }
+    }
 }
 fn offset_default()->bool{true}
+fn trading_default()->bool{true}
 pub fn boolean(query:&BTreeMap<String,String>,name:&str,default:bool)->Result<bool>{match query.get(name).map(String::as_str){None=>Ok(default),Some("true")=>Ok(true),Some("false")=>Ok(false),_=>Err(ApiError::invalid(format!("{name} must be true or false")))}}
 fn positive(query:&BTreeMap<String,String>,name:&str,default:Decimal,maximum:Decimal)->Result<Decimal>{
     let value=query.get(name).map(|value|value.parse::<Decimal>().map_err(|_|ApiError::invalid(format!("{name} must be a decimal number")))).transpose()?.unwrap_or(default);
@@ -59,9 +87,11 @@ impl BacktestRequest {
         if start>asof{return Err(ApiError::invalid("start must not exceed asof"));}
         if !wavequant_quant_rs::data::indices::supported(source,&symbol){return Err(ApiError::invalid("invalid security symbol"));}
         let buy_interval_level=match query.get("buy_interval_level").map(String::as_str).unwrap_or("2"){"1"=>1,"2"=>2,"3"=>3,_=>return Err(ApiError::invalid("buy_interval_level must be 1, 2 or 3"))};
+        let enable_secondary_reversal=query.get("enable_secondary_reversal").map(|value|serde_json::from_str::<[bool;4]>(value).map_err(|_|ApiError::invalid("enable_secondary_reversal must contain four booleans"))).transpose()?;
         let job_id=query.get("backtest_job").cloned().unwrap_or_else(||uuid::Uuid::new_v4().to_string());super::jobs::validate_id(&job_id)?;
         let strategy_version=query.get("strategy_version").cloned();if let Some(version)=&strategy_version{crate::storage::snapshots::digest(version)?;}
-        Ok(Self{source:source.into(),run,variant,symbol,asof,scenario,start,buy_interval_level,job_id,strategy_version,
+        Ok(Self{source:source.into(),run,variant,symbol,asof,scenario,start,buy_interval_level,job_id,strategy_version,enable_secondary_reversal,
+            trading_enabled:boolean(query,"trading_enabled",true)?,
             trend_offset_enabled:boolean(query,"trend_offset_enabled",true)?,volume_filter:boolean(query,"volume_filter",true)?,net_reward_risk_filter:boolean(query,"net_reward_risk_filter",false)?,
             shallow_base_breakout_enabled:boolean(query,"shallow_base_breakout_enabled",true)?,
             n_target_trend_confirmation_enabled:boolean(query,"n_target_trend_confirmation_enabled",false)?,ordinary_trend_completion_enabled:boolean(query,"ordinary_trend_completion_enabled",false)?,
@@ -69,10 +99,14 @@ impl BacktestRequest {
         })
     }
     pub fn profile_options(&self)->ProfileOptions {ProfileOptions{n_target_trend_confirmation_enabled:self.n_target_trend_confirmation_enabled,ordinary_trend_completion_enabled:self.ordinary_trend_completion_enabled,buy_interval_level:self.buy_interval_level}}
+    pub fn qualification_levels(&self)->[bool;4]{self.enable_secondary_reversal.unwrap_or_else(||std::array::from_fn(|level|level==usize::from(self.buy_interval_level)))}
+    pub fn executes_trades(&self)->bool{self.trading_enabled&&!wavequant_quant_rs::data::indices::is_index(&self.symbol)}
     pub fn path(&self)->String{format!("/api/{}-backtest",self.source)}
     pub fn params(&self)->BTreeMap<String,String>{
         let mut params=BTreeMap::from([("run".into(),self.run.clone()),("variant".into(),self.variant.clone()),("symbol".into(),self.symbol.clone()),("asof".into(),self.asof.clone()),("scenario".into(),self.scenario.clone()),("start".into(),self.start.clone())]);
         for(key,value)in [("trend_offset_enabled",self.trend_offset_enabled),("volume_filter",self.volume_filter),("net_reward_risk_filter",self.net_reward_risk_filter),("shallow_base_breakout_enabled",self.shallow_base_breakout_enabled),("n_target_trend_confirmation_enabled",self.n_target_trend_confirmation_enabled),("ordinary_trend_completion_enabled",self.ordinary_trend_completion_enabled)]{params.insert(key.into(),value.to_string());}
+        if !self.trading_enabled{params.insert("trading_enabled".into(),"false".into());}
+        if let Some(levels)=self.enable_secondary_reversal{params.insert("enable_secondary_reversal".into(),format!("[{},{},{},{}]",levels[0],levels[1],levels[2],levels[3]));}
         params.insert("buy_interval_level".into(),self.buy_interval_level.to_string());params.insert("initial_capital".into(),self.initial_capital.normalize().to_string());params.insert("max_position_weight".into(),self.max_position_weight.normalize().to_string());params
     }
     pub fn bind_version(&self,current:&str)->Result<(String,Value)>{

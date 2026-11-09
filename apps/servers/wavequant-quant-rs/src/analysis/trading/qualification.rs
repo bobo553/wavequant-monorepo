@@ -91,6 +91,19 @@ pub struct TradingInterval {
     pub start_low_index:usize,pub start_low_ordinal:usize,pub start_low_price:Option<Decimal>,
     pub end_key_index:Option<usize>,pub end_key_price:Option<Decimal>,pub confirmation_gap:Option<ConfirmationGap>,pub gap_replaced_index:Option<usize>,
 }
+/// 两种调度共用确认日防守和量价结束条件，交易启用不得丢掉既有资格规则。
+pub(crate) fn double_volume_bearish_body_below_upper_shadow(previous:&super::RuleCandle,current:&super::RuleCandle)->bool {
+    previous.symbol==current.symbol&&previous.timestamp<current.timestamp
+        &&previous.volume>Decimal::ZERO&&current.volume>=Decimal::TWO*previous.volume
+        &&current.close<current.open&&current.open<previous.open.min(previous.close)
+        &&super::entries::is_long_upper_shadow(current)
+}
+pub(crate) fn market_qualification_end(bars:&[super::RuleCandle],now:usize,start:usize)->Option<&'static str>{
+    if now>start&&bars[now].low<bars[start].low{Some("qualification_confirmation_low_broken")}
+    else if now>0&&double_volume_bearish_body_below_upper_shadow(&bars[now-1],&bars[now]){
+        Some("double_volume_bearish_body_below_long_upper_shadow")
+    }else{None}
+}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct RecoveryPoint { index:usize,known:usize,price:Decimal,kind:String,ordinal:usize }
 fn pivot(value: &Value, now:usize) -> Option<RecoveryPoint> {
@@ -120,6 +133,16 @@ impl TradingEligibility {
     pub fn active(&self)->bool { !self.opened.is_empty() }
     pub fn active_intervals(&self)->Vec<&TradingInterval> { self.opened.values().map(|&i|&self.intervals[i]).collect() }
     pub fn contains(&self, now:usize)->bool { self.intervals.iter().any(|v|v.start_index<=now && v.end_index.is_none_or(|end|now<end)) }
+    pub(crate) fn close_on_market_risk(&mut self,bars:&[super::RuleCandle],now:usize)->Vec<Value>{
+        let closures=self.active_intervals().into_iter().filter_map(|window|{
+            market_qualification_end(bars,now,window.start_index).map(|reason|(window.source_path.clone(),window.start_index,reason))
+        }).collect::<Vec<_>>();
+        closures.into_iter().map(|(path,start,reason)|{
+            self.close(&path,now,reason,None,Some(start),Some(bars[start].low));
+            crate::indexed_json::json!({"event":"trading_market_risk_closed","bar_index":now,"available_index":now,
+                "trend_level":self.level,"source_path":path,"qualification_index":start,"reason":reason})
+        }).collect()
+    }
     /// 资格恢复仅使用本级已发布节点；突破旧高先解除门槛，新的翻多仍须重新确认交替。
     pub fn advance_same_level_recovery(&mut self,frame:&super::super::kernel::KernelFrame,bars:&[super::RuleCandle],now:usize)->Result<Vec<Value>,String>{
         use super::super::kernel::{KernelPoint,PointKind,PointState};

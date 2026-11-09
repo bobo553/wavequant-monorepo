@@ -223,12 +223,8 @@ fn close(active:&ActiveQualification,intervals:&mut[QualificationInterval],now:u
     intervals[active.interval].end_index=Some(now);intervals[active.interval].end_reason=Some(reason.into());
 }
 /// 只读相邻已收盘K线；资格风险不要求子母包含，也不触发交易或重扫历史。
-fn double_volume_bearish_body_below_upper_shadow(previous:&RuleCandle,current:&RuleCandle)->bool {
-    previous.symbol==current.symbol&&previous.timestamp<current.timestamp
-        &&previous.volume>Decimal::ZERO&&current.volume>=Decimal::TWO*previous.volume
-        &&current.close<current.open&&current.open<previous.open.min(previous.close)
-        &&crate::analysis::trading::entries::is_long_upper_shadow(current)
-}
+#[cfg(test)]
+use crate::analysis::trading::qualification::double_volume_bearish_body_below_upper_shadow;
 fn source_path(paths:&BTreeMap<(usize,usize),(usize,usize)>,path:usize,index:usize)->(usize,usize){
     paths.range((path,0)..=(path,index)).next_back().map_or((path,path),|(_,source)|*source)
 }
@@ -339,7 +335,6 @@ pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFr
             let low_broken=latest_low.map(price).transpose()?.is_some_and(|p|bars[now].low<p);
             let revised=revisions.iter().any(|&(known,source,index,ordinal)|known==now&&source==path&&(index,ordinal)==active.low.order());
             // 确认日下标冻结本窗口的防守价，不能随结构低点或后续行情移动。
-            let confirmation_low_broken=now>start&&bars[now].low<bars[start].low;
             let reason=if revised{Some("source_evidence_revised")}
                 else if bear_state{Some("same_level_bear_trend_confirmed")}
                 else if path_ended{Some("source_path_ended")}
@@ -350,10 +345,7 @@ pub(crate) fn calculate(frame:&KernelFrame,lower:&KernelFrame,polyline:&KernelFr
                 else if origin_broken{Some("special_bull_origin_broken")}
                 else if now>start&&active.gap.is_some_and(|gap|bars[now].low<=gap){Some("confirmation_gap_filled")}
                 else if low_broken{Some("reversal_low_broken")}
-                else if confirmation_low_broken{Some("qualification_confirmation_low_broken")}
-                else if now>0&&double_volume_bearish_body_below_upper_shadow(&bars[now-1],&bars[now]){
-                    Some("double_volume_bearish_body_below_long_upper_shadow")
-                }else{None};
+                else{crate::analysis::trading::qualification::market_qualification_end(bars,now,start)};
             if let Some(reason)=reason{
                 close(&active,&mut intervals,now,reason);
                 // 沿用 Python resume_qualification_search：本级翻多仍成立才等待新证据。

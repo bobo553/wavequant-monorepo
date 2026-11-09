@@ -7,9 +7,16 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use super::{kernel::{self, KernelBar, KernelFrame, KernelOptions, TrendState}, trading::{self, RuleCandle, qualification::TradingEligibility, FrameTradeEvaluation}};
 
-pub const VERSION: u32 = 46;
-// 结构模式计算全部四级；账户交易保持独立停用。
-pub const STRUCTURE_ONLY:bool=true;
+pub const VERSION: u32 = 49;
+
+/// 计算职责属于请求身份；结构查询不会因账户功能启用而生成交易。
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisMode {
+    #[default]
+    Structure,
+    Trading,
+}
 const MAX_BARS: usize = 250_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,6 +68,7 @@ impl AnalysisBar {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct AnalyzerConfig {
+    pub mode: AnalysisMode,
     /// 只控制各级买点传播，不取消对应级别的结构事实。
     pub enable_secondary_reversal: [bool; 4],
     pub kernel: KernelOptions,
@@ -70,8 +78,13 @@ pub struct AnalyzerConfig {
 }
 
 impl Default for AnalyzerConfig {
-    fn default() -> Self { Self { enable_secondary_reversal:[false,false,true,false], kernel:KernelOptions::default(),
+    fn default() -> Self { Self { mode:AnalysisMode::Structure, enable_secondary_reversal:[false,false,true,false], kernel:KernelOptions::default(),
         n_target_trend_confirmation_enabled:false,trading:trading::day::TradingDayConfig::lecture(),risk:Default::default() } }
+}
+
+impl AnalyzerConfig {
+    pub fn trading_enabled(&self) -> bool { self.mode == AnalysisMode::Trading }
+    pub fn for_trading(mut self) -> Self { self.mode = AnalysisMode::Trading; self }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -288,7 +301,7 @@ impl TrendAnalyzer {
     pub fn daily_trading(&self)->Option<&trading::day::TradingDayEvaluation>{self.daily_trading.as_ref()}
     /// 一次传入数组后只推进索引；中途不复制完整折线、不生成交易或快照。
     pub fn advance_polyline_index(&mut self)->Result<bool,String>{
-        if !STRUCTURE_ONLY||self.state.config.trading.pivot_mode!="lecture_causal"{return self.process_next();}
+        if self.state.config.trading_enabled()||self.state.config.trading.pivot_mode!="lecture_causal"{return self.process_next();}
         let index=self.state.current_index;if index>=self.bars.len(){return Ok(false);}
         self.polyline_cursor.advance_index(&self.kernel_bars[..=index])?;
         hash_bar(&mut self.prefix_hasher,&self.bars[index])?;
@@ -405,6 +418,7 @@ impl TrendAnalyzer {
     pub fn accept_intraday(&mut self,asof:usize,arbiter:&trading::arbiter::EntryArbiterState,events:&[crate::indexed_json::Value])->Result<(),String>{
         if asof!=self.state.current_index{return Err("minute facts must belong to the next unclosed daily bar".into());}
         for event in events{if trading::qualification::index(event,"bar_index")!=Some(asof){continue;}
+            if event.get("event").and_then(crate::indexed_json::Value::as_str)==Some("intraday_entry_observed"){self.trading_state.record_buy_signal();}
             if !self.trading_state.events.contains(event){self.trading_state.events.push(event.clone());}}
         self.trading_state.arbiter=arbiter.clone();Ok(())
     }
@@ -476,7 +490,7 @@ impl TrendAnalyzer {
     }
     fn prepare_structure(&mut self,asof:usize)->Result<(),String> {
         if self.prepared_at==Some(asof){return Ok(());}
-        if STRUCTURE_ONLY {
+        if !self.state.config.trading_enabled() {
             // 各级沿直接下层来源顺序推进，共用同一个趋势核心。
             self.execute_polyline_function(asof)?;
             for level in 1..=3{self.execute_level_function(level,asof)?;}
@@ -552,7 +566,7 @@ impl TrendAnalyzer {
     }
 
     pub fn execute_level_from(&mut self,level:usize,asof:usize,parent:&KernelFrame,offset:usize)->Result<TrendExecutionResult,String>{
-        if !(1..=3).contains(&level)||parent.level as usize+1!=level||!(asof==self.state.current_index||STRUCTURE_ONLY&&asof.checked_add(1)==Some(self.state.current_index))||asof>=self.bars.len()
+        if !(1..=3).contains(&level)||parent.level as usize+1!=level||!(asof==self.state.current_index||!self.state.config.trading_enabled()&&asof.checked_add(1)==Some(self.state.current_index))||asof>=self.bars.len()
             ||offset>parent.points.len()||offset!=preceding_trend_offset(parent)?{
             return Err("trend requires the directly lower level, its array offset and the current visible bar".into());
         }

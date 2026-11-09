@@ -47,7 +47,7 @@ impl SealedResearch {
         if bars.len()>20000{return Err(ApiError::invalid("single stock snapshot exceeds 20000 daily bars"));}
         let parameters=execution_parameters(&profile,scenario).map_err(ApiError::invalid)?;
         let(execution,holding)=execution_configuration(&profile,scenario).map_err(ApiError::invalid)?;
-        let mut analyzer=AnalyzerConfig::default();analyzer.trading=profile.strategy.clone();analyzer.kernel.ordinary_trend_completion_enabled=options.ordinary_trend_completion_enabled;analyzer.n_target_trend_confirmation_enabled=options.n_target_trend_confirmation_enabled;
+        let mut analyzer=AnalyzerConfig::default().for_trading();analyzer.trading=profile.strategy.clone();analyzer.kernel.ordinary_trend_completion_enabled=options.ordinary_trend_completion_enabled;analyzer.n_target_trend_confirmation_enabled=options.n_target_trend_confirmation_enabled;
         let sessions=bars.into_iter().map(|daily|BacktestSession{daily,source:"sealed_snapshot".into(),data_version:version.clone(),minutes:None,minute_source:None,minute_data_version:None}).collect::<Vec<_>>();
         let result=run_system_backtest(&sessions,SystemConfig{analyzer,execution,holding,parameters,trading_start:None,trading_end:None},cancellation,|_|{}).map_err(ApiError::invalid)?;
         let bars=result.bars.get(symbol).ok_or_else(||ApiError::invalid("system did not return requested stock"))?;

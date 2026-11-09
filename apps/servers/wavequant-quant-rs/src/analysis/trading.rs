@@ -14,6 +14,7 @@ pub mod confirmation;
 pub mod targets;
 pub mod one_p;
 pub mod day;
+pub mod dispatch;
 pub mod risk;
 pub mod reformation;
 pub mod target_lifecycle;
@@ -132,7 +133,8 @@ pub fn evaluate_frame_with_context(bars:&[RuleCandle],frame:&super::kernel::Kern
     eligibility:&mut TradingEligibility,timeframe:&str,polyline_frame:&super::kernel::KernelFrame)->Result<FrameTradeEvaluation,String> {
     evaluate_frame_with_config(bars,frame,asof,eligibility,timeframe,polyline_frame,&config::TradingDayConfig::lecture())
 }
-pub fn evaluate_frame_with_config(bars:&[RuleCandle],frame:&super::kernel::KernelFrame,asof:usize,
+/// 资格账本持续消费结构事实；买卖观察由区间内的调用方单独执行。
+pub fn advance_frame_qualification_with_config(bars:&[RuleCandle],frame:&super::kernel::KernelFrame,asof:usize,
     eligibility:&mut TradingEligibility,timeframe:&str,polyline_frame:&super::kernel::KernelFrame,config:&config::TradingDayConfig)->Result<FrameTradeEvaluation,String> {
     let recovery_events=if timeframe=="1d"{eligibility.advance_same_level_recovery(frame,bars,asof)?}else{vec![]};
     let mut enriched=frame.clone();
@@ -166,7 +168,7 @@ pub fn evaluate_frame_with_config(bars:&[RuleCandle],frame:&super::kernel::Kerne
         }
     }
     let frame=&enriched;
-    let mut evaluation=evaluate_frame_with_timeframe(bars,frame,asof,eligibility,timeframe)?;
+    let mut evaluation=advance_frame_qualification(bars,frame,asof,eligibility,timeframe)?;
     evaluation.events.extend(recovery_events);
     if timeframe!="1d" {return Ok(evaluation);}
     {
@@ -209,11 +211,24 @@ pub fn evaluate_frame_with_config(bars:&[RuleCandle],frame:&super::kernel::Kerne
                 "reversal_low_known_index":low.known_index,"reversal_low_price":price,"market_low":bars[asof].low}))
         }).collect();
         for event in closures {eligibility.observe(&event)?;evaluation.events.push(event);}
+        evaluation.events.extend(eligibility.close_on_market_risk(bars,asof));
         evaluation.in_qualification_range=eligibility.active();
         evaluation.alternation_ended|=evaluation.in_qualification_range;
         if evaluation.alternation_ended{evaluation.entry_rejections.retain(|rule|rule!="formal_alternation_not_confirmed");}
         if evaluation.in_qualification_range {evaluation.entry_rejections.retain(|r|r!="outside_confirmed_qualification_range");}
         else if !evaluation.entry_rejections.iter().any(|r|r=="outside_confirmed_qualification_range"){evaluation.entry_rejections.push("outside_confirmed_qualification_range".into());}
+    }
+    Ok(evaluation)
+}
+
+pub fn evaluate_frame_with_config(bars:&[RuleCandle],frame:&super::kernel::KernelFrame,asof:usize,
+    eligibility:&mut TradingEligibility,timeframe:&str,polyline_frame:&super::kernel::KernelFrame,config:&config::TradingDayConfig)->Result<FrameTradeEvaluation,String> {
+    let mut evaluation=advance_frame_qualification_with_config(bars,frame,asof,eligibility,timeframe,polyline_frame,config)?;
+    if timeframe!="1d"||!eligibility.contains(asof){return Ok(evaluation);}
+    observe_frame_trading(bars,frame,asof,eligibility,&mut evaluation)?;
+    if eligibility.polyline_gate.index.and_then(|index|index.checked_add(1))!=Some(asof)
+        ||eligibility.active_intervals().iter().any(|window|window.start_index==asof){
+        eligibility.polyline_gate=entries::PolylineBuyGate::starting_at(asof);
     }
     eligibility.polyline_gate.advance(bars,asof,polyline_frame)?;
     if let Some(rejection)=eligibility.polyline_gate.restrictions.get(&asof){evaluation.entry_rejections.push(rejection.reason.clone());}
@@ -229,7 +244,14 @@ pub fn evaluate_frame_with_config(bars:&[RuleCandle],frame:&super::kernel::Kerne
 
 pub fn evaluate_frame_with_timeframe(bars: &[RuleCandle], frame: &super::kernel::KernelFrame, asof: usize,
     eligibility: &mut TradingEligibility, timeframe: &str) -> Result<FrameTradeEvaluation, String> {
-    use super::kernel::{PointKind, TrendState};
+    let mut result=advance_frame_qualification(bars,frame,asof,eligibility,timeframe)?;
+    if timeframe=="1d"&&eligibility.contains(asof){observe_frame_trading(bars,frame,asof,eligibility,&mut result)?;}
+    Ok(result)
+}
+
+fn advance_frame_qualification(bars:&[RuleCandle],frame:&super::kernel::KernelFrame,asof:usize,
+    eligibility:&mut TradingEligibility,timeframe:&str)->Result<FrameTradeEvaluation,String>{
+    use super::kernel::TrendState;
     if asof >= bars.len() || frame.level > 3 { return Err("frame index or trend level unavailable".into()); }
     validate_bars(&bars[..=asof])?;
     let mut result = FrameTradeEvaluation { alternation_ended: false, in_qualification_range: false,
@@ -266,6 +288,15 @@ pub fn evaluate_frame_with_timeframe(bars: &[RuleCandle], frame: &super::kernel:
     }).collect();
     for event in gaps { eligibility.observe(&event)?; result.events.push(event); }
     result.in_qualification_range = eligibility.active();
+    if !result.in_qualification_range {result.entry_rejections.push("outside_confirmed_qualification_range".into());}
+    Ok(result)
+}
+
+fn observe_frame_trading(bars:&[RuleCandle],frame:&super::kernel::KernelFrame,asof:usize,
+    eligibility:&TradingEligibility,result:&mut FrameTradeEvaluation)->Result<(),String>{
+    use super::kernel::PointKind;
+    let window_start=eligibility.intervals.iter().filter(|window|window.start_index<=asof&&window.end_index.is_none_or(|end|asof<end))
+        .map(|window|window.start_index).max().ok_or("trading observation requires an active interval")?;
     let points: Vec<_> = frame.points.iter().filter(|p| p.is_closed() && p.known_index <= asof && p.index <= asof).collect();
     for triple in points.windows(3) {
         let [a,b,c] = [triple[0],triple[1],triple[2]];
@@ -286,7 +317,7 @@ pub fn evaluate_frame_with_timeframe(bars: &[RuleCandle], frame: &super::kernel:
             box_anchor_mode:BoxAnchorMode::AttackVirtualExtreme,allow_confirmation_bar:true,allow_outside_close:true,
             allow_mother_impulse:direction==Direction::Up && a.index==b.index,staged_defense:true,
             allow_mother_pullback:false,allow_inside_pullback:false,polyline_structure:direction==Direction::Up };
-        let options=NOptions{timeframe:"1d".into(),milestone_basis:MilestoneBasis::Extreme,asof_index:Some(asof),measurement_start:None,measure_targets:true};
+        let options=NOptions{timeframe:"1d".into(),milestone_basis:MilestoneBasis::Extreme,asof_index:Some(asof),measurement_start:Some(window_start),measure_targets:true};
         match observe_n(bars,&setup,&options) {
             Ok(observation)=>result.n_observations.push(observation),
             Err(reason)=>result.events.push(crate::indexed_json::json!({"event":"n_candidate_rejected","bar_index":asof,
@@ -294,12 +325,52 @@ pub fn evaluate_frame_with_timeframe(bars: &[RuleCandle], frame: &super::kernel:
         }
     }
     if let Some(reason)=entries::common_entry_rejection(bars,asof) {result.entry_rejections.push(reason.into());}
-    let mut gap_gate=entries::GapEntryGate::default();
+    let mut gap_gate=entries::GapEntryGate::starting_at(window_start);
     if let Some(decision)=gap_gate.advance(bars,asof)? {result.entry_rejections.push(decision.reason);}
-    if !result.in_qualification_range {result.entry_rejections.push("outside_confirmed_qualification_range".into());}
     result.unavailable_rules.push("trading_day: requires shared target, OneP and risk arbitration context".into());
     for decision in [exits::observe_double_volume_lower_close_exit(bars,asof), exits::observe_gap_bearish_exit(bars,asof),
         exits::volume_shadow_next_decline(bars,asof,None), exits::observe_double_volume_fade(bars,asof),
         exits::observe_limit_up_distribution_exit(bars,asof)].into_iter().flatten() { result.exit_decisions.push(decision); }
-    Ok(result)
+    Ok(())
+}
+
+#[cfg(test)]
+mod interval_observation_tests {
+    use super::*;
+
+    fn bars()->Vec<RuleCandle>{
+        [("11","12","10","11"),("8","9","7","7.5"),("8","8.5","7.5","8"),("9","9.5","8.8","9.4")]
+            .into_iter().enumerate().map(|(index,(open,high,low,close))|RuleCandle{
+                symbol:"sh.601086".into(),timestamp:format!("2026-01-{:02}",5+index),
+                open:open.parse().unwrap(),high:high.parse().unwrap(),low:low.parse().unwrap(),close:close.parse().unwrap(),
+                volume:Decimal::from(100),adjustment_factor:Decimal::ONE,raw_trading_active:Some(true),raw_is_st:Some(false),
+            }).collect()
+    }
+
+    #[test]
+    fn closed_qualification_does_not_advance_trade_observers(){
+        let bars=bars();let frame=super::super::kernel::KernelFrame::empty(2);
+        let polyline=super::super::kernel::KernelFrame::empty(0);let mut eligibility=TradingEligibility::new(2).unwrap();
+        let result=evaluate_frame_with_config(&bars,&frame,3,&mut eligibility,"1d",&polyline,&config::TradingDayConfig::lecture()).unwrap();
+        assert!(!result.in_qualification_range);
+        assert!(!result.trade_point);
+        assert!(result.n_observations.is_empty());
+        assert!(result.exit_decisions.is_empty());
+        assert!(eligibility.polyline_gate.index.is_none());
+        assert!(!result.entry_rejections.iter().any(|reason|reason=="up_gap_smaller_than_adjacent_down_gap"));
+    }
+
+    #[test]
+    fn window_gates_start_at_the_interval_without_replaying_prior_gap_risk(){
+        let bars=bars();
+        let mut earlier=entries::GapEntryGate::starting_at(1);
+        assert_eq!(earlier.advance(&bars,3).unwrap().unwrap().reason,"up_gap_smaller_than_adjacent_down_gap");
+        let mut fresh=entries::GapEntryGate::starting_at(3);
+        assert!(fresh.advance(&bars,3).unwrap().is_none());
+        assert!(!fresh.restrictions.contains_key(&1));
+        let mut polyline=entries::PolylineBuyGate::starting_at(3);
+        polyline.advance(&bars,3,&super::super::kernel::KernelFrame::empty(0)).unwrap();
+        assert_eq!(polyline.index,Some(3));
+        assert_eq!(polyline.source_epochs.keys().copied().collect::<Vec<_>>(),vec![3]);
+    }
 }
